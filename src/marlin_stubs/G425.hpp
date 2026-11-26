@@ -46,8 +46,8 @@ struct Failure {
 };
 
 /// Runs full_calibration().
-/// On failure, the tool and step are reported where known (pin center not found), otherwise the
-/// reason is unknown.
+/// On failure, the tool and step are reported where known (tool change failed, pin center not
+/// found), otherwise the reason is unknown.
 std::expected<void, Failure> run_full_calibration();
 
 /// single_tool or rebase mode with the tool measured together with the reference tool

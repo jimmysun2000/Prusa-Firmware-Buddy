@@ -747,7 +747,11 @@ inline bool calibrate_all_simple() {
     // Measure centers
     StrongIndexArray<MachinePosXYZ, PhysicalToolIndex::count, PhysicalToolIndex, PhysicalToolIndex::to_raw_static> centers;
     for (auto tool : PhysicalToolIndex::all().skip_all_disabled()) {
-        tool_change(tool, tool_return_t::no_return);
+        if (!tool_change(tool, tool_return_t::no_return)) {
+            SERIAL_ECHOLNPAIR("G425: Tool ", tool.to_raw(), " tool change failed.");
+            full_calibration_failure = pin_tool_offset::Failure { .reason = pin_tool_offset::FailureReason::toolchange_failed, .tool = tool };
+            return false; // Do not probe with a tool that might not be picked
+        }
         std::optional<MachinePosXYZ> center = get_xyz_center(tool.to_raw());
         if (!center.has_value()) {
             SERIAL_ECHOLNPAIR("G425: Tool ", tool.to_raw(), " center not found.");
@@ -772,7 +776,11 @@ inline bool calibrate_all_simple() {
     }
 
     // Pick zero offset tool to be sure no offset is applied on toolchange
-    tool_change(NoTool {}, tool_return_t::no_return);
+    if (const auto parked_tool = PhysicalToolIndex::currently_selected_opt(); !tool_change(NoTool {}, tool_return_t::no_return)) {
+        SERIAL_ECHOLNPAIR("G425: Parking the last tool failed.");
+        full_calibration_failure = pin_tool_offset::Failure { .reason = pin_tool_offset::FailureReason::toolchange_failed, .tool = parked_tool };
+        return false;
+    }
 
     // Apply the offset
     for (auto tool : PhysicalToolIndex::all()) {
