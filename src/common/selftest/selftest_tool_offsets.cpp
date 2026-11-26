@@ -169,9 +169,8 @@ LoopResult CSelftestPart_ToolOffsets::state_calibrate() {
  */
 LoopResult CSelftestPart_ToolOffsets::state_finish_calibration() {
     if (config.request.mode == ToolOffsetsMode::full) {
-        bool calibration_success = full_calibration();
-        if (!calibration_success) {
-            return LoopResult::Fail;
+        if (const auto calibrated = pin_tool_offset::run_full_calibration(); !calibrated.has_value()) {
+            failure = calibrated.error();
         }
         return LoopResult::RunNext;
     }
@@ -206,6 +205,11 @@ LoopResult CSelftestPart_ToolOffsets::state_wait_review() {
 
     if (state_machine.GetButtonPressed() != Response::Continue) {
         return LoopResult::RunCurrent;
+    }
+
+    if (config.request.mode == ToolOffsetsMode::full) {
+        // The full calibration ends right at its failure
+        return LoopResult::Fail;
     }
 
     switch (failure->reason) {

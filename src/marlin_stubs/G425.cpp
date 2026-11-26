@@ -154,6 +154,9 @@ METRIC_DEF(metric_z_hit, "g425_z", METRIC_VALUE_CUSTOM, 100, METRIC_ENABLED);
 // Max deviation
 METRIC_DEF(metric_xy_dev, "g425_xy_dev", METRIC_VALUE_FLOAT, 100, METRIC_ENABLED);
 
+/// Why the full calibration failed, where the failing tool and step are known
+std::optional<pin_tool_offset::Failure> full_calibration_failure;
+
 constexpr xyz_float_t dimensions { { CALIBRATION_OBJECT_DIMENSIONS } };
 constexpr xy_float_t nod = { { { CALIBRATION_NOZZLE_OUTER_DIAMETER, CALIBRATION_NOZZLE_OUTER_DIAMETER } } };
 constexpr MachinePosXYZ true_center { { CALIBRATION_OBJECT_CENTER } };
@@ -748,6 +751,7 @@ inline bool calibrate_all_simple() {
         std::optional<MachinePosXYZ> center = get_xyz_center(tool.to_raw());
         if (!center.has_value()) {
             SERIAL_ECHOLNPAIR("G425: Tool ", tool.to_raw(), " center not found.");
+            full_calibration_failure = pin_tool_offset::Failure { .reason = pin_tool_offset::FailureReason::center_not_found, .tool = tool };
             failed = true;
             break; // Do not continue with the next tool
         }
@@ -857,6 +861,14 @@ namespace {
     }
 
 } // namespace
+
+std::expected<void, Failure> run_full_calibration() {
+    full_calibration_failure.reset();
+    if (full_calibration()) {
+        return {};
+    }
+    return std::unexpected(full_calibration_failure.value_or(Failure {}));
+}
 
 bool is_partial_request_valid(const PartialRequest &request) {
     if (request.mode != selftest::ToolOffsetsMode::single_tool && request.mode != selftest::ToolOffsetsMode::rebase) {

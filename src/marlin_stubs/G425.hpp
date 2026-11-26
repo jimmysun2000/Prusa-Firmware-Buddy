@@ -20,7 +20,8 @@
  */
 bool full_calibration();
 
-/// Pin-based calibration that measures only the reference tool and one other tool
+/// Pin-based tool offset calibration as run by the selftest: the full calibration with its
+/// failure reported, and the partial one that measures only the reference tool and one other tool
 namespace pin_tool_offset {
 
 /// Step at which a calibration stopped
@@ -43,6 +44,11 @@ struct Failure {
     AxisEnum axis = X_AXIS;
     float value = 0;
 };
+
+/// Runs full_calibration().
+/// On failure, the tool and step are reported where known (pin center not found), otherwise the
+/// reason is unknown.
+std::expected<void, Failure> run_full_calibration();
 
 /// single_tool or rebase mode with the tool measured together with the reference tool
 using PartialRequest = selftest::ToolOffsetsCalibrationData;
