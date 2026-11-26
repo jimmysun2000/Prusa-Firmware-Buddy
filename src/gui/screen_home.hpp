@@ -9,6 +9,8 @@
 #include <guiconfig/guiconfig.h>
 #include <option/has_mmu2.h>
 #include <option/has_nfc.h>
+#include <option/has_toolchanger.h>
+#include <option/has_indx.h>
 
 #if HAS_MMU2()
     #include "../../lib/Marlin/Marlin/src/feature/prusa/MMU2/mmu2_state.h"
@@ -32,6 +34,9 @@ private:
 
     bool usbInserted;
     bool event_in_progress { false };
+#if HAS_TOOLCHANGER() && !HAS_INDX()
+    bool maintenance_reminders_checked { false };
+#endif
     static bool need_check_wifi_credentials;
     MediaState_t media_event { MediaState_t::unknown };
 

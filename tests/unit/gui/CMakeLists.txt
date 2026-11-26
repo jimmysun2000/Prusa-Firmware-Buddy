@@ -62,6 +62,13 @@ target_include_directories(
   )
 add_catch_test(color_tests)
 
+# maintenance_reminder_math_tests
+add_executable(
+  maintenance_reminder_math_tests ${CMAKE_CURRENT_SOURCE_DIR}/maintenance_reminder_math_tests.cpp
+  )
+target_include_directories(maintenance_reminder_math_tests PUBLIC ${CMAKE_SOURCE_DIR}/src)
+add_catch_test(maintenance_reminder_math_tests)
+
 add_subdirectory(lazyfilelist)
 add_subdirectory(jogwheel)
 add_subdirectory(window)

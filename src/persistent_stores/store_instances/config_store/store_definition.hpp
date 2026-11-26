@@ -126,6 +126,10 @@
     #include <feature/tool_mapping/tool_mapping_preset.hpp>
 #endif
 
+#if HAS_TOOLCHANGER() && !HAS_INDX()
+    #include <gui/maintenance_reminder_table.hpp>
+#endif
+
 namespace config_store_ns {
 
 struct ItemFlag {
@@ -1069,6 +1073,13 @@ struct CurrentStore
     StoreItemArray<uint32_t, uint32_t { 0 }, ItemFlag::stats, journal::hash("Odometer Tool Time"), 16, PhysicalToolIndex::count> odometer_tool_time;
     /// Number of tool crash recoveries. Use Odometer_s, it holds the unsaved part.
     StoreItem<uint32_t, 0, ItemFlag::stats, journal::hash("Tool Recovery Count")> tool_recovery_count;
+#endif
+
+#if HAS_TOOLCHANGER() && !HAS_INDX()
+    /// Maintenance reminder interval per reminder table row, in the row's setting unit; 0 = Off
+    StoreItemArray<uint32_t, uint32_t { 0 }, ItemFlag::features, journal::hash("Maintenance Reminder Interval"), 16, maintenance_reminders::item_count> maintenance_interval;
+    /// Odometer counter at the last maintenance reset, per reminder slot. Use maintenance_reminders.
+    StoreItemArray<uint32_t, uint32_t { 0 }, ItemFlag::stats, journal::hash("Maintenance Reminder Baseline"), 32, maintenance_reminders::slot_count> maintenance_baseline;
 #endif
 
 private:

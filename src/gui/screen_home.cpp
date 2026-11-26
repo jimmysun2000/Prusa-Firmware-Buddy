@@ -63,6 +63,10 @@
 
 #include "usb_host.h"
 
+#if HAS_TOOLCHANGER() && !HAS_INDX()
+    #include "maintenance_reminders.hpp"
+#endif
+
 bool screen_home_data_t::ever_been_opened = false;
 
 #if HAS_MINI_DISPLAY()
@@ -453,6 +457,13 @@ void screen_home_data_t::windowEvent(window_t *sender, GUI_event_t event, void *
             } else {
                 need_check_wifi_credentials = true; // usb is not inserted, when it gets inserted we want to recheck credentials file
             }
+
+#if HAS_TOOLCHANGER() && !HAS_INDX()
+            // The counters grow mostly while other screens replace this one (printing, menus): once per instance is enough
+            if (!maintenance_reminders_checked) {
+                maintenance_reminders_checked = maintenance_reminders::prompt_due_items();
+            }
+#endif
         }
 
 #if HAS_SELFTEST()

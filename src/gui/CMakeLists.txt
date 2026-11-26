@@ -118,7 +118,9 @@ if(HAS_TOOLCHANGER)
 endif()
 
 if(HAS_TOOLCHANGER AND NOT HAS_INDX)
-  target_sources(firmware PRIVATE print_stats_tracker.cpp)
+  target_sources(
+    firmware PRIVATE maintenance_reminders.cpp print_stats_tracker.cpp screen_menu_maintenance.cpp
+    )
 endif()
 
 if(HAS_MODULAR_BED)

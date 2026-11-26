@@ -8,9 +8,16 @@
 #include <gui/menu_item/menu_item_virtual_submenu.hpp>
 #include <option/has_toolchanger.h>
 #include <option/has_per_tool_temperatures.h>
+#include <option/has_indx.h>
+#if HAS_TOOLCHANGER() && !HAS_INDX()
+    #include <screen_menu_maintenance.hpp>
+#endif
 
 using ScreenMenuInfo__ = BasicScreenMenu<
     MI_STATISTICS,
+#if HAS_TOOLCHANGER() && !HAS_INDX()
+    MI_MAINTENANCE,
+#endif
     MI_NETWORK_STATUS,
     MI_SENSOR_INFO,
 #if HAS_TOOLCHANGER() && HAS_PER_TOOL_TEMPERATURES()
