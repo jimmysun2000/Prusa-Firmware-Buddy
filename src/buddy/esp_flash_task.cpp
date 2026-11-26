@@ -52,3 +52,9 @@ void skip_esp_flashing() {
     // Normally this is done at the end of the flashing when we change the baudrate.
     HAL_UART_Receive_DMA(&uart_handle_for_esp, (uint8_t *)dma_buffer_rx, RX_BUFFER_LEN);
 }
+
+void skip_esp_power_up() {
+    // UART reception is not started: an unpowered ESP has nothing to say, only line noise.
+    espif_notify_powered_off();
+    TaskDeps::provide(TaskDeps::Dependency::esp_flashed);
+}

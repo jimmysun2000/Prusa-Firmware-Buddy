@@ -46,6 +46,13 @@ MI_WIFI_STATUS_t::MI_WIFI_STATUS_t()
 }
 
 void MI_WIFI_STATUS_t::Loop() {
+    #if HAS_EMBEDDED_ESP32()
+    if (!netdev_is_wifi_usable()) {
+        ChangeInformation(_("Off"));
+        return;
+    }
+    #endif
+
     const netdev_status_t status = netdev_get_status(NETDEV_ESP_ID);
     if (is_device_connected(status)) {
         ChangeInformation(status == NETDEV_NETIF_UP ? _("Connected") : _("Link down"));
@@ -149,6 +156,27 @@ MI_NET_INTERFACE_t::MI_NET_INTERFACE_t()
 
 void MI_NET_INTERFACE_t::OnChange([[maybe_unused]] size_t old_index) {
     netdev_set_active_id(this->current_item());
+}
+#endif
+
+#if HAS_EMBEDDED_ESP32()
+MI_WIFI_ENABLE::MI_WIFI_ENABLE()
+    : WI_ICON_SWITCH_OFF_ON_t(netdev_is_enabled(NETDEV_ESP_ID), _(label)) {
+}
+
+void MI_WIFI_ENABLE::OnChange([[maybe_unused]] size_t old_index) {
+    const bool enabled = value();
+    netdev_set_enabled(NETDEV_ESP_ID, enabled);
+
+    if (espif_is_powered_off()) {
+        if (enabled) {
+            MsgBoxInfo(_("Wi-Fi turns on after a restart."), Responses_Ok);
+        }
+    } else if (!enabled) {
+        // The module was powered up at boot and the driver can't cut its power at runtime,
+        // so until the restart it only idles, disconnected.
+        MsgBoxInfo(_("Wi-Fi is off. The Wi-Fi module fully powers down after a restart."), Responses_Ok);
+    }
 }
 #endif
 

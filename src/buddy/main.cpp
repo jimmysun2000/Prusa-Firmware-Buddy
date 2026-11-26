@@ -141,6 +141,11 @@
     #include "buddy/esp_flash_task.hpp"
 #endif
 
+#include <option/has_embedded_esp32.h>
+#if HAS_EMBEDDED_ESP32()
+    #include <netdev.h>
+#endif
+
 #if BUDDY_ENABLE_CONNECT() && !BUDDY_ENABLE_WUI()
     // #error dead code found by automatic analyses (see BFW-5461)
     // FIXME: We should be able to split networking to the lower-level network part and the Link part. Currently, both are done through WUI.
@@ -261,6 +266,26 @@ static bool bootloader_update() {
         return true;
     }
     return false;
+}
+#endif
+
+#if HAS_ESP()
+/// If the Wi-Fi is turned off, leaves the ESP unpowered for the whole boot.
+/// \returns whether it did; otherwise the caller brings the ESP up.
+static bool keep_esp_unpowered_if_wifi_off() {
+    #if HAS_EMBEDDED_ESP32()
+    if (netdev_is_enabled(NETDEV_ESP_ID)) {
+        return false;
+    }
+
+    // The Wi-Fi can't be selected while off, but a stored selection would leave
+    // the default route on an interface that never comes up.
+    netdev_set_active_id(NETDEV_ETH_ID);
+    skip_esp_power_up();
+    return true;
+    #else
+    return false;
+    #endif
 }
 #endif
 
@@ -451,9 +476,11 @@ extern "C" void main_cpp(void) {
 
     #if HAS_ESP()
             uart_init_esp();
-            // We can't flash ESP while showing error screen as there is no bootstrap progressbar.
-            // Let's pretend that flashing was successful in order to enable Wi-Fi.
-            skip_esp_flashing();
+            if (!keep_esp_unpowered_if_wifi_off()) {
+                // We can't flash ESP while showing error screen as there is no bootstrap progressbar.
+                // Let's pretend that flashing was successful in order to enable Wi-Fi.
+                skip_esp_flashing();
+            }
     #endif
 
             create_task("network", network_run_minimal, TASK_PRIORITY_WUI, task_stack.network, task_control_block.network);
@@ -519,7 +546,7 @@ extern "C" void main_cpp(void) {
     // Only after we find out that we actually need to flash the firmware we wait
     // for the bootstrap resources and take over the progress bar.
     // And as always, we need to prevent interactions with the UART in tester mode.
-    if (!running_in_tester_mode()) {
+    if (!running_in_tester_mode() && !keep_esp_unpowered_if_wifi_off()) {
         start_flash_esp_task();
     }
 #endif

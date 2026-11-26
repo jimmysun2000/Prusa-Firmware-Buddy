@@ -5,6 +5,7 @@
 #include <i18n.h>
 #include <wui_api.h>
 #include <option/has_esp.h>
+#include <option/has_embedded_esp32.h>
 
 struct NetDeviceID {
 
@@ -75,6 +76,22 @@ class MI_NET_INTERFACE_t : public MenuItemSwitch {
 public:
     MI_NET_INTERFACE_t();
     virtual void OnChange(size_t old_index) override;
+};
+#endif
+
+#if HAS_EMBEDDED_ESP32()
+/// Turns the Wi-Fi on/off.
+///
+/// The Wi-Fi module is powered up only at boot: while the Wi-Fi is off, it stays unpowered
+/// from the next boot on, and turning the Wi-Fi back on then needs a restart.
+class MI_WIFI_ENABLE final : public WI_ICON_SWITCH_OFF_ON_t {
+    static constexpr const char *const label = N_("Wi-Fi Module");
+
+public:
+    MI_WIFI_ENABLE();
+
+protected:
+    void OnChange(size_t old_index) override;
 };
 #endif
 

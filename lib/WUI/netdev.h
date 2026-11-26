@@ -88,6 +88,8 @@ void netdev_set_static(uint32_t);
 ////////////////////////////////////////////////////////////////////////////
 /// @brief Set device enabled
 ///
+/// Disabling the Wi-Fi also makes Ethernet the active interface.
+///
 /// @param[in] netdev_id device ID. One of
 ///             - #NETDEV_ETH_ID
 ///             - #NETDEV_ESP_ID
@@ -173,6 +175,12 @@ bool netdev_get_MAC_address(uint32_t, uint8_t[6]);
 bool netdev_load_ini_to_eeprom();
 
 #if HAS_ESP()
+/// Whether the Wi-Fi can be used now.
+///
+/// False while the Wi-Fi is disabled. Also false after it is enabled again
+/// when the ESP was left unpowered at boot, until a restart.
+bool netdev_is_wifi_usable();
+
 /// Load esp ini file to both runtime and eeprom configuration.
 ///
 /// @return If it was successful.

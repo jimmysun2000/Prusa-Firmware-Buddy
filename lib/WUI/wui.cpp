@@ -507,7 +507,7 @@ private:
                 const bool was_alive = espif_tick();
 
                 // It's OK if the ESP is turned off on purpose or if it's up and running.
-                const bool esp_ok = (iface_mode(ifaces[NETDEV_ESP_ID]) == Mode::Off || ap.ssid[0] == '\0' || (espif_link() && was_alive) || espif::scan::is_running());
+                const bool esp_ok = (iface_mode(ifaces[NETDEV_ESP_ID]) == Mode::Off || espif_is_powered_off() || ap.ssid[0] == '\0' || (espif_link() && was_alive) || espif::scan::is_running());
 
                 if (esp_ok) {
                     last_esp_ok = now;
@@ -794,12 +794,25 @@ void netdev_set_enabled(const uint32_t netdev_id, const bool enabled) {
         }
         return flag;
     });
+
+#if HAS_ESP()
+    // The default route must not stay on an interface that is down for good
+    if (netdev_id == NETDEV_ESP_ID && !enabled) {
+        netdev_set_active_id(NETDEV_ETH_ID);
+    }
+#endif
 }
 
-bool netdev_is_enabled([[maybe_unused]] const uint32_t netdev_id) {
-    const uint8_t flag = config_store().wifi_flag.get();
+bool netdev_is_enabled(const uint32_t netdev_id) {
+    const uint8_t flag = netdev_id == NETDEV_ETH_ID ? config_store().lan_flag.get() : config_store().wifi_flag.get();
     return IS_LAN_ON(flag);
 }
+
+#if HAS_ESP()
+bool netdev_is_wifi_usable() {
+    return netdev_is_enabled(NETDEV_ESP_ID) && !espif_is_powered_off();
+}
+#endif
 
 netdev_ip_obtained_t netdev_get_ip_obtained_type(uint32_t netdev_id) {
     // FIXME: This API is subtly wrong. What if the device is off or not exist?

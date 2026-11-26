@@ -9,6 +9,7 @@
 #include <common/marlin_vars.hpp>
 #include <sys/stat.h>
 #include <option/has_nfc.h>
+#include <option/has_embedded_esp32.h>
 
 #include <option/buddy_enable_connect.h>
 #if BUDDY_ENABLE_CONNECT()
@@ -103,6 +104,14 @@ private:
         if (mode_ == WizardMode::initial_setup && is_connected) {
             return Phase::connected;
         }
+
+#if HAS_EMBEDDED_ESP32()
+        // The Wi-Fi is turned off on purpose. Making it the active interface below
+        // would only take the default route away from the Ethernet.
+        if (!netdev_is_wifi_usable()) {
+            return Phase::finish;
+        }
+#endif
 
         const auto esp_state = esp_fw_state();
         if (esp_state != EspFwState::Ok && esp_state != EspFwState::Scanning) {

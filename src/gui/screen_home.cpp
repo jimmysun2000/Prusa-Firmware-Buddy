@@ -46,6 +46,7 @@
 #include <option/has_mmu2.h>
 #include <option/has_human_interactions.h>
 #include <option/has_selftest.h>
+#include <option/has_embedded_esp32.h>
 
 #include "screen_menu_settings.hpp"
 #include "screen_menu_filament.hpp"
@@ -61,9 +62,6 @@
 #include <guiconfig/guiconfig.h>
 
 #include "usb_host.h"
-
-// TODO remove netdev_is_enabled after it is defined
-bool __attribute__((weak)) netdev_is_enabled([[maybe_unused]] const uint32_t netdev_id) { return true; }
 
 bool screen_home_data_t::ever_been_opened = false;
 
@@ -385,6 +383,13 @@ Config::Status name_and_psk_status() {
 } // namespace
 
 void screen_home_data_t::handle_wifi_credentials() {
+#if HAS_EMBEDDED_ESP32()
+    // The offered setup wizard does not run while the Wi-Fi is off
+    if (!netdev_is_wifi_usable()) {
+        return;
+    }
+#endif
+
     const bool has_wifi_credentials = access(settings_ini::file_name, R_OK) == 0;
     if (has_wifi_credentials && (name_and_psk_status() == Config::Status::not_equal) && !option::developer_mode) {
         if (MsgBoxInfo(_("Wi-Fi credentials (SSID and password) discovered on the USB flash drive. Would you like to connect your printer to Wi-Fi now?"), Responses_YesNo, 1)

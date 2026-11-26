@@ -73,6 +73,15 @@ enum FlashResult {
 
 void espif_notify_flash_result(enum FlashResult result);
 
+/// Keep the driver idle because the ESP is left unpowered until reboot.
+///
+/// Called at boot instead of flashing (and instead of espif_notify_flash_result).
+/// Afterwards, the driver never resets or talks to the ESP.
+void espif_notify_powered_off();
+
+/// Whether the ESP is left unpowered until reboot (see espif_notify_powered_off).
+bool espif_is_powered_off();
+
 #ifdef __cplusplus
 }
 #endif /* __cplusplus */

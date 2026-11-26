@@ -117,6 +117,8 @@ static std::atomic<bool> seen_pong = false;
 static std::atomic<bool> reset_parser = false;
 // 0 means "unknown" or "not associated"
 static std::atomic<int8_t> signal_strength = 0;
+// The ESP stays unpowered until reboot (decided once at boot)
+static std::atomic<bool> powered_off = false;
 
 // UART
 static std::atomic<bool> esp_detected;
@@ -280,6 +282,10 @@ static err_t espif_tx_buffer(const uint8_t *data, size_t len) {
 
 // FIXME: This casually uses HAL_StatusTypeDef as a err_t, which works for the OK case (both 0), but it is kinda sketchy.
 [[nodiscard]] static err_t espif_tx_raw(uint8_t message_type, uint8_t message_byte, pbuf_variant p) {
+    if (powered_off) {
+        return ERR_IF;
+    }
+
     std::lock_guard lock { uart_write_mutex };
 
     const uint16_t size = std::visit([](const auto &pbuf) { return pbuf != nullptr ? pbuf->tot_len : 0; }, p);
@@ -954,6 +960,9 @@ bool espif_need_ap() {
 }
 
 void espif_reset() {
+    if (powered_off) {
+        return;
+    }
     if (!can_recieve_data(esp_operating_mode)) {
         log_error(ESPIF, "Can't reset ESP");
         return;
@@ -980,6 +989,15 @@ void espif_notify_flash_result(FlashResult result) {
         esp_operating_mode = ESPIF_FLASHING_ERROR_OTHER;
         break;
     }
+}
+
+void espif_notify_powered_off() {
+    // The operating mode stays uninitialized, so no data is ever received either.
+    powered_off = true;
+}
+
+bool espif_is_powered_off() {
+    return powered_off;
 }
 
 EspFwState esp_fw_state() {
