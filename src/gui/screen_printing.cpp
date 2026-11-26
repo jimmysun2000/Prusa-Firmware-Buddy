@@ -26,6 +26,11 @@
 #include <bsod/bsod.h>
 #include <utils/string_builder.hpp>
 #include <gui/event/knob_event.hpp>
+#include <config_store/store_instance.hpp>
+
+#if HAS_LARGE_DISPLAY()
+    #include "print_layer_info.hpp"
+#endif
 
 #if HAS_MMU2()
     #include <feature/prusa/MMU2/mmu2_mk4.h>
@@ -170,6 +175,10 @@ constexpr size_t rotating_circles_width { 35 };
 constexpr size_t rotating_circles_left_offset { 0 };
 constexpr Rect16 rotating_circles_rect { column_left + rotating_circles_left_offset, get_row(1) + height(etime_val_font) + 5, rotating_circles_width, rotating_circles_height };
 
+// Info field label, value and the rotating circles below them
+constexpr Rect16 info_field_rect { column_left, get_row(0), 200, static_cast<uint16_t>(rotating_circles_rect.Top() + rotating_circles_height - get_row(0)) };
+constexpr Rect16 info_field_touch_rect = Rect16::AddPadding(info_field_rect, padding_t<int8_t> { 8, 4, 8, 8 });
+
 constexpr Rect16 end_result_body_rect { 0, row_0 - EndResultBody::extra_top_space, GuiDefaults::ScreenWidth, GuiDefaults::ScreenHeight - GuiDefaults::FooterHeight - row_0 };
 #endif
 
@@ -260,6 +269,10 @@ screen_printing_data_t::screen_printing_data_t()
 
 #if HAS_LARGE_DISPLAY()
     print_progress.init_gcode_info();
+
+    if (const uint8_t pinned = config_store().print_screen_info_field.get(); pinned > 0 && pinned <= std::to_underlying(CurrentlyShowing::_count)) {
+        pinned_item = static_cast<CurrentlyShowing>(pinned - 1);
+    }
 #endif
 
     // Execute first print time update loop
@@ -401,10 +414,16 @@ void screen_printing_data_t::windowEvent(window_t *sender, GUI_event_t event, vo
         auto &ctx = *static_cast<GuiEventContext *>(param);
         auto &ev = ctx.event.value<gui_event::KnobEvent>();
 
-        if (ev.diff < 0 && shown_end_result
-            && ((buttons[0].IsEnabled() && buttons[0].IsFocused()) || (!buttons[0].IsEnabled() && buttons[1].IsFocused()))) {
-            start_showing_end_result();
-            ctx.accept();
+        const bool leftmost_button_focused = (buttons[0].IsEnabled() && buttons[0].IsFocused()) || (!buttons[0].IsEnabled() && buttons[1].IsFocused());
+        if (ev.diff < 0 && leftmost_button_focused) {
+            if (shown_end_result) {
+                start_showing_end_result();
+                ctx.accept();
+            } else if (w_etime_value.HasVisibleFlag()) {
+                advance_info_field();
+                ctx.accept();
+                return; // Accepted, the focus chain must not process it
+            }
         }
         break;
     }
@@ -421,12 +440,16 @@ void screen_printing_data_t::windowEvent(window_t *sender, GUI_event_t event, vo
         }
         break;
 
-    case GUI_event_t::TOUCH_CLICK:
+    case GUI_event_t::TOUCH_CLICK: {
+        const auto point = event_conversion_union { .pvoid = param }.point;
         // Clicking on the left arrow also shows end result
-        if (!showing_end_result && arrow_left_touch_rect.Contain(event_conversion_union { .pvoid = param }.point)) {
+        if (!showing_end_result && arrow_left_touch_rect.Contain(point)) {
             start_showing_end_result();
+        } else if (!showing_end_result && w_etime_value.HasVisibleFlag() && info_field_touch_rect.Contain(point)) {
+            advance_info_field();
         }
         break;
+    }
 #endif
 
 #if HAS_LARGE_DISPLAY()
@@ -536,6 +559,7 @@ bool screen_printing_data_t::update_validities() {
     update_validity(CurrentlyShowing::end_time, new_end_time_valid);
     update_validity(CurrentlyShowing::remaining_time, new_remaining_time_valid);
     update_validity(CurrentlyShowing::time_to_change, new_time_to_change_valid);
+    update_validity(CurrentlyShowing::layer, print_layer_info().has_value());
 
     return changed;
 }
@@ -548,6 +572,29 @@ size_t screen_printing_data_t::reindex_rotating_circles() {
         }
     }
     return cnt;
+}
+
+void screen_printing_data_t::advance_info_field() {
+    // A pinned item that is invalid is not shown, so the cycle restarts from the first item
+    const bool showing_pinned = (pinned_item == currently_showing);
+    std::optional<CurrentlyShowing> next;
+    for (size_t i = showing_pinned ? std::to_underlying(currently_showing) + 1 : 0; i < std::to_underlying(CurrentlyShowing::_count); ++i) {
+        if (currently_showing_valid[i].first) {
+            next = static_cast<CurrentlyShowing>(i);
+            break;
+        }
+    }
+
+    pinned_item = next;
+    config_store().print_screen_info_field.set(static_cast<uint8_t>(next ? std::to_underlying(*next) + 1 : 0));
+
+    if (next) {
+        currently_showing = *next;
+        rotating_circles.set_index(currently_showing_valid[currently_showing].second);
+    }
+    rotating_circles.set_on_color(next ? COLOR_ORANGE : COLOR_WHITE);
+    last_update_time_s = ticks_s(); // Rotation (if back to it) continues after a full period
+    updateTimes();
 }
 
 #endif
@@ -592,16 +639,21 @@ void screen_printing_data_t::updateTimes() {
             this->Show();
         }
 
-        // find next valid item
-        auto curr = this->currently_showing;
-        do {
-            curr = static_cast<CurrentlyShowing>(
-                (std::to_underlying(curr) + 1) % std::to_underlying(CurrentlyShowing::_count));
-        } while (!currently_showing_valid[curr].first);
+        if (pinned_item && currently_showing_valid[*pinned_item].first) {
+            this->currently_showing = *pinned_item;
+        } else {
+            // find next valid item
+            auto curr = this->currently_showing;
+            do {
+                curr = static_cast<CurrentlyShowing>(
+                    (std::to_underlying(curr) + 1) % std::to_underlying(CurrentlyShowing::_count));
+            } while (!currently_showing_valid[curr].first);
 
-        this->currently_showing = curr;
+            this->currently_showing = curr;
+        }
 
-        rotating_circles.set_index(currently_showing_valid[curr].second);
+        rotating_circles.set_index(currently_showing_valid[currently_showing].second);
+        rotating_circles.set_on_color(pinned_item == currently_showing ? COLOR_ORANGE : COLOR_WHITE);
 
         last_update_time_s = now;
     }
@@ -630,14 +682,26 @@ void screen_printing_data_t::updateTimes() {
         w_etime_label.SetText(_("Next change in"));
         PrintTime::print_formatted_duration(time_to_change, w_etime_value_buffer);
         break;
+
+    case CurrentlyShowing::layer:
+        w_etime_label.SetText(_("Layer"));
+        if (const auto layers = print_layer_info()) {
+            snprintf(w_etime_value_buffer.data(), w_etime_value_buffer.size(), "%u/%u", static_cast<unsigned>(layers->current), static_cast<unsigned>(layers->total));
+        } else {
+            // Validity is refreshed only on rotation; the marker alone reads as unknown
+            w_etime_value_buffer[0] = '\0';
+        }
+        break;
+
     case CurrentlyShowing::_count:
         debug_assert(false); // invalid value, should never happen
         break;
     }
 
     // Add unknown marker
-    // (time since start is always exact, not influenced by the print speed)
-    if (marlin_vars().print_speed != 100 && currently_showing != CurrentlyShowing::time_since_start) {
+    // (time since start is always exact, not influenced by the print speed; the layer is always an estimate)
+    if (currently_showing == CurrentlyShowing::layer
+        || (marlin_vars().print_speed != 100 && currently_showing != CurrentlyShowing::time_since_start)) {
         strlcat(w_etime_value_buffer.data(), "?", w_etime_value_buffer.size());
     }
 

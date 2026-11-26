@@ -37,6 +37,8 @@ inline constexpr const char *filament_g = "filament used [g]";
 inline constexpr const char *filament_wipe_tower_g = "total filament used for wipe tower [g]";
 #endif
 inline constexpr const char *printer = "printer_model";
+inline constexpr const char *layer_height = "layer_height";
+inline constexpr const char *max_layer_z = "max_layer_z";
 inline constexpr const char *m862 = "M862";
 
 // M862.6 feature tokens, spelled as the slicer emits them in P"...". Shared with the
@@ -147,6 +149,8 @@ private:
         std::optional<uint16_t> bed_preheat_temp { std::nullopt }; ///< Holds bed preheat temperature
         std::optional<PrintArea::rect_t> bed_preheat_area { std::nullopt }; ///< Holds bed preheat area
         std::optional<uint16_t> hotend_preheat_temp { std::nullopt }; ///< Holds hotend preheat temperatureF
+        std::optional<float> layer_height { std::nullopt }; ///< Slicer layer height [mm]
+        std::optional<float> max_layer_z { std::nullopt }; ///< Top of the last layer [mm]
 #if EXTRUDERS > 1
         std::optional<uint16_t> total_toolchanges { std::nullopt }; ///< Total number of toolchanges over the whole print (INDX nozzle-cleaner wastebin fill estimation)
 #endif
@@ -197,6 +201,8 @@ public:
     const std::optional<uint16_t> &get_bed_preheat_temp() const { return info_.bed_preheat_temp; } ///< Get info about bed preheat temperature
     const std::optional<PrintArea::rect_t> &get_bed_preheat_area() const { return info_.bed_preheat_area; } ///< Get info about G-preheat area
     inline const std::optional<uint16_t> &get_hotend_preheat_temp() const { return info_.hotend_preheat_temp; }
+    std::optional<float> get_layer_height() const { return info_.layer_height; } ///< Slicer layer height [mm], std::nullopt if absent or not positive
+    std::optional<float> get_max_layer_z() const { return info_.max_layer_z; } ///< Top of the last layer [mm], std::nullopt if absent or not positive
 #if EXTRUDERS > 1
     std::optional<uint16_t> get_total_toolchanges() const { return info_.total_toolchanges; } ///< Total toolchanges parsed from gcode metadata (std::nullopt if absent)
     std::optional<float> get_filament_wipe_tower_g() const { return info_.filament_wipe_tower_g; } ///< filament used for wipe tower

@@ -1059,6 +1059,11 @@ struct CurrentStore
     StoreItem<float, defaults::loadcell_scale, ItemFlag::hw_config, journal::hash("Loadcell Scale V2")> loadcell_scale;
 #endif // HAS_LOADCELL()
 
+#if HAS_LARGE_DISPLAY()
+    /// Info field pinned on the print screen: 0 = rotate all fields, otherwise the pinned field + 1
+    StoreItem<uint8_t, 0, ItemFlag::user_interface, journal::hash("Print Screen Info Field")> print_screen_info_field;
+#endif
+
 private:
     void perform_config_migrations();
 };

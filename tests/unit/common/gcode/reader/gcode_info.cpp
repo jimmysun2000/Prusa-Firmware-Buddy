@@ -4,7 +4,9 @@
 #include <gcode_reader_binary.hpp>
 #include <gcode_info.hpp>
 #include <gcode_buffer.hpp>
+#include <gui/print_layer_info.hpp>
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers_floating_point.hpp>
 
 #include <algorithm>
 #include <cstring>
@@ -84,6 +86,74 @@ TEST_CASE("GCodeInfo::total_toolchanges") {
     CHECK(load(TOTAL_TOOLCHANGES) == 868);
     // Absent (single-tool gcode) -> unset.
     CHECK(load(NEW_PLAIN) == std::nullopt);
+}
+
+TEST_CASE("GCodeInfo::layer metadata") {
+    for (const auto &def : test_files) {
+        const char *filename = def.path;
+        SECTION(std::string("Test-file: ") + filename) {
+            AnyGcodeFormatReader reader(filename);
+            REQUIRE(reader.is_open());
+            GCodeInfo info;
+            info.load(*reader.get());
+
+            if (def.has_any_info) {
+                REQUIRE(info.get_layer_height().has_value());
+                REQUIRE(info.get_max_layer_z().has_value());
+                CHECK_THAT(*info.get_layer_height(), Catch::Matchers::WithinAbs(0.2, 0.0001));
+                CHECK_THAT(*info.get_max_layer_z(), Catch::Matchers::WithinAbs(18.0, 0.0001));
+            } else {
+                CHECK(info.get_layer_height() == std::nullopt);
+                CHECK(info.get_max_layer_z() == std::nullopt);
+            }
+        }
+    }
+
+    SECTION("Absent") {
+        AnyGcodeFormatReader reader(TOTAL_TOOLCHANGES);
+        REQUIRE(reader.is_open());
+        GCodeInfo info;
+        info.load(*reader.get());
+        CHECK(info.get_layer_height() == std::nullopt);
+        CHECK(info.get_max_layer_z() == std::nullopt);
+    }
+}
+
+TEST_CASE("estimate_layers") {
+    auto layers = [](float layer_height, float max_layer_z, float printed_z) {
+        const auto result = estimate_layers(layer_height, max_layer_z, printed_z);
+        REQUIRE(result.has_value());
+        return std::pair { result->current, result->total };
+    };
+
+    // Box sample: 18 mm at 0.2 mm
+    CHECK(layers(0.2f, 18.0f, 0.2f) == std::pair<uint16_t, uint16_t> { 1, 90 });
+    CHECK(layers(0.2f, 18.0f, 7.4f) == std::pair<uint16_t, uint16_t> { 37, 90 });
+    CHECK(layers(0.2f, 18.0f, 18.0f) == std::pair<uint16_t, uint16_t> { 90, 90 });
+
+    // Rounding to the nearest layer absorbs float error and small Z offsets
+    CHECK(layers(0.15f, 4.5f, 2.9999f) == std::pair<uint16_t, uint16_t> { 20, 30 });
+    CHECK(layers(0.2f, 18.0f, 7.45f) == std::pair<uint16_t, uint16_t> { 37, 90 });
+
+    // A 0.32 mm first layer under 89 layers of 0.2 mm: the estimate is one layer high
+    CHECK(layers(0.2f, 18.12f, 0.32f) == std::pair<uint16_t, uint16_t> { 2, 91 });
+
+    // Clamped into [1, total]
+    CHECK(layers(0.2f, 18.0f, 0.05f) == std::pair<uint16_t, uint16_t> { 1, 90 });
+    CHECK(layers(0.2f, 18.0f, 25.0f) == std::pair<uint16_t, uint16_t> { 90, 90 });
+    CHECK(layers(0.2f, 0.2f, 0.05f) == std::pair<uint16_t, uint16_t> { 1, 1 });
+
+    // Nothing printed yet or unusable metadata
+    CHECK(estimate_layers(0.2f, 18.0f, 0.0f) == std::nullopt);
+    CHECK(estimate_layers(0.2f, 0.05f, 0.05f) == std::nullopt);
+    CHECK(estimate_layers(0.2f, 18.0f, -1.0f) == std::nullopt);
+    CHECK(estimate_layers(0.0f, 18.0f, 1.0f) == std::nullopt);
+    CHECK(estimate_layers(0.2f, 0.0f, 1.0f) == std::nullopt);
+    CHECK(estimate_layers(NAN, 18.0f, 1.0f) == std::nullopt);
+    CHECK(estimate_layers(0.2f, NAN, 1.0f) == std::nullopt);
+    CHECK(estimate_layers(0.2f, 18.0f, NAN) == std::nullopt);
+    CHECK(estimate_layers(0.2f, INFINITY, 1.0f) == std::nullopt);
+    CHECK(estimate_layers(0.0001f, 18.0f, 1.0f) == std::nullopt);
 }
 
 TEST_CASE("GCodeInfo::is_valid_for_print", "[slow]") {

@@ -565,6 +565,11 @@ void GCodeInfo::parse_comment(GcodeBuffer::String comment, bool plaintext_gcodes
                 }
                 extruder++;
             }
+        } else if (name == gcode_info::layer_height || name == gcode_info::max_layer_z) {
+            float value;
+            if (sscanf(val.c_str(), "%f", &value) == 1 && std::isfinite(value) && value > 0) {
+                (name == gcode_info::layer_height ? info_.layer_height : info_.max_layer_z) = value;
+            }
         }
 #if EXTRUDERS > 1
         else if (name == gcode_info::filament_wipe_tower_g) {

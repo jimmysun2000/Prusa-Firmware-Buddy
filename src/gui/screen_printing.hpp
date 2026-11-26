@@ -13,6 +13,7 @@
 #include <buddy/filename_defs.hpp>
 #include <option/developer_mode.h>
 #include <array>
+#include <optional>
 #include <window_progress.hpp>
 #include "screen_printing_end_result.hpp"
 #include <feature/print_status_message/print_status_message_guard.hpp>
@@ -104,11 +105,13 @@ class screen_printing_data_t : public ScreenPrintingModel {
     EndResultBody::DateBufferT w_etime_value_buffer;
     EndResultBody end_result_body;
 
+    /// The pinned item is persisted as its value + 1: append only, never reorder
     enum class CurrentlyShowing {
         remaining_time, // time until end of print
         end_time, // 'date' of end of print
         time_to_change, // m600 / m601
         time_since_start, // real printing time since start
+        layer, // estimated current / total layer
         _count,
     };
 
@@ -116,6 +119,7 @@ class screen_printing_data_t : public ScreenPrintingModel {
     size_t valid_count { std::to_underlying(CurrentlyShowing::_count) }; // how many fields are currently valid
 
     CurrentlyShowing currently_showing { CurrentlyShowing::remaining_time }; // what item is currently shown
+    std::optional<CurrentlyShowing> pinned_item; // shown instead of rotating while it is valid
     uint32_t last_update_time_s { 0 }; // helper needed to properly rotate
 
     EnumArray<CurrentlyShowing, std::pair<bool, size_t>, CurrentlyShowing::_count> currently_showing_valid {
@@ -124,6 +128,7 @@ class screen_printing_data_t : public ScreenPrintingModel {
             { CurrentlyShowing::end_time, { true, 1 } },
             { CurrentlyShowing::time_to_change, { true, 2 } },
             { CurrentlyShowing::time_since_start, { true, 3 } },
+            { CurrentlyShowing::layer, { true, 4 } },
         }
     };
 #endif
@@ -151,7 +156,7 @@ private:
     void change_print_state();
 #if HAS_LARGE_DISPLAY()
     /**
-     * @brief Updates the validity of the time fields
+     * @brief Updates the validity of the info fields
      *
      * @return true if any of the fields changed validity
      */
@@ -162,6 +167,10 @@ private:
      * @return number of valid fields
      */
     size_t reindex_rotating_circles();
+
+    /// Pins the next valid info field, cycling rotate -> first -> ... -> last -> rotate.
+    /// Stores the choice in the config store.
+    void advance_info_field();
 #endif
     virtual void stopAction() override;
     virtual void pauseAction() override;
