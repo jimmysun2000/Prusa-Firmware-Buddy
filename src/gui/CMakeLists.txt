@@ -117,6 +117,10 @@ if(HAS_TOOLCHANGER)
   target_sources(firmware PRIVATE screen_menu_filament_changeall.cpp)
 endif()
 
+if(HAS_TOOLCHANGER AND NOT HAS_INDX)
+  target_sources(firmware PRIVATE print_stats_tracker.cpp)
+endif()
+
 if(HAS_MODULAR_BED)
   target_sources(firmware PRIVATE screen_menu_modular_bed.cpp)
 endif()

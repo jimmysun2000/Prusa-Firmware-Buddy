@@ -1064,6 +1064,13 @@ struct CurrentStore
     StoreItem<uint8_t, 0, ItemFlag::user_interface, journal::hash("Print Screen Info Field")> print_screen_info_field;
 #endif
 
+#if HAS_TOOLCHANGER() && !HAS_INDX()
+    /// Printing time with each tool picked [s]. Use Odometer_s, it holds the unsaved part.
+    StoreItemArray<uint32_t, uint32_t { 0 }, ItemFlag::stats, journal::hash("Odometer Tool Time"), 16, PhysicalToolIndex::count> odometer_tool_time;
+    /// Number of tool crash recoveries. Use Odometer_s, it holds the unsaved part.
+    StoreItem<uint32_t, 0, ItemFlag::stats, journal::hash("Tool Recovery Count")> tool_recovery_count;
+#endif
+
 private:
     void perform_config_migrations();
 };

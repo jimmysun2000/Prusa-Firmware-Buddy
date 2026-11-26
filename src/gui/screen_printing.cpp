@@ -21,6 +21,7 @@
 #include <option/has_loadcell.h>
 #include <option/has_mmu2.h>
 #include <option/has_toolchanger.h>
+#include <option/has_indx.h>
 #include <option/has_tool_crash_recovery.h>
 #include <option/has_tool_mapping.h>
 #include <bsod/bsod.h>
@@ -936,5 +937,8 @@ void screen_printing_data_t::change_print_state() {
     }
     if (st == printing_state_t::PRINTED || st == printing_state_t::STOPPED || st == printing_state_t::PAUSED) {
         Odometer_s::instance().force_to_eeprom();
+#if HAS_TOOLCHANGER() && !HAS_INDX()
+        Odometer_s::instance().force_tool_stats_to_eeprom();
+#endif
     }
 }

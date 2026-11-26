@@ -3,6 +3,8 @@
 #include <cmath>
 #include "odometer.hpp"
 #include <option/has_wastebin_fill_tracking.h>
+#include <option/has_toolchanger.h>
+#include <option/has_indx.h>
 #include "cmath_ext.h"
 #include <config_store/store_instance.hpp>
 #include <bsod/bsod.h>
@@ -158,3 +160,47 @@ uint32_t Odometer_s::get_time() {
     uint32_t time = config_store().odometer_time.get() + MAX(0ul, duration_time.load());
     return time;
 }
+
+#if HAS_TOOLCHANGER() && !HAS_INDX()
+void Odometer_s::add_tool_time(PhysicalToolIndex tool, uint32_t seconds) {
+    tool_time[tool] += seconds;
+}
+
+uint32_t Odometer_s::get_tool_time(PhysicalToolIndex tool) {
+    return config_store().odometer_tool_time.get(tool.to_raw()) + tool_time[tool].load();
+}
+
+void Odometer_s::add_tool_recovery() {
+    tool_recoveries++;
+}
+
+uint32_t Odometer_s::get_tool_recoveries() {
+    return config_store().tool_recovery_count.get() + tool_recoveries.load();
+}
+
+bool Odometer_s::tool_stats_changed() {
+    for (const auto tool : PhysicalToolIndex::all()) {
+        if (tool_time[tool] != 0) {
+            return true;
+        }
+    }
+    return tool_recoveries != 0;
+}
+
+void Odometer_s::force_tool_stats_to_eeprom() {
+    if (!tool_stats_changed()) {
+        return;
+    }
+
+    auto &store = config_store();
+    auto transaction = store.get_backend().transaction_guard();
+
+    for (const auto tool : PhysicalToolIndex::all()) {
+        store.odometer_tool_time.set(tool.to_raw(), get_tool_time(tool));
+        tool_time[tool] = 0;
+    }
+
+    store.tool_recovery_count.set(get_tool_recoveries());
+    tool_recoveries = 0;
+}
+#endif

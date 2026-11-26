@@ -22,6 +22,12 @@
     #include <screen/openprinttag/opt_gui_manager.hpp>
 #endif
 
+#include <option/has_toolchanger.h>
+#include <option/has_indx.h>
+#if HAS_TOOLCHANGER() && !HAS_INDX()
+    #include <gui/print_stats_tracker.hpp>
+#endif
+
 #include <option/has_leds.h>
 #if HAS_LEDS()
     #include <leds/led_manager.hpp>
@@ -226,6 +232,10 @@ void gui_loop(void) {
 
 #if HAS_ANFC()
     buddy::openprinttag::gui_loop_opt();
+#endif
+
+#if HAS_TOOLCHANGER() && !HAS_INDX()
+    print_stats_tracker::gui_loop();
 #endif
 
     --guiloop_nesting;

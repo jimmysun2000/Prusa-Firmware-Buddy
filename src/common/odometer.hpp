@@ -7,6 +7,8 @@
 #include <inc/MarlinConfig.h>
 #include <tool_index.hpp>
 #include <option/has_wastebin_fill_tracking.h>
+#include <option/has_toolchanger.h>
+#include <option/has_indx.h>
 
 /// Singleton class that measures
 /// distance traveled and filament consumed
@@ -34,6 +36,11 @@ private:
     /// Pellets ejected into the INDX nozzle-cleaner wastebin since last emptied (RAM delta, flushed to eeprom).
     /// The fill-tracking policy on top of this lives in WastebinWatcher.
     std::atomic<uint32_t> nozzle_cleaner_pellets = 0;
+#endif
+#if HAS_TOOLCHANGER() && !HAS_INDX()
+    // Flushed by force_tool_stats_to_eeprom() only, so the power-panic flush stays unchanged
+    StrongIndexArray<std::atomic<uint32_t>, PhysicalToolIndex::count, PhysicalToolIndex, PhysicalToolIndex::to_raw_static> tool_time {};
+    std::atomic<uint32_t> tool_recoveries = 0;
 #endif
 
     Odometer_s() = default;
@@ -133,6 +140,31 @@ public:
      * @return print time since eeprom reset [second]
      */
     uint32_t get_time();
+
+#if HAS_TOOLCHANGER() && !HAS_INDX()
+    /// Add printing time to the tool that was picked.
+    /// Feed only in the Printing state: the print screen calls force_tool_stats_to_eeprom()
+    /// on every GUI loop while paused or finished, so feeding then would write the EEPROM every time.
+    /// @param seconds printing time to add [s]
+    void add_tool_time(PhysicalToolIndex tool, uint32_t seconds);
+
+    /// @returns printing time with @p tool picked, saved plus unsaved [s]
+    uint32_t get_tool_time(PhysicalToolIndex tool);
+
+    /// Count one tool crash recovery (the user was asked to pick up a fallen or missing tool).
+    void add_tool_recovery();
+
+    /// @returns number of tool crash recoveries, saved plus unsaved
+    uint32_t get_tool_recoveries();
+
+    /// @returns true if the tool time or tool recovery counters have unsaved changes
+    bool tool_stats_changed();
+
+    /// Saves the tool time and tool recovery counters to EEPROM if they changed.
+    /// Separate from force_to_eeprom(): not part of the power-panic flush,
+    /// changes since the last call are lost on a power failure.
+    void force_tool_stats_to_eeprom();
+#endif
 
     /// Mayer's singleton must have part
 public:

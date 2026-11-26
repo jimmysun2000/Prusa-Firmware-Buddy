@@ -4,6 +4,8 @@
 #include <odometer.hpp>
 #include <utils/string_builder.hpp>
 #include <option/has_toolchanger.h>
+#include <option/has_indx.h>
+#include <option/has_tool_crash_recovery.h>
 #include <time_helper.hpp>
 #include <img_resources.hpp>
 #include <ScreenHandler.hpp>
@@ -99,6 +101,18 @@ constexpr SubStats toolchanges_substat {
 };
 #endif
 
+#if HAS_TOOLCHANGER() && !HAS_INDX()
+constexpr SubStats tool_time_substat {
+    .title = N_("PRINT TIME"),
+    .item_count = PhysicalToolIndex::count + 1, // +  MI_RETURN
+    .item_fmt_f = [](StringBuilder &sb, uint8_t item_index) { format_duration(sb, Odometer_s::instance().get_tool_time(PhysicalToolIndex::from_raw(item_index))); },
+    .item_title_f = physical_tool_item_title,
+};
+constexpr const screen_menu_virtual::Configuration *print_time_submenu = &substat_screen_config<tool_time_substat>;
+#else
+constexpr const screen_menu_virtual::Configuration *print_time_submenu = nullptr;
+#endif
+
 constexpr std::array stats {
     Stat {
         .title = N_("X Axis Travel"),
@@ -130,9 +144,16 @@ constexpr std::array stats {
             .submenu = &substat_screen_config<toolchanges_substat>,
         },
 #endif
+#if HAS_TOOLCHANGER() && !HAS_INDX() && HAS_TOOL_CRASH_RECOVERY()
+        Stat {
+            .title = N_("Tool Recoveries"),
+            .fmt_f = [](StringBuilder &sb) { sb.append_printf("%" PRIu32, Odometer_s::instance().get_tool_recoveries()); },
+        },
+#endif
         Stat {
             .title = N_("Print Time"),
             .fmt_f = [](StringBuilder &sb) { format_duration(sb, Odometer_s::instance().get_time()); },
+            .submenu = print_time_submenu,
         },
 };
 
