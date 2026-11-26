@@ -209,7 +209,7 @@ LoopResult CSelftestPart_ToolOffsets::state_wait_review() {
 
     if (config.request.mode == ToolOffsetsMode::full) {
         // The full calibration ends right at its failure
-        return LoopResult::Fail;
+        return fail_with_nozzles_off();
     }
 
     switch (failure->reason) {
