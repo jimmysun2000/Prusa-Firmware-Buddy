@@ -65,6 +65,21 @@ public:
      * @brief Purges tool by extruding some filament outside of print area and tries to shake it away and wipe it by parking
      */
     bool purge_tool(PhysicalToolIndex tool);
+
+    /// @returns position in front of the @p tool's dock, behind the bed, where the picked tool can push out filament
+    /// Redscreens if the dock is not calibrated.
+    xy_pos_t tool_purge_position(PhysicalToolIndex tool) const;
+
+    /// @returns the tool most recently parked by tool_change() since reset_last_parked_tool(), if any
+    /// @warning Only use from the Marlin thread.
+    std::optional<PhysicalToolIndex> last_parked_tool() const {
+        return last_parked_tool_;
+    }
+
+    /// @warning Only use from the Marlin thread.
+    void reset_last_parked_tool() {
+        last_parked_tool_ = std::nullopt;
+    }
     #endif
 
     #if HAS_TOOL_CRASH_RECOVERY()
@@ -411,6 +426,8 @@ private:
     [[nodiscard]] bool finish_pickup_after_lock(const ToolchangeReturnData &rd);
 
     #else
+    std::optional<PhysicalToolIndex> last_parked_tool_;
+
     /**
      * @brief Check if powerpanic happened.
      * @return true if powerpanic happened and toolchange has to quit immediately

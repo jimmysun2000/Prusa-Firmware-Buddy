@@ -325,6 +325,7 @@ bool PrusaToolChanger::tool_change(const std::variant<PhysicalToolIndex, NoTool>
             if (!park(*old_dwarf) || !check_skipped_step()) {
                 return false;
             }
+            last_parked_tool_ = old_dwarf->tool_index();
         }
     }
 
@@ -517,8 +518,8 @@ bool PrusaToolChanger::purge_tool(PhysicalToolIndex tool) {
     Fans::print(tool).set_pwm(255);
 
     // go to purge location
-    const PrusaToolInfo &info = get_tool_info(tool, /*check_calibrated=*/true);
-    move(info.dock_x - 9.9f, PURGE_Y_POSITION, feedrate_mm_s);
+    const xy_pos_t purge_position = tool_purge_position(tool);
+    move(purge_position.x, purge_position.y, feedrate_mm_s);
 
     planner.synchronize();
 
@@ -568,6 +569,11 @@ bool PrusaToolChanger::purge_tool(PhysicalToolIndex tool) {
     }
 
     return true;
+}
+
+xy_pos_t PrusaToolChanger::tool_purge_position(PhysicalToolIndex tool) const {
+    const PrusaToolInfo &info = get_tool_info(tool, /*check_calibrated=*/true);
+    return xy_pos_t { .x = info.dock_x - 9.9f, .y = PURGE_Y_POSITION };
 }
 
 void PrusaToolChanger::loop(bool printing, bool paused) {
