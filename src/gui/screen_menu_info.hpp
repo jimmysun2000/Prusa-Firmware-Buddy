@@ -12,6 +12,9 @@ using ScreenMenuInfo__ = BasicScreenMenu<
 #if PRINTER_IS_PRUSA_XL()
     MI_BED_MESH,
 #endif
+#if HAS_MODULAR_BED()
+    MI_BED_TILES,
+#endif
     MI_VERSION_INFO,
     MI_HELP_FW_UPDATE>;
 

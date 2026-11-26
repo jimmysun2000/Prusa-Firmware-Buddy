@@ -16,6 +16,7 @@
 #include <option/has_internal_storage_flash.h>
 #include <option/has_wastebin_fill_tracking.h>
 #include <option/has_lights_menu.h>
+#include <option/has_modular_bed.h>
 #include <img_resources.hpp>
 #include <ScreenFactory.hpp>
 
@@ -130,6 +131,11 @@ using MI_HELP_FW_UPDATE
 #if PRINTER_IS_PRUSA_XL()
 using MI_BED_MESH
     = MI_SCREEN<N_("Bed Mesh"), class ScreenBedMesh>;
+#endif
+
+#if HAS_MODULAR_BED()
+using MI_BED_TILES
+    = MI_SCREEN<N_("Bed Tiles"), class ScreenBedTiles>;
 #endif
 
 #if HAS_WASTEBIN_FILL_TRACKING()

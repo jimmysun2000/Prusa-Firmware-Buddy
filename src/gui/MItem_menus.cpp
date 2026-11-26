@@ -59,6 +59,10 @@
     #include <gui/screen/screen_bed_mesh.hpp>
 #endif
 
+#if HAS_MODULAR_BED()
+    #include <gui/screen/screen_bed_tiles.hpp>
+#endif
+
 #if HAS_SELFTEST()
     #include "screen_menu_selftest_snake.hpp"
 #endif
@@ -195,6 +199,10 @@ template struct MI_SCREEN_CTOR<ScreenMenuBedLevelCorrection>;
 
 #if PRINTER_IS_PRUSA_XL()
 template struct MI_SCREEN_CTOR<ScreenBedMesh>;
+#endif
+
+#if HAS_MODULAR_BED()
+template struct MI_SCREEN_CTOR<ScreenBedTiles>;
 #endif
 
 template struct MI_SCREEN_CTOR<ScreenMenuBoardInfo>;

@@ -58,3 +58,7 @@ endif()
 if(PRINTER STREQUAL "XL")
   target_sources(firmware PRIVATE screen_bed_mesh.cpp)
 endif()
+
+if(HAS_MODULAR_BED)
+  target_sources(firmware PRIVATE screen_bed_tiles.cpp)
+endif()
