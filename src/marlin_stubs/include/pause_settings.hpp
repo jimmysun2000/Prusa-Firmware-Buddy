@@ -39,6 +39,10 @@ public:
     void SetResumeNozzleTemperature(int16_t temperature);
     inline void SetExtruder(VirtualToolIndex target) { virtual_tool_ = target; }
 
+    /// Marks a filament change as caused by the filament running out.
+    /// The remnant then gets the short runout ramming instead of a proper tip.
+    inline void SetFilamentRanOut(bool ran_out) { filament_ran_out = ran_out; }
+
     inline VirtualToolIndex virtual_tool() const {
         return virtual_tool_;
     }
@@ -69,6 +73,8 @@ private:
 
     // Target to restore after loading drops it to the new filament's default; empty = leave as-is.
     std::optional<int16_t> resume_nozzle_temperature;
+
+    bool filament_ran_out = false;
 };
 
 } // namespace pause

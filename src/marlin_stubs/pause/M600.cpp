@@ -103,7 +103,7 @@ static void M600_manual(const GCodeParser2 &);
  * - `B` - Number of beeps to alert user of filament change
  *   - `-1` - for indefinite
  * - `T` - Target extruder
- * - `A` - If automatic spool join is configured for this tool, do that instead, if not, do manual filament change
+ * - `A` - Filament ran out (sent by the filament sensor). If automatic spool join is configured for this tool, do that instead, if not, do manual filament change with the short runout ramming. Without `A`, the old filament is unloaded with a proper tip, unless a filament sensor reports no filament
  * - `C` - Set color for filament change (color rgb value as integer)
  * - `C"color"` - Set color for filament change (color name as string)
  * - `S"filament"` - Set filament type for filament change. RepRap compatible.
@@ -158,7 +158,7 @@ void GcodeSuite::M600() {
 void M600_execute(mapi::ParkingPosition park_position, VirtualToolIndex target_tool,
     xyze_float_t resume_point, std::optional<float> unloadLength, std::optional<float> fastLoadLength,
     std::optional<float> purgeLength, std::optional<float> retractLength, std::optional<Color> filament_colour,
-    std::optional<FilamentType> filament_type, bool);
+    std::optional<FilamentType> filament_type, bool filament_ran_out, bool is_filament_stuck);
 
 void M600_manual(const GCodeParser2 &p) {
     const std::optional<VirtualToolIndex> virtual_tool = stdext::get_optional<VirtualToolIndex>(PrusaGcodeSuite::get_target_virtual_from_command_p(p));
@@ -200,13 +200,14 @@ void M600_manual(const GCodeParser2 &p) {
         p.option<float>('E').transform(fabsf),
         p.option<Color>('C'),
         p.option<FilamentType>('S'),
+        p.option<bool>('A').value_or(false),
         false);
 }
 
 void M600_execute(mapi::ParkingPosition park_position, VirtualToolIndex target_tool, xyze_float_t resume_point,
     std::optional<float> unloadLength, std::optional<float> fastLoadLength, std::optional<float> purgeLength,
     std::optional<float> retractLength, std::optional<Color> filament_colour, std::optional<FilamentType> filament_type,
-    bool is_filament_stuck) {
+    bool filament_ran_out, bool is_filament_stuck) {
 
     // Ignore estalls during filament change
     BlockEStallDetection estall_blocker;
@@ -264,6 +265,7 @@ void M600_execute(mapi::ParkingPosition park_position, VirtualToolIndex target_t
         settings.SetRetractLength(retractLength.value());
     } // Initial retract before move to filament change position
     settings.SetExtruder(target_tool);
+    settings.SetFilamentRanOut(filament_ran_out);
 
     // A pause that outlives the safety timer leaves the heaters disabled, which zeroes
     // both the target and the displayed temperature. Restore them before snapshotting,
@@ -363,6 +365,7 @@ void PrusaGcodeSuite::M1601() {
         current_position,
         std::nullopt, std::nullopt, std::nullopt, std::nullopt,
         std::nullopt, std::nullopt,
+        false,
         true);
 
     EMotorStallDetector::Instance().ClearReported();

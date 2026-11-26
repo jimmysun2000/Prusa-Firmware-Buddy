@@ -1903,21 +1903,33 @@ bool Pause::ram_filament() {
         return false;
     }
 
-    const RammingSequence *ramming_sequence = nullptr;
+    const auto sequence = [this] {
+        // Retry at the colour prompt ejects the newly loaded filament, which is worth a proper tip
+        if (get_state() == LoadState::eject) {
+            return StandardRammingSequence::unload;
+        }
 
-    switch (load_type) {
-    case LoadType::filament_change:
-    case LoadType::filament_stuck:
+        switch (load_type) {
+        case LoadType::filament_change: {
+            // Unless it ran out, the old filament is going to be reused, so it gets a proper tip
+            const bool ran_out = settings.filament_ran_out
+                || FSensors_instance().no_filament_surely(LogicalFilamentSensor::extruder)
+                || FSensors_instance().no_filament_surely(LogicalFilamentSensor::side);
+            return ran_out ? StandardRammingSequence::runout : StandardRammingSequence::unload;
+        }
+
+        case LoadType::filament_stuck:
 #if HAS_SPOOL_JOIN() && HAS_TOOLCHANGER()
-    case LoadType::unload_spool_join:
+        case LoadType::unload_spool_join:
 #endif
-        ramming_sequence = &standard_ramming_sequence(StandardRammingSequence::runout, *virtual_tool);
-        break;
+            return StandardRammingSequence::runout;
 
-    default:
-        ramming_sequence = &standard_ramming_sequence(StandardRammingSequence::unload, *virtual_tool);
-        break;
-    }
+        default:
+            return StandardRammingSequence::unload;
+        }
+    }();
+
+    const RammingSequence *ramming_sequence = &standard_ramming_sequence(sequence, *virtual_tool);
 
     PauseFsmDurationNotifier notifier(*this, ramming_sequence->duration_estimate_ms());
     ram_retracted_distance = ramming_sequence->retracted_distance();
