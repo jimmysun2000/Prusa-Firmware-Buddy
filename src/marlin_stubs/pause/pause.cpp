@@ -8,6 +8,10 @@
 
 #include "pause_stubbed.hpp"
 
+#ifdef FILAMENT_CHANGE_SLOW_LOAD_PECK_START
+    #include "slow_load_pattern.hpp"
+#endif
+
 #include "Marlin/src/Marlin.h"
 #include "Marlin/src/gcode/gcode.h"
 #include "Marlin/src/module/endstops.h"
@@ -411,6 +415,47 @@ bool Pause::ensureSafeTemperatureNotifyProgress() {
     return do_e_move_notify_progress(length, fr_mm_s, check_for);
 }
 
+#ifdef FILAMENT_CHANGE_SLOW_LOAD_PECK_START
+static_assert(0 < FILAMENT_CHANGE_SLOW_LOAD_PECK_BACK
+    && FILAMENT_CHANGE_SLOW_LOAD_PECK_BACK < FILAMENT_CHANGE_SLOW_LOAD_PECK_FORWARD
+    && FILAMENT_CHANGE_SLOW_LOAD_PECK_BACK <= FILAMENT_CHANGE_SLOW_LOAD_PECK_START
+    && FILAMENT_CHANGE_SLOW_LOAD_PECK_START <= FILAMENT_CHANGE_SLOW_LOAD_PECK_END
+    && FILAMENT_CHANGE_SLOW_LOAD_PECK_END <= FILAMENT_CHANGE_SLOW_LOAD_LENGTH);
+
+[[nodiscard]] Pause::StopConditions Pause::slow_load_notify_progress(StopConditions check_for) {
+    static constexpr SlowLoadPattern::Peck peck {
+        .start = FILAMENT_CHANGE_SLOW_LOAD_PECK_START,
+        .end = FILAMENT_CHANGE_SLOW_LOAD_PECK_END,
+        .forward = FILAMENT_CHANGE_SLOW_LOAD_PECK_FORWARD,
+        .back = FILAMENT_CHANGE_SLOW_LOAD_PECK_BACK,
+    };
+
+    mapi::ColdExtrudeGuard cold_extrude_guard;
+    const float length = settings.slow_load_length;
+
+    #if HAS_AUTO_RETRACT()
+    if (length > 0) {
+        // Deretract before the progress notifier starts, it would track the deretract moves
+        auto_retract().maybe_deretract_to_nozzle();
+        idle(false);
+    }
+    #endif
+
+    PauseFsmNotifier N(*this, current_position.e, current_position.e + length, marlin_vars().native_pos[MARLIN_VAR_INDEX_E]);
+
+    const feedRate_t fr_mm_s = standard_feedrates::extruder(standard_feedrates::Extruder::filament_slow_load, filament::get_type_to_load());
+    SlowLoadPattern pattern(length, peck);
+    while (const auto move = pattern.next()) {
+        plan_e_move(*move, fr_mm_s);
+        if (const auto result = wait_for_motion_finish_stoppable(check_for); result != StopConditions::Accomplished) {
+            return result;
+        }
+    }
+
+    return StopConditions::Accomplished;
+}
+#endif
+
 void Pause::plan_e_move(const float &length, const feedRate_t &fr_mm_s) {
     // It is unclear why this is one of the very few places where planner.buffer_line result is checked.
     // The draining condition is supposed to end the loop on power panic or crash.
@@ -700,8 +745,12 @@ void Pause::assist_insertion_process([[maybe_unused]] Response response) {
 void Pause::load_to_gears_process([[maybe_unused]] Response response) { // slow load
     setPhase(is_unstoppable() ? PhasesLoadUnload::LoadingToGears_unstoppable : PhasesLoadUnload::LoadingToGears_stoppable);
 
+#ifdef FILAMENT_CHANGE_SLOW_LOAD_PECK_START
+    const auto result = slow_load_notify_progress(StopConditions::All);
+#else
     const auto result = do_e_move_notify_progress_coldextrude(
         settings.slow_load_length, standard_feedrates::extruder(standard_feedrates::Extruder::filament_slow_load, filament::get_type_to_load()), StopConditions::All);
+#endif
 
     if (result == StopConditions::SideFilamentSensorRunout) { // TODO method without param using actual phase
         set(LoadState::runout_during_load);

@@ -382,6 +382,13 @@ private:
     /// @returns any of the \ref StopConditions if the move has been interrupted or StopConditions::Accomplished if the move has been successfully finished
     [[nodiscard]] StopConditions do_e_move_notify_progress_hotextrude(const float &length, const feedRate_t &fr_mm_s, StopConditions check_for);
 
+#ifdef FILAMENT_CHANGE_SLOW_LOAD_PECK_START
+    /// Cold slow load of settings.slow_load_length, pecking the filament tip into the nozzle (see SlowLoadPattern).
+    /// Notifies the FSM about progress.
+    /// @returns the first of the \ref StopConditions that interrupted a move, or StopConditions::Accomplished
+    [[nodiscard]] StopConditions slow_load_notify_progress(StopConditions check_for);
+#endif
+
     bool check_user_stop(Response response); //< stops motion and fsm and returns true it user triggered stop
 
     /// Waits until motion is finished

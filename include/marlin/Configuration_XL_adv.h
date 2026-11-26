@@ -617,6 +617,13 @@
     #define FILAMENT_CHANGE_SLOW_LOAD_LENGTH 30 // (mm) Slow length, to allow time to insert material. //60
         // 0 to disable start loading and skip to fast load only
 
+    // The slow load pecks the filament tip into the nozzle tube with forward/back nudges.
+    // The net length stays FILAMENT_CHANGE_SLOW_LOAD_LENGTH.
+    #define FILAMENT_CHANGE_SLOW_LOAD_PECK_START 3 // (mm) Pushed in one move, so the gears take grip before any back move
+    #define FILAMENT_CHANGE_SLOW_LOAD_PECK_END 30 // (mm) No forward nudge goes beyond this, the rest is one forward move
+    #define FILAMENT_CHANGE_SLOW_LOAD_PECK_FORWARD 3 // (mm) Forward nudge
+    #define FILAMENT_CHANGE_SLOW_LOAD_PECK_BACK 1 // (mm) Back nudge after each full forward nudge
+
     #define FILAMENT_CHANGE_FAST_LOAD_ACCEL 100 // (mm/s^2) Lower acceleration may allow a faster feedrate.  //200
     #define FILAMENT_CHANGE_FAST_LOAD_LENGTH 50 // (mm) Load length of filament, from extruder gear to nozzle. //75
         //   For Bowden, the full length of the tube and nozzle.
