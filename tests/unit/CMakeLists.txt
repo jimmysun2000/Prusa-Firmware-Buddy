@@ -52,6 +52,7 @@ add_compile_definitions(
 add_subdirectory(gui)
 add_subdirectory(common)
 add_subdirectory(lang)
+add_subdirectory(leds)
 add_subdirectory(lib)
 add_subdirectory(logging)
 add_subdirectory(connect)

@@ -8,6 +8,11 @@
 #include <optional>
 #include <option/has_xbuddy_extension.h>
 
+#if PRINTER_IS_PRUSA_XL()
+    #include "side_strip_status.hpp"
+    #include <atomic>
+#endif
+
 namespace leds {
 
 enum class SideStripState {
@@ -60,6 +65,12 @@ public:
     DimmingEnabled get_dimming_enabled() const;
     void set_dimming_enabled(DimmingEnabled value);
 
+#if PRINTER_IS_PRUSA_XL()
+    /// Status colours in the RGB channels. SideStripStatusMode::off leaves the strip as without this setting.
+    SideStripStatusMode get_status_mode() const;
+    void set_status_mode(SideStripStatusMode value);
+#endif
+
     leds::ColorRGBW color() const;
 
     /// True while the strip is dimmed down due to inactivity.
@@ -72,6 +83,17 @@ private:
     void change_state(SideStripState state);
 
     ColorRGBW get_color_for_state(SideStripState state);
+
+    /// @returns @p plain with the status tint applied (if there is one), scaled to @p level
+    ColorRGBW with_tint(ColorRGBW plain, uint8_t level) const;
+
+#if PRINTER_IS_PRUSA_XL()
+    static constexpr uint32_t status_read_interval_ms = 250;
+
+    /// Recomputes the tint from the last read status; call with the mutex held.
+    /// @returns whether the tint changed
+    bool update_tint(SideStripStatusMode mode, uint32_t time_ms);
+#endif
 
     struct CustomColorState {
         ColorRGBW color;
@@ -90,6 +112,18 @@ private:
     SideStripState state = SideStripState::off;
     uint32_t active_timestamp_ms = 0; // Timestamp of the last activity for idle dimming
     std::optional<CustomColorState> custom_color;
+
+#if PRINTER_IS_PRUSA_XL()
+    // Read by update() before it takes the mutex
+    std::atomic<SideStripStatusMode> status_mode { SideStripStatusMode::off };
+
+    // Touched only by update()
+    uint32_t status_read_ms = 0;
+
+    side_strip_status::Status printer_status = side_strip_status::Status::idle;
+    uint8_t percent_done = 0;
+    std::optional<ColorRGBW> tint;
+#endif
 };
 
 } // namespace leds

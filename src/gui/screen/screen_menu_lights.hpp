@@ -18,6 +18,9 @@ using ScreenMenuLightsBase = BasicScreenMenu<
     MI_SIDE_LEDS_MAX_BRIGTHNESS,
     MI_SIDE_LEDS_DIMMING_ENABLE,
     MI_SIDE_LEDS_DIMMED_BRIGTHNESS,
+    #if PRINTER_IS_PRUSA_XL()
+    MI_SIDE_LEDS_STATUS_MODE,
+    #endif
 #endif
     MI_ALWAYS_HIDDEN>;
 

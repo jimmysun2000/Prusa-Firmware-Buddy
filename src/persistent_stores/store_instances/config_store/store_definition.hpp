@@ -114,6 +114,7 @@
 
 #if HAS_SIDE_LEDS()
     #include "leds/dimming_enabled.hpp"
+    #include "leds/side_strip_status_mode.hpp"
 #endif
 
 #include <option/has_side_fsensor_remap.h>
@@ -636,6 +637,10 @@ struct CurrentStore
     StoreItem<uint8_t, PWM255::from_percent(40).value, ItemFlag::user_interface, journal::hash("XBuddy Extension Chamber LEDs dimmed PWM")> side_leds_dimmed_brightness;
     /// Whether the side leds should dim down a bit when user is not interacting with the printer or stay on full power the whole time
     StoreItem<leds::DimmingEnabled, leds::DimmingEnabled::not_printing, ItemFlag::user_interface, journal::hash("Enable Side LEDs dimming")> side_leds_dimming_enabled;
+    #if PRINTER_IS_PRUSA_XL()
+    /// Status colours in the RGB channels of the side strip
+    StoreItem<leds::SideStripStatusMode, leds::SideStripStatusMode::off, ItemFlag::user_interface, journal::hash("Side LEDs Status Mode")> side_leds_status_mode;
+    #endif
 #endif
 
     StoreItem<bool, true, ItemFlag::user_interface, journal::hash("Enable Serial Printing Screen")> serial_print_screen_enabled;

@@ -581,6 +581,17 @@ public:
     MI_SIDE_LEDS_DIMMING_ENABLE();
     virtual void OnChange(size_t old_index) override;
 };
+
+    #if PRINTER_IS_PRUSA_XL()
+/// Status colours of the side strip: Off / State / State+Progress
+class MI_SIDE_LEDS_STATUS_MODE : public MenuItemSwitch {
+    static constexpr const char *const label = N_("RGB Side Strip Status");
+
+public:
+    MI_SIDE_LEDS_STATUS_MODE();
+    virtual void OnChange(size_t old_index) override;
+};
+    #endif
 #endif
 
 #if HAS_TOOLCHANGER()

@@ -962,6 +962,24 @@ void MI_SIDE_LEDS_DIMMING_ENABLE::OnChange([[maybe_unused]] size_t old_index) {
 }
 #endif
 
+#if HAS_SIDE_LEDS() && PRINTER_IS_PRUSA_XL()
+/**********************************************************************************************/
+// MI_SIDE_LEDS_STATUS_MODE
+static constexpr EnumArray<leds::SideStripStatusMode, const char *, leds::SideStripStatusMode::_cnt> side_strip_status_mode_values {
+    { leds::SideStripStatusMode::off, N_("Off") },
+    { leds::SideStripStatusMode::status, N_("State") },
+    { leds::SideStripStatusMode::status_and_progress, N_("State+Progress") },
+};
+
+MI_SIDE_LEDS_STATUS_MODE::MI_SIDE_LEDS_STATUS_MODE()
+    : MenuItemSwitch(_(label), side_strip_status_mode_values, std::to_underlying(leds::SideStripHandler::instance().get_status_mode())) {
+}
+
+void MI_SIDE_LEDS_STATUS_MODE::OnChange([[maybe_unused]] size_t old_index) {
+    leds::SideStripHandler::instance().set_status_mode(static_cast<leds::SideStripStatusMode>(current_item()));
+}
+#endif
+
 #if HAS_TOOLCHANGER()
 /**********************************************************************************************/
 // MI_TOOL_LEDS_ENABLE
