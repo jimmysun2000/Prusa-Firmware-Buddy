@@ -143,6 +143,12 @@ class Pause : public PausePrivatePhase {
     /// How much filament was retracted thanks to ramming
     float ram_retracted_distance = 0;
 
+    /// Nozzle target to drop to once the first purge of the load is over; empty = no drop pending
+    std::optional<int16_t> deferred_nozzle_temperature;
+
+    /// Whether a purge already finished during the current load/unload operation
+    bool first_purge_done = false;
+
 #if HAS_NOZZLE_CLEANER()
     uint8_t failed_purge_attempts = 0;
 #endif
@@ -331,6 +337,10 @@ private:
 
     /// Applies filament_to_load to the config store
     void mark_filament_as_loaded();
+
+    /// Applies and clears deferred_nozzle_temperature. Only ever lowers the target,
+    /// so a heater turned off in the meantime stays off.
+    void apply_deferred_nozzle_temperature();
 
     bool ensureSafeTemperatureNotifyProgress();
 

@@ -429,6 +429,18 @@ void Pause::mark_filament_as_loaded() {
     filament::set_type_to_load(filament);
 }
 
+void Pause::apply_deferred_nozzle_temperature() {
+    if (!deferred_nozzle_temperature.has_value()) {
+        return;
+    }
+
+    Hotend &hotend = Hotend::for_tool(settings.physical_tool());
+    if (hotend.nozzle_target_temp() > *deferred_nozzle_temperature) {
+        hotend.set_nozzle_target_temp(*deferred_nozzle_temperature);
+    }
+    deferred_nozzle_temperature.reset();
+}
+
 void Pause::start_process([[maybe_unused]] Response response) {
     setup_progress_mapper();
 
@@ -723,14 +735,21 @@ void Pause::load_wait_temp_process([[maybe_unused]] Response response) {
 
         const auto filament_to_load = filament::get_type_to_load();
         if (filament_to_load != NoFilamentType {}) {
-            // We preheated to the higher temeperature of the filament currently
-            // being loaded and the previously loaded filament. Drop the target to
-            // the temperature of the filament currently being loaded just before
-            // loading it into the nozzle (this will drop the nozzle temperature by
-            // itself, overheating the new filament a bit less).
-            thermalManager.setTargetHotend(
-                filament_to_load.parameters().nozzle_temperature,
-                settings.physical_tool());
+            // We preheated to the higher temperature of the filament currently
+            // being loaded and the previously loaded filament. Keep that target
+            // through the long load and the first purge, so the remnants of the
+            // previous filament are flushed out hot, and only then drop it to the
+            // temperature of the filament being loaded. Anything after the first
+            // purge (purge more, reload on retry) uses the new filament's
+            // temperature. A target below the new filament's temperature is
+            // raised right away, as there is nothing to keep.
+            const int16_t new_temperature = filament_to_load.parameters().nozzle_temperature;
+            Hotend &hotend = Hotend::for_tool(settings.physical_tool());
+            if (!first_purge_done && new_temperature < hotend.nozzle_target_temp()) {
+                deferred_nozzle_temperature = new_temperature;
+            } else {
+                hotend.set_nozzle_target_temp(new_temperature);
+            }
 
         } else {
             // If we don't know the new material (can happen in M600 during print),
@@ -804,6 +823,9 @@ void Pause::purge_process([[maybe_unused]] Response response) {
     if (!purge_ok) {
         return;
     }
+
+    first_purge_done = true;
+    apply_deferred_nozzle_temperature();
 
     if constexpr (option::has_human_interactions) {
         set(LoadState::color_correct_ask);
@@ -1027,6 +1049,9 @@ void Pause::eject_process([[maybe_unused]] Response response) {
 }
 
 void Pause::load_finalize_process(Response) {
+    // A purge stopped by the user can lead straight here
+    apply_deferred_nozzle_temperature();
+
 #if HAS_AUTO_RETRACT()
     // Only retract from nozzle outside printing
     if (!marlin_server::is_printing()) {
@@ -1519,6 +1544,8 @@ bool Pause::invoke_loop() {
     // Trust that the filament change knows what it's doing
     AutoRestore ar_ce(thermalManager.allow_cold_extrude, true);
 
+    first_purge_done = false;
+    deferred_nozzle_temperature.reset();
     set(LoadState::start);
 
     while (!finished()) {
@@ -1529,6 +1556,9 @@ bool Pause::invoke_loop() {
         (this->*(state_handlers[state]))(response);
         idle(true); // idle loop to prevent wdt and manage heaters etc
     };
+
+    // Ended before the first purge was over (stopped, failed) - still leave the new filament's temperature
+    apply_deferred_nozzle_temperature();
 
 #if ENABLED(PID_EXTRUSION_SCALING)
     thermalManager.setExtrusionScalingEnabled(extrusionScalingEnabled);
