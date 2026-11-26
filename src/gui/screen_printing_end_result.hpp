@@ -8,6 +8,8 @@
 #include <gcode_info.hpp>
 #include <guiconfig/guiconfig.h>
 #include <fonts.hpp>
+#include <option/has_toolchanger.h>
+#include <option/has_indx.h>
 
 /**
  * @brief Just the body, not the actual screen. However, this is the file where the screen should eventually be.
@@ -55,12 +57,25 @@ private:
     void setup_consumed_material_fields(size_t num_extruders_with_valid_grams, bool has_valid_wipe_tower_grams);
     void handle_consumed_tool_fields(const GCodeInfo &gcode, size_t num_extruders_with_valid_grams);
     void handle_wipe_tower_showing(const GCodeInfo &gcode, bool has_valid_wipe_tower_grams);
+    void hide_consumed_material_fields();
+
+    /// Click: actual usage view (if shown) -> slicer estimate view -> back to the parent
+    void advance_view(void *param);
+
+#if HAS_TOOLCHANGER() && !HAS_INDX()
+    /// Fills the right column with the per-tool usage the printer counted during the print
+    void handle_actual_usage_showing();
+#endif
 
     static constexpr long minimum_grams_valid = 1;
 
     window_text_t printing_time_label;
     window_text_t printing_time_value;
     std::array<char, sizeof("100d 20h 30m") + extra_buffer_size> printing_time_value_buffer;
+#if HAS_TOOLCHANGER() && !HAS_INDX()
+    // Placed in the padding after the odd-sized buffer, the print screen has a size limit
+    bool showing_actual_usage { false };
+#endif
 
     window_text_t print_started_label;
     window_text_t print_started_value;

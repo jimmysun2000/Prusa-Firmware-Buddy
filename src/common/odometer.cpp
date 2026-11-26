@@ -1,5 +1,6 @@
 // odometer_s.cpp
 
+#include <algorithm>
 #include <cmath>
 #include "odometer.hpp"
 #include <option/has_wastebin_fill_tracking.h>
@@ -202,5 +203,49 @@ void Odometer_s::force_tool_stats_to_eeprom() {
 
     store.tool_recovery_count.set(get_tool_recoveries());
     tool_recoveries = 0;
+}
+
+void Odometer_s::begin_print_trip(PrintTripState state) {
+    for (const auto tool : PhysicalToolIndex::all()) {
+        print_trip_extruded[tool] = get_extruded(tool);
+        print_trip_toolpicks[tool] = get_toolpick(tool);
+    }
+    print_trip_state_ = state;
+    print_trip_running = true;
+}
+
+void Odometer_s::end_print_trip() {
+    if (!print_trip_running) {
+        return;
+    }
+    for (const auto tool : PhysicalToolIndex::all()) {
+        print_trip_extruded[tool] = get_print_extruded(tool);
+        print_trip_toolpicks[tool] = get_print_toolpicks(tool);
+    }
+    print_trip_running = false;
+}
+
+float Odometer_s::get_print_extruded(PhysicalToolIndex tool) {
+    if (!print_trip_running) {
+        return print_trip_extruded[tool];
+    }
+    // Can be below the start value for a while, get_extruded() hides a negative unsaved part (retraction)
+    return std::max(0.0f, get_extruded(tool) - print_trip_extruded[tool]);
+}
+
+uint32_t Odometer_s::get_print_toolpicks(PhysicalToolIndex tool) {
+    if (!print_trip_running) {
+        return print_trip_toolpicks[tool];
+    }
+    const uint32_t picks = get_toolpick(tool);
+    return (picks > print_trip_toolpicks[tool]) ? picks - print_trip_toolpicks[tool] : 0;
+}
+
+uint32_t Odometer_s::get_print_toolpicks_all() {
+    uint32_t sum = 0;
+    for (const auto tool : PhysicalToolIndex::all()) {
+        sum += get_print_toolpicks(tool);
+    }
+    return sum;
 }
 #endif

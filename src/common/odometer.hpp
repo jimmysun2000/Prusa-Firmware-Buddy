@@ -22,6 +22,14 @@ public:
     };
     static constexpr size_t axis_count = std::to_underlying(axis_t::count_);
 
+#if HAS_TOOLCHANGER() && !HAS_INDX()
+    enum class PrintTripState : uint8_t {
+        none, ///< No print seen since boot
+        whole_print, ///< Counted from the start of the print
+        since_resume, ///< Counted from joining a print already in progress (power-loss resume)
+    };
+#endif
+
 private:
     /// stores value changes from the last save
     /// extruder trip counts length of filament used (not moved)
@@ -41,6 +49,13 @@ private:
     // Flushed by force_tool_stats_to_eeprom() only, so the power-panic flush stays unchanged
     StrongIndexArray<std::atomic<uint32_t>, PhysicalToolIndex::count, PhysicalToolIndex, PhysicalToolIndex::to_raw_static> tool_time {};
     std::atomic<uint32_t> tool_recoveries = 0;
+
+    // RAM only, GUI thread only.
+    // While the trip runs: counter values at its start. After end_print_trip(): usage during the trip.
+    StrongIndexArray<float, PhysicalToolIndex::count, PhysicalToolIndex, PhysicalToolIndex::to_raw_static> print_trip_extruded {};
+    StrongIndexArray<uint32_t, PhysicalToolIndex::count, PhysicalToolIndex, PhysicalToolIndex::to_raw_static> print_trip_toolpicks {};
+    PrintTripState print_trip_state_ = PrintTripState::none;
+    bool print_trip_running = false;
 #endif
 
     Odometer_s() = default;
@@ -164,6 +179,29 @@ public:
     /// Separate from force_to_eeprom(): not part of the power-panic flush,
     /// changes since the last call are lost on a power failure.
     void force_tool_stats_to_eeprom();
+
+    /// Starts counting the per-print usage from the current extruded and toolpick counters.
+    /// RAM only, lost on reboot. GUI thread only, like the other print trip methods.
+    /// @param state whole_print or since_resume
+    void begin_print_trip(PrintTripState state);
+
+    /// Freezes the per-print usage, so that later activity does not change it.
+    /// Does nothing if no trip is running.
+    void end_print_trip();
+
+    /// @returns how the per-print usage was counted, none if no print was seen since boot
+    PrintTripState print_trip_state() const {
+        return print_trip_state_;
+    }
+
+    /// @returns filament extruded by @p tool during the current or last print trip [mm], never negative
+    float get_print_extruded(PhysicalToolIndex tool);
+
+    /// @returns number of picks of @p tool during the current or last print trip
+    uint32_t get_print_toolpicks(PhysicalToolIndex tool);
+
+    /// @returns number of picks of all tools during the current or last print trip
+    uint32_t get_print_toolpicks_all();
 #endif
 
     /// Mayer's singleton must have part

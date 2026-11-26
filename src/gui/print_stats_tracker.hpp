@@ -11,7 +11,10 @@ namespace print_stats_tracker {
 /// Does its work at most once per second:
 /// - adds the print duration elapsed between two samples that are both in the
 ///   Printing state to the currently picked tool (nothing when no tool is picked),
-/// - counts a tool recovery on entering the tool crash recovery pickup state.
+/// - counts a tool recovery on entering the tool crash recovery pickup state,
+/// - begins the per-print usage trip (RAM only) when a print starts and freezes it
+///   when the print is finished or stopped. A print first seen past its start
+///   states (resumed after a power loss) is marked as counted since the resume.
 void gui_loop();
 
 } // namespace print_stats_tracker

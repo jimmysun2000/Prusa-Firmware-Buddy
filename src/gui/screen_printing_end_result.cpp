@@ -13,8 +13,12 @@
 #endif
 
 #include <option/has_toolchanger.h>
+#include <option/has_indx.h>
 #if HAS_TOOLCHANGER()
     #include <Marlin/src/module/prusa/toolchanger.h>
+#endif
+#if HAS_TOOLCHANGER() && !HAS_INDX()
+    #include <odometer.hpp>
 #endif
 
 namespace {
@@ -25,6 +29,12 @@ constexpr const char *txt_consumed_material { N_("Consumed material") };
 constexpr const char *txt_wipe_tower_pretranslated { N_("Prime tower %dg") };
 #else
 constexpr const char *txt_wipe_tower_pretranslated { N_("Wipe tower %dg") };
+#endif
+#if HAS_TOOLCHANGER() && !HAS_INDX()
+// The right column fits 20 characters
+constexpr const char *txt_extruded_actual { N_("Extruded (actual)") };
+constexpr const char *txt_used_since_resume { N_("Used since resume") };
+constexpr const char *txt_tool_changes { N_("Tool changes: %u") };
 #endif
 
 constexpr auto end_result_font { Font::small };
@@ -152,14 +162,89 @@ void EndResultBody::Show() {
     handle_timestamp_text_item(marlin_vars().print_start_time, print_started_value_buffer, print_started_value);
     handle_timestamp_text_item(marlin_vars().print_end_time, print_ended_value_buffer, print_ended_value);
 
+    hide_consumed_material_fields();
+#if HAS_TOOLCHANGER() && !HAS_INDX()
+    showing_actual_usage = prusa_toolchanger.is_toolchanger_enabled() && Odometer_s::instance().print_trip_state() != Odometer_s::PrintTripState::none;
+    if (showing_actual_usage) {
+        handle_actual_usage_showing();
+    } else {
+        handle_consumed_material_showing(gcode);
+    }
+#else
     handle_consumed_material_showing(gcode);
+#endif
 
     arrow_right.Show();
 
     window_t::Show();
 }
 
+#if HAS_TOOLCHANGER() && !HAS_INDX()
+void EndResultBody::handle_actual_usage_showing() {
+    static_assert(PhysicalToolIndex::count <= std::tuple_size_v<decltype(consumed_material_values)>);
+
+    auto &odometer = Odometer_s::instance();
+
+    consumed_material_label.SetText(_(odometer.print_trip_state() == Odometer_s::PrintTripState::since_resume ? txt_used_since_resume : txt_extruded_actual));
+
+    size_t line_count = 0;
+    for (const auto tool : PhysicalToolIndex::all()) {
+        const float extruded_m = odometer.get_print_extruded(tool) / 1000.0f;
+        const bool used = (extruded_m >= 0.005f) || (odometer.get_print_toolpicks(tool) > 0);
+        if (!used) {
+            continue;
+        }
+
+        auto &buff { consumed_material_values_buffers[line_count] };
+        snprintf(buff.data(), buff.size(), "T%d  %.2f m", tool.display_index(), static_cast<double>(extruded_m));
+        consumed_material_values[line_count].SetText(string_view_utf8::MakeRAM(buff.data()));
+        ++line_count;
+    }
+
+    if (line_count == 0) {
+        auto &buff { consumed_material_values_buffers[0] };
+        snprintf(buff.data(), buff.size(), "---");
+        consumed_material_values[0].SetText(string_view_utf8::MakeRAM(buff.data()));
+        line_count = 1;
+    }
+
+    setup_consumed_material_fields(line_count, true);
+
+    consumed_material_label.Show();
+    for (size_t i = 0; i < line_count; ++i) {
+        consumed_material_values[i].Show();
+    }
+
+    // Capped to fit the parameter buffer
+    const auto tool_changes = static_cast<unsigned>(std::min<uint32_t>(odometer.get_print_toolpicks_all(), 999'999));
+    consumed_wipe_tower_value.SetText(_(txt_tool_changes).formatted(wipe_tower_params, tool_changes));
+    consumed_wipe_tower_value.Show();
+}
+#endif
+
+void EndResultBody::advance_view(void *param) {
+#if HAS_TOOLCHANGER() && !HAS_INDX()
+    if (showing_actual_usage) {
+        showing_actual_usage = false;
+        hide_consumed_material_fields();
+        handle_consumed_material_showing(GCodeInfo::getInstance());
+        return;
+    }
+#endif
+    if (GetParent()) {
+        GetParent()->WindowEvent(this, GUI_event_t::CHILD_CHANGED, param);
+    }
+}
+
+void EndResultBody::hide_consumed_material_fields() {
+    for (auto &consumed_material_value : consumed_material_values) {
+        consumed_material_value.Hide();
+    }
+    consumed_wipe_tower_value.Hide();
+}
+
 void EndResultBody::handle_consumed_material_showing(const GCodeInfo &gcode) {
+    consumed_material_label.SetText(_(txt_consumed_material));
 
     // holds how many extruders were printing with specified grammage that's big enough to show
     const size_t num_extruders_with_valid_grams = std::ranges::count_if(gcode.get_per_extruder_info(), [&](auto &elem) {
@@ -283,7 +368,7 @@ void EndResultBody::setup_consumed_material_fields(size_t num_extruders_with_val
         progress_txt.Show();
 
         consumed_material_label.SetRect(get_consumed_material_label_rect(get_row_0()));
-        for (size_t i = num_extruders_with_valid_grams; i < std::size(consumed_material_values); ++i) {
+        for (size_t i = 0; i < std::size(consumed_material_values); ++i) {
             consumed_material_values[i].SetRect(get_consumed_material_rect(get_row_0(), i));
         }
 
@@ -317,11 +402,7 @@ void EndResultBody::Hide() {
     print_ended_value.Hide();
 
     consumed_material_label.Hide();
-    for (auto &consumed_material_value : consumed_material_values) {
-        consumed_material_value.Hide();
-    }
-
-    consumed_wipe_tower_value.Hide();
+    hide_consumed_material_fields();
 
     arrow_right.Hide();
     progress_txt.Hide();
@@ -330,9 +411,17 @@ void EndResultBody::Hide() {
 }
 
 void EndResultBody::windowEvent(window_t *, GUI_event_t event, void *param) {
-    if (event == GUI_event_t::KNOB || event == GUI_event_t::CLICK || event == GUI_event_t::TOUCH_CLICK) {
+    switch (event) {
+    case GUI_event_t::CLICK:
+    case GUI_event_t::TOUCH_CLICK:
+        advance_view(param);
+        break;
+    case GUI_event_t::KNOB:
         if (GetParent()) {
             GetParent()->WindowEvent(this, GUI_event_t::CHILD_CHANGED, param);
         }
+        break;
+    default:
+        break;
     }
 }
