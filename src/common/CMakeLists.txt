@@ -116,6 +116,9 @@ if(BOARD IN_LIST BUDDY_BOARDS)
   if(HAS_INTERNAL_STORAGE_FLASH)
     target_sources(firmware PRIVATE mt29f_flash.cpp)
   endif()
+  if(PRINTER STREQUAL "XL")
+    target_sources(firmware PRIVATE bed_mesh_view.cpp bed_mesh_view_math.cpp)
+  endif()
 elseif(BOARD STREQUAL "DWARF")
   target_sources(
     firmware

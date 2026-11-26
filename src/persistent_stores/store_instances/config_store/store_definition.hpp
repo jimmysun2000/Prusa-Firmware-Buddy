@@ -265,6 +265,10 @@ struct CurrentStore
     StoreItem<uint16_t, defaults::language, ItemFlag::user_interface, journal::hash("Language")> language;
     StoreItem<uint8_t, 0, ItemFlag::user_interface, journal::hash("File Sort")> file_sort; // filebrowser file sort options
     StoreItem<bool, true, ItemFlag::user_interface, journal::hash("Menu Timeout")> menu_timeout; // on / off menu timeout flag
+#if PRINTER_IS_PRUSA_XL()
+    // Off by default: the screen covers the print controls for a while at the start of the print
+    StoreItem<bool, false, ItemFlag::user_interface, journal::hash("Show Bed Mesh After Probing")> show_bed_mesh_after_probing;
+#endif
     StoreItem<bool, true, ItemFlag::user_interface, journal::hash("Devhash in QR")> devhash_in_qr; // on / off sending UID in QR
 
     static constexpr auto footer_setting_hashes = stdext::array_sub_copy<FOOTER_ITEMS_PER_LINE__>(std::to_array<uint16_t>({

@@ -48,6 +48,10 @@
     #include <connect/marlin_printer.hpp>
 #endif
 
+#if PRINTER_IS_PRUSA_XL()
+    #include <gui/screen/screen_bed_mesh.hpp>
+#endif
+
 using namespace marlin_server;
 
 printing_state_t screen_printing_data_t::GetState() const {
@@ -281,6 +285,10 @@ void screen_printing_data_t::windowEvent(window_t *sender, GUI_event_t event, vo
     switch (event) {
 
     case GUI_event_t::LOOP: {
+#if PRINTER_IS_PRUSA_XL()
+        bed_mesh_popup_after_probing(p_state == printing_state_t::PRINTING);
+#endif
+
         if (
             stop_pressed
             && waiting_for_abort

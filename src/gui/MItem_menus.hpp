@@ -127,6 +127,11 @@ using MI_HARDWARE
 using MI_HELP_FW_UPDATE
     = MI_SCREEN<N_("Firmware Update"), class ScreenHelpFWUpdate, &img::question_16x16>;
 
+#if PRINTER_IS_PRUSA_XL()
+using MI_BED_MESH
+    = MI_SCREEN<N_("Bed Mesh"), class ScreenBedMesh>;
+#endif
+
 #if HAS_WASTEBIN_FILL_TRACKING()
 using MI_WASTEBIN
     = MI_SCREEN<N_("Nozzle Cleaner"), class ScreenMenuWastebin>;

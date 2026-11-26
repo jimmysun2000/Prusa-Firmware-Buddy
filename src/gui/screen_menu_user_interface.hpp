@@ -20,6 +20,9 @@ using ScreenMenuUserInterface__ = BasicScreenMenu<
     MI_SORT_FILES,
     MI_PRINT_PROGRESS_TIME,
     MI_TIMEOUT,
+#if PRINTER_IS_PRUSA_XL()
+    MI_BED_MESH_AFTER_PROBING,
+#endif
     MI_FILAMENT_CHANGE_PREHEAT_ALL,
     MI_PURGE_LENGTH,
 #if HAS_TOOL_MAPPING()

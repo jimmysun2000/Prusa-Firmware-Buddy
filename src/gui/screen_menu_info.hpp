@@ -9,6 +9,9 @@ using ScreenMenuInfo__ = BasicScreenMenu<
     MI_STATISTICS,
     MI_NETWORK_STATUS,
     MI_SENSOR_INFO,
+#if PRINTER_IS_PRUSA_XL()
+    MI_BED_MESH,
+#endif
     MI_VERSION_INFO,
     MI_HELP_FW_UPDATE>;
 

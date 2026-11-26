@@ -204,6 +204,17 @@ public:
     virtual void OnChange(size_t old_index) override;
 };
 
+#if PRINTER_IS_PRUSA_XL()
+/// Show the bed mesh screen for a few seconds once the print's mesh probing is done
+class MI_BED_MESH_AFTER_PROBING : public WI_ICON_SWITCH_OFF_ON_t {
+    constexpr static const char *const label = N_("Bed Mesh After Probing");
+
+public:
+    MI_BED_MESH_AFTER_PROBING();
+    virtual void OnChange(size_t old_index) override;
+};
+#endif
+
 #ifdef _DEBUG
 inline constexpr size_t MI_SOUND_MODE_COUNT = 5;
 #else

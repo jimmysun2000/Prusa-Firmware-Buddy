@@ -54,3 +54,7 @@ endif()
 if(HAS_INDX)
   target_sources(firmware PRIVATE screen_nozzle_mismatch.cpp)
 endif()
+
+if(PRINTER STREQUAL "XL")
+  target_sources(firmware PRIVATE screen_bed_mesh.cpp)
+endif()

@@ -374,6 +374,17 @@ void MI_TIMEOUT::OnChange(size_t old_index) {
     config_store().menu_timeout.set(static_cast<uint8_t>(Screens::Access()->GetMenuTimeout()));
 }
 
+#if PRINTER_IS_PRUSA_XL()
+/*****************************************************************************/
+// MI_BED_MESH_AFTER_PROBING
+MI_BED_MESH_AFTER_PROBING::MI_BED_MESH_AFTER_PROBING()
+    : WI_ICON_SWITCH_OFF_ON_t(config_store().show_bed_mesh_after_probing.get(), _(label), nullptr, is_enabled_t::yes, is_hidden_t::no) {}
+
+void MI_BED_MESH_AFTER_PROBING::OnChange(size_t old_index) {
+    config_store().show_bed_mesh_after_probing.set(!old_index);
+}
+#endif
+
 /*****************************************************************************/
 // MI_SOUND_MODE
 static constexpr EnumArray<SoundMode, const char *, SoundMode::_count> sound_mode_values {
