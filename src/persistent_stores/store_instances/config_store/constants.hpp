@@ -30,6 +30,11 @@ inline constexpr int16_t stallguard_sensitivity_unset { std::numeric_limits<int1
 // 0 = no override -> derive the X/Y steps/mm for this unit's hardware at runtime.
 inline constexpr float steps_per_unit_unset { 0.0f };
 
+// Purge length after filament load, in mm. Unset = the printer's built-in purge length.
+inline constexpr uint8_t purge_length_unset { 0 };
+inline constexpr uint8_t purge_length_min { 10 };
+inline constexpr uint8_t purge_length_max { 150 };
+
 #if HAS_AUTO_RETRACT()
 inline constexpr uint8_t invalid_retracted_distance = 255;
 #endif

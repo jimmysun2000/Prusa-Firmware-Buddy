@@ -59,6 +59,9 @@ struct M701LoadArgs {
     /// length of the fast load segment; <= 0 means purge only
     CompactOptional<float, NAN> fast_load_length = std::nullopt;
 
+    /// purge length override, see pause::Settings::SetPurgeLength; nullopt = the Purge Length setting
+    CompactOptional<float, NAN> purge_length = std::nullopt;
+
     /// minimal Z parking position
     float z_min_pos;
 
@@ -84,7 +87,8 @@ void M701_load(const M701LoadArgs &args);
 void M702_unload(std::optional<float> unload_length, float z_min_pos, std::optional<RetAndCool_t> op_preheat, VirtualToolIndex virtual_tool, bool ask_unloaded);
 void M70X_process_user_response(PreheatStatus::Result res, VirtualToolIndex target_extruder);
 
-void M1600_change_filament(FilamentType filament_to_be_loaded, VirtualToolIndex virtual_tool, RetAndCool_t preheat, AskFilament_t ask_filament, std::optional<Color> color_to_be_loaded);
+/// \param purge_length purge length override for the load, see pause::Settings::SetPurgeLength
+void M1600_change_filament(FilamentType filament_to_be_loaded, VirtualToolIndex virtual_tool, RetAndCool_t preheat, AskFilament_t ask_filament, std::optional<Color> color_to_be_loaded, std::optional<float> purge_length = std::nullopt);
 
 struct M1700Args {
     /// include return and/or cooldown items in menu

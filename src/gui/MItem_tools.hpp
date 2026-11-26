@@ -440,6 +440,17 @@ protected:
     void OnChange(size_t old_index) override;
 };
 
+/// Length of filament purged after a filament load or change, unless the G-code specifies one
+class MI_PURGE_LENGTH : public WiSpin {
+    static constexpr const char *const label = N_("Purge Length");
+
+public:
+    MI_PURGE_LENGTH();
+
+protected:
+    void OnClick() override;
+};
+
 #if HAS_TOOL_MAPPING()
 /// Which mapping the tool mapping screen starts with
 class MI_TOOL_MAPPING_PRESET : public MenuItemSelectMenu {

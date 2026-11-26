@@ -7,11 +7,28 @@
 #include "../../../lib/Marlin/Marlin/src/core/types.h"
 #include "../../../lib/Marlin/Marlin/src/feature/pause.h"
 #include <option/has_mmu2.h>
+#include <config_store/store_instance.hpp>
+
+#include <algorithm>
+#include <cmath>
 
 // cannot be class member (externed in marlin)
 StrongIndexArray<fil_change_settings_t, EXTRUDERS, VirtualToolIndex, VirtualToolIndex::to_raw_static, strong_index_array::AllowWeakIndexing::yes> fc_settings;
 
 using namespace pause;
+
+namespace {
+
+/// Purge length from the Purge Length setting, before the high-flow adjustment
+float configured_purge_length() {
+    const uint8_t setting = config_store().purge_length.get();
+    if (setting == config_store_ns::purge_length_unset) {
+        return ADVANCED_PAUSE_PURGE_LENGTH;
+    }
+    return std::clamp(setting, config_store_ns::purge_length_min, config_store_ns::purge_length_max);
+}
+
+} // namespace
 
 Settings::Settings()
     : unload_length(GetDefaultUnloadLength())
@@ -56,7 +73,11 @@ void Settings::SetFastLoadLength(const std::optional<float> &len) {
 }
 
 void Settings::SetPurgeLength(const std::optional<float> &len) {
-    purge_length_ = len;
+    if (len.has_value() && std::isfinite(*len)) {
+        purge_length_ = std::min<float>(std::abs(*len), config_store_ns::purge_length_max);
+    } else {
+        purge_length_ = std::nullopt;
+    }
 }
 
 void Settings::SetRetractLength(const std::optional<float> &len) {
@@ -83,7 +104,7 @@ float pause::Settings::purge_length() const {
 
     } else {
         // Double the purge length for HF nozzles
-        r = ADVANCED_PAUSE_PURGE_LENGTH * (config_store().get_nozzle_is_high_flow(physical_tool()) ? 2 : 1);
+        r = configured_purge_length() * (config_store().get_nozzle_is_high_flow(physical_tool()) ? 2 : 1);
     }
 
     return std::max<float>(std::abs(r), minimal_purge);

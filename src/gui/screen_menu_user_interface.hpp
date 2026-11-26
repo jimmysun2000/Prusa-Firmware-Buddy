@@ -21,6 +21,7 @@ using ScreenMenuUserInterface__ = BasicScreenMenu<
     MI_PRINT_PROGRESS_TIME,
     MI_TIMEOUT,
     MI_FILAMENT_CHANGE_PREHEAT_ALL,
+    MI_PURGE_LENGTH,
 #if HAS_TOOL_MAPPING()
     MI_TOOL_MAPPING_PRESET,
 #endif

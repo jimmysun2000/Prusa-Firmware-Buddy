@@ -28,7 +28,11 @@ public:
     void SetUnloadLength(const std::optional<float> &len);
     void SetSlowLoadLength(const std::optional<float> &len);
     void SetFastLoadLength(const std::optional<float> &len);
+
+    /// Overrides the purge length (mm, sign ignored, capped at the Purge Length setting's maximum).
+    /// nullopt or a non-finite value = no override.
     void SetPurgeLength(const std::optional<float> &len);
+
     void SetRetractLength(const std::optional<float> &len);
     void SetParkPoint(const mapi::ParkingPosition &park_point);
     void SetResumePoint(const xyze_pos_t &resume_point);
@@ -43,6 +47,9 @@ public:
         return virtual_tool().to_physical();
     }
 
+    /// Length to purge after loading, at least minimal_purge.
+    /// The override if set, used as given; otherwise the Purge Length setting (the printer's
+    /// built-in length when set to Default), doubled for high-flow nozzles.
     float purge_length() const;
 
 private:

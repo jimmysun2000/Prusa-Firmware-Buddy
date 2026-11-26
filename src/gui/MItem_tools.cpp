@@ -760,6 +760,21 @@ void MI_FILAMENT_CHANGE_PREHEAT_ALL::OnChange(size_t old_index) {
     config_store().filament_change_preheat_all.set(!old_index);
 }
 
+static constexpr NumericInputConfig purge_length_spin_config {
+    .min_value = config_store_ns::purge_length_min,
+    .max_value = config_store_ns::purge_length_max,
+    .special_value = config_store_ns::purge_length_unset,
+    .special_value_str = N_("Default"),
+    .unit = Unit::millimeter,
+};
+
+MI_PURGE_LENGTH::MI_PURGE_LENGTH()
+    : WiSpin(config_store().purge_length.get(), purge_length_spin_config, _(label), nullptr, is_enabled_t::yes, is_hidden_t::no) {}
+
+void MI_PURGE_LENGTH::OnClick() {
+    config_store().purge_length.set(static_cast<uint8_t>(value()));
+}
+
 #if HAS_TOOL_MAPPING()
 static constexpr EnumArray<ToolMappingPreset, const char *, ToolMappingPreset::_cnt, enum_array::AllowWeakIndexing::no> tool_mapping_preset_names {
     { ToolMappingPreset::smart_without_colors, N_("Smart") },

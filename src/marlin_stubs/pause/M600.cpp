@@ -89,7 +89,7 @@ static void M600_manual(const GCodeParser2 &);
  *
  *#### Usage
  *
- *    M600 [ E | X | Y | Z | U | L | B | T | A | C | S | N | P ]
+ *    M600 [ E | X | Y | Z | U | L | D | B | T | A | C | S | N | P ]
  *
  *#### Parameters
  *
@@ -99,6 +99,7 @@ static void M600_manual(const GCodeParser2 &);
  * - `Y` - Y position for filament change
  * - `U` - Amount of retraction for unload (negative)
  * - `L` - Load length, longer for bowden (positive)
+ * - `D` - Purge length after loading (mm), used as given (no high-flow doubling), at most 150. Default: the Purge Length setting
  * - `B` - Number of beeps to alert user of filament change
  *   - `-1` - for indefinite
  * - `T` - Target extruder
@@ -156,7 +157,7 @@ void GcodeSuite::M600() {
 
 void M600_execute(mapi::ParkingPosition park_position, VirtualToolIndex target_tool,
     xyze_float_t resume_point, std::optional<float> unloadLength, std::optional<float> fastLoadLength,
-    std::optional<float> retractLength, std::optional<Color> filament_colour,
+    std::optional<float> purgeLength, std::optional<float> retractLength, std::optional<Color> filament_colour,
     std::optional<FilamentType> filament_type, bool);
 
 void M600_manual(const GCodeParser2 &p) {
@@ -195,6 +196,7 @@ void M600_manual(const GCodeParser2 &p) {
         p.option<bool>('N') ? no_return : current_position,
         p.option<float>('U'),
         p.option<float>('L'),
+        p.option<float>('D'),
         p.option<float>('E').transform(fabsf),
         p.option<Color>('C'),
         p.option<FilamentType>('S'),
@@ -202,8 +204,8 @@ void M600_manual(const GCodeParser2 &p) {
 }
 
 void M600_execute(mapi::ParkingPosition park_position, VirtualToolIndex target_tool, xyze_float_t resume_point,
-    std::optional<float> unloadLength, std::optional<float> fastLoadLength, std::optional<float> retractLength,
-    std::optional<Color> filament_colour, std::optional<FilamentType> filament_type,
+    std::optional<float> unloadLength, std::optional<float> fastLoadLength, std::optional<float> purgeLength,
+    std::optional<float> retractLength, std::optional<Color> filament_colour, std::optional<FilamentType> filament_type,
     bool is_filament_stuck) {
 
     // Ignore estalls during filament change
@@ -257,6 +259,7 @@ void M600_execute(mapi::ParkingPosition park_position, VirtualToolIndex target_t
     if (fastLoadLength.has_value()) {
         settings.SetFastLoadLength(fastLoadLength.value());
     }
+    settings.SetPurgeLength(purgeLength);
     if (retractLength.has_value()) {
         settings.SetRetractLength(retractLength.value());
     } // Initial retract before move to filament change position
@@ -358,7 +361,7 @@ void PrusaGcodeSuite::M1601() {
         mapi::get_parking_position(mapi::ParkPosition::filament_change),
         VirtualToolIndex::from_raw(parser.intval('V', -1)),
         current_position,
-        std::nullopt, std::nullopt, std::nullopt,
+        std::nullopt, std::nullopt, std::nullopt, std::nullopt,
         std::nullopt, std::nullopt,
         true);
 

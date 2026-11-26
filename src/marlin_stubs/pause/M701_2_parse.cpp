@@ -24,7 +24,7 @@ using namespace filament_gcodes;
  *
  *#### Usage
  *
- *    M701 [ T | Z | L | S | P | W | O | R | G ]
+ *    M701 [ T | Z | L | D | S | P | W | O | R | G ]
  *
  *#### Parameters
  *
@@ -32,6 +32,7 @@ using namespace filament_gcodes;
  * - `Z` - Minimal Z parking position
  * - `L` - Extrude distance for insertion (positive value)
  *   - `0` - PURGE
+ * - `D` - Purge length after loading (mm), used as given (no high-flow doubling), at most 150. Default: the Purge Length setting
  *
  * - `S"Filament"` - save filament by name, for example S"PLA". RepRap compatible.
  * - `G` - Use filament data from an OpenPrintTag with the specific UID hash (internal parameter)
@@ -89,6 +90,7 @@ void GcodeSuite::M701() {
     M701LoadArgs args {
         .filament_to_be_loaded = p.option<FilamentType>('S').value_or(NoFilamentType()),
         .fast_load_length = p.option<float>('L').transform(fabsf),
+        .purge_length = p.option<float>('D'),
         .z_min_pos = p.option<float>('Z').value_or(Z_AXIS_LOAD_POS),
         .op_preheat = p.option<RetAndCool_t>('W', std::to_underlying(RetAndCool_t::last_) + 1),
         .virtual_tool = *virtual_tool,

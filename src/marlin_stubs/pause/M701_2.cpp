@@ -100,6 +100,7 @@ void filament_gcodes::M701_load(const M701LoadArgs &args) {
     pause::Settings settings;
     settings.SetExtruder(virtual_tool);
     settings.SetFastLoadLength(args.fast_load_length);
+    settings.SetPurgeLength(args.purge_length);
     settings.SetRetractLength(0.f);
 
     mapi::ParkingPosition park_position = mapi::get_parking_position(do_purge_only ? mapi::ParkPosition::purge : mapi::ParkPosition::load);
@@ -237,7 +238,7 @@ void filament_gcodes::M70X_process_user_response(PreheatStatus::Result res, Virt
     PreheatStatus::SetResult(res);
 }
 
-void filament_gcodes::M1600_change_filament(FilamentType filament_to_be_loaded, VirtualToolIndex virtual_tool, RetAndCool_t preheat, AskFilament_t ask_filament, std::optional<Color> color_to_be_loaded) {
+void filament_gcodes::M1600_change_filament(FilamentType filament_to_be_loaded, VirtualToolIndex virtual_tool, RetAndCool_t preheat, AskFilament_t ask_filament, std::optional<Color> color_to_be_loaded, std::optional<float> purge_length) {
     InProgress progress;
 
     FilamentType filament = config_store().get_filament_type(virtual_tool);
@@ -283,6 +284,7 @@ void filament_gcodes::M1600_change_filament(FilamentType filament_to_be_loaded, 
     pause::Settings settings;
     settings.SetParkPoint(mapi::get_parking_position(mapi::ParkPosition::unload));
     settings.SetExtruder(virtual_tool);
+    settings.SetPurgeLength(purge_length);
     settings.SetRetractLength(0.f);
 
     // Pick the right tool

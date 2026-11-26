@@ -569,6 +569,9 @@ struct CurrentStore
     // Note: hash is kept for backwards compatibility
     StoreItem<bool, false, ItemFlag::features, journal::hash("Heatup Bed")> filament_change_preheat_all;
 
+    /// Purge length after filament load/change in mm; purge_length_unset = the printer's built-in length
+    StoreItem<uint8_t, purge_length_unset, ItemFlag::features, journal::hash("Filament Purge Length")> purge_length;
+
     /// Whether to ask for filament color on filament load
     /// Tristate::other = default (decided dynamically)
     StoreItem<Tristate, Tristate::other, ItemFlag::features, journal::hash("Ask For Filament Color")> load_ask_for_filament_color;

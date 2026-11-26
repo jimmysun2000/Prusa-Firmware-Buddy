@@ -247,7 +247,7 @@ void PrusaGcodeSuite::M1701() {
  *
  *#### Usage
  *
- *    M1600 [ T | R | U | S | O ]
+ *    M1600 [ T | R | U | S | O | D ]
  *
  *#### Parameters
  *
@@ -260,6 +260,7 @@ void PrusaGcodeSuite::M1701() {
  * - `S"Filament"` - change to filament by name, for example `S"PLA"`
  * - `O<value>` - Color number corresponding to Color, RGB order
  * - `P` - If set, the parameter 'T' is interpreted as a VirtualToolIndex (tool mapping is not applied)
+ * - `D` - Purge length after loading (mm), used as given (no high-flow doubling), at most 150. Default: the Purge Length setting
  */
 void PrusaGcodeSuite::M1600() {
     GCodeParser2 p;
@@ -277,7 +278,7 @@ void PrusaGcodeSuite::M1600() {
     const filament_gcodes::AskFilament_t ask_unload = filament_gcodes::AskFilament_t(p.option<int>('U').value_or(0));
     const bool hasReturn = p.option<bool>('R').value_or(false);
 
-    filament_gcodes::M1600_change_filament(filament_to_be_loaded, *virtual_tool, hasReturn ? RetAndCool_t::Return : RetAndCool_t::Neither, ask_unload, color_to_be_loaded);
+    filament_gcodes::M1600_change_filament(filament_to_be_loaded, *virtual_tool, hasReturn ? RetAndCool_t::Return : RetAndCool_t::Neither, ask_unload, color_to_be_loaded, p.option<float>('D'));
 }
 
 /** @}*/
