@@ -22,6 +22,7 @@
 #include <option/buddy_enable_connect.h>
 #include <option/has_auto_retract.h>
 #include <option/has_toolchanger.h>
+#include <option/has_per_tool_temperatures.h>
 #include <option/has_indx.h>
 #include <option/has_tool_mapping.h>
 #include <option/has_wastebin_fill_tracking.h>
@@ -613,6 +614,26 @@ public:
 
 protected:
     virtual void click(IWindowMenu &window_menu) override;
+};
+#endif
+
+#if HAS_TOOLCHANGER() && HAS_PER_TOOL_TEMPERATURES()
+/// Read-only status row of one tool, refreshed once a second:
+/// nozzle temperature/target, loaded filament, dock state (Active/Parked/?) and filament retraction.
+/// Has no click action.
+class MI_TOOL_OVERVIEW : public WiInfo<40> {
+public:
+    MI_TOOL_OVERVIEW(PhysicalToolIndex tool);
+
+protected:
+    void Loop() override;
+
+private:
+    void update();
+
+    const PhysicalToolIndex tool_;
+    uint32_t last_update_ms_ = 0;
+    StringViewUtf8Parameters<4> label_params_;
 };
 #endif
 

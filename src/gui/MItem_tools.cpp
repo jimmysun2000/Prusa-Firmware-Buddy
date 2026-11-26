@@ -59,12 +59,17 @@
 #include <option/has_mmu2.h>
 #include <gui/menu_item/menu_item_utils.hpp>
 
+#include <cmath>
 #include <type_traits>
 
 #include <option/has_toolchanger.h>
 #if HAS_TOOLCHANGER()
     #include "../../../lib/Marlin/Marlin/src/module/prusa/toolchanger.h"
     #include <gui/screen/screen_tool_pick_park.hpp>
+#endif
+
+#if HAS_TOOLCHANGER() && HAS_PER_TOOL_TEMPERATURES()
+    #include <module/temperature/temp_defines.hpp>
 #endif
 
 #if HAS_INDX()
@@ -1009,6 +1014,81 @@ void MI_PICK_PARK_TOOL::click(IWindowMenu & /*window_menu*/) {
     }
     #endif
     Screens::Access()->Open(screen_tool_pick_park_creator());
+}
+#endif
+
+#if HAS_TOOLCHANGER() && HAS_PER_TOOL_TEMPERATURES()
+/*****************************************************************************/
+// MI_TOOL_OVERVIEW
+MI_TOOL_OVERVIEW::MI_TOOL_OVERVIEW(PhysicalToolIndex tool)
+    : WiInfo<40>(string_view_utf8 {})
+    , tool_(tool) {
+    SetLabel(tool_.display_name(label_params_));
+    update();
+}
+
+void MI_TOOL_OVERVIEW::Loop() {
+    if (ticks_diff(ticks_ms(), last_update_ms_) < 1000) {
+        return;
+    }
+    update();
+}
+
+void MI_TOOL_OVERVIEW::update() {
+    last_update_ms_ = ticks_ms();
+
+    SetIconId(PhysicalToolIndex::currently_selected_opt() == tool_ ? &img::arrow_right_10x16 : nullptr);
+
+    if (!tool_.is_enabled()) {
+        ChangeInformation(_("Not installed"));
+        return;
+    }
+
+    ArrayStringBuilder<GetInfoLen()> sb;
+
+    const auto &hotend = marlin_vars().hotend(tool_);
+    const float temp = hotend.temp_nozzle;
+    if (temp == TempInfo::celsius_uninitialized || !std::isfinite(temp)) {
+        sb.append_string("---");
+    } else {
+        sb.append_printf("%3ld", std::lround(temp));
+    }
+    sb.append_printf("/%3d\xC2\xB0\x43 ", static_cast<int>(hotend.target_nozzle.get()));
+
+    const auto virtual_tool = stdext::get_optional<VirtualToolIndex>(tool_.currently_selected_virtual_tool());
+    if (virtual_tool.has_value()) {
+        sb.append_printf("%-7s ", config_store().get_filament_type(*virtual_tool).parameters().name.data());
+    } else {
+        sb.append_printf("%-7s ", "?");
+    }
+
+    std::array<char, 16> state_text;
+    const auto &dwarf = prusa_toolchanger.getTool(tool_);
+    const bool picked = dwarf.is_picked();
+    const bool parked = dwarf.is_parked();
+    if (picked && !parked) {
+        _("Active").copyToRAM(state_text);
+    } else if (parked && !picked) {
+        _("Parked").copyToRAM(state_text);
+    } else {
+        strlcpy(state_text.data(), "?", state_text.size());
+    }
+    sb.append_printf("%-6s ", state_text.data());
+
+    #if HAS_AUTO_RETRACT()
+    const auto retracted = config_store().get_filament_retracted_distance(tool_);
+    if (!retracted.has_value()) {
+        sb.append_printf("%4s", "?");
+    } else if (*retracted <= 0.0f) {
+        sb.append_printf("%4s", "-");
+    } else {
+        sb.append_printf("%2ldmm", std::lround(*retracted));
+    }
+    #else
+    sb.append_printf("%4s", "?");
+    #endif
+
+    ChangeInformation(sb.str());
 }
 #endif
 
