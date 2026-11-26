@@ -9,7 +9,13 @@
 #include <option/has_indx.h>
 #include <option/has_manual_belt_tuning.h>
 #include <option/has_toolchanger.h>
+#include <option/has_tool_offset_pin_calibration.h>
+#include <option/has_tool_offset_sensor.h>
 #include <bsod.h>
+
+#if HAS_TOOL_OFFSET_SENSOR()
+    #include <feature/tool_offset_calibration/tool_offset_calibration.hpp>
+#endif
 
 namespace SelftestSnake {
 
@@ -43,6 +49,23 @@ Action get_next_action(Action action) {
 ValidActionsRange::Iterator &ValidActionsRange::Iterator::operator++() {
     action_ = _get_valid_action(static_cast<Action>(std::to_underlying(action_) + 1), 1);
     return *this;
+}
+
+bool has_tool_picker([[maybe_unused]] Action action) {
+#if PRINTER_IS_PRUSA_XL() && HAS_TOOL_OFFSET_PIN_CALIBRATION()
+    if (action != Action::ToolOffsetsCalibration || !is_multitool()) {
+        return false;
+    }
+    #if HAS_TOOL_OFFSET_SENSOR()
+    // The contactless sensor runs its own wizard
+    if (tool_offset_calibration::is_hardware_available()) {
+        return false;
+    }
+    #endif
+    return true;
+#else
+    return false;
+#endif
 }
 
 const char *get_action_label(Action action) {

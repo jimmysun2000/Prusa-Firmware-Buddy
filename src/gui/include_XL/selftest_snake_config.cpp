@@ -96,7 +96,7 @@ TestResult get_test_result(Action action, ToolMask tool) {
         if (tool_offset_calibration::is_hardware_available()) {
             return config_store().selftest_result_tool_offsets_calibration.get();
         }
-        return merge_hotends_evaluations([&](PhysicalToolIndex e) {
+        return merge_hotends(tool, [&](const PhysicalToolIndex e) {
             return sr.get_tool_offset(e);
         });
     case Action::ZCheck:

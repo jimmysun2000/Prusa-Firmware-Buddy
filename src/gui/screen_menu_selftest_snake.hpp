@@ -5,6 +5,7 @@
 #include <utility_extensions.hpp>
 #include <selftest_snake_config.hpp>
 #include <meta_utils.hpp>
+#include <option/has_tool_offset_pin_calibration.h>
 
 namespace SelftestSnake {
 
@@ -36,6 +37,27 @@ private:
     const PhysicalToolIndex tool;
     StringViewUtf8Parameters<3> label_params_;
 };
+
+/// Runs the action for all tools from a submenu of a tool picker action
+class I_MI_STS_ALL_TOOLS : public IWindowMenuItem {
+    static constexpr const char *label = N_("All Tools");
+
+public:
+    I_MI_STS_ALL_TOOLS(Action action);
+    void click(IWindowMenu &window_menu) override;
+    void Loop() override;
+
+private:
+    const Action action;
+};
+
+#if HAS_TOOL_OFFSET_PIN_CALIBRATION()
+/// Starts the pin-based offset calibration of a single tool against tool 1 outside the snake.
+/// For tool 1 itself, its offset is re-aligned to another tool that the user picks among those with
+/// a passed offset calibration, and the other offsets are shifted with it.
+/// Shows a message and does nothing if the preconditions are not met.
+void start_single_tool_offset_calibration(PhysicalToolIndex tool);
+#endif
 
 class MI_BYPASS_DEPENDENCIES : public WI_ICON_SWITCH_OFF_ON_t {
     static constexpr const char *label = N_("Bypass Dependency Checks");

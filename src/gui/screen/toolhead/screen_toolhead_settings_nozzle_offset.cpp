@@ -1,5 +1,10 @@
 #include "screen_toolhead_settings_nozzle_offset.hpp"
 
+#if HAS_SELFTEST() && HAS_TOOL_OFFSET_PIN_CALIBRATION()
+    #include <screen_menu_selftest_snake.hpp>
+    #include <selftest_action_helpers.hpp>
+#endif
+
 using namespace screen_toolhead_settings;
 
 static constexpr std::array<NumericInputConfig, 3> offset_configs {
@@ -43,6 +48,27 @@ void MI_NOZZLE_OFFSET_COMPONENT::store_value_impl(PhysicalToolIndex ix, float se
     hotend_offset[ix][component_] = set;
     prusa_toolchanger.save_tool_offsets();
 }
+
+#if HAS_SELFTEST() && HAS_TOOL_OFFSET_PIN_CALIBRATION()
+// * MI_NOZZLE_OFFSET_CALIBRATE
+MI_NOZZLE_OFFSET_CALIBRATE::MI_NOZZLE_OFFSET_CALIBRATE(Toolhead toolhead)
+    : MI_TOOLHEAD_SPECIFIC_BASE(toolhead, _("Calibrate Nozzle Offset")) {
+    update();
+}
+
+void MI_NOZZLE_OFFSET_CALIBRATE::update() {
+    // Hidden when the contactless sensor calibrates the offsets or the toolchanger is disabled
+    set_is_hidden(!std::holds_alternative<PhysicalToolIndex>(toolhead())
+        || !SelftestSnake::has_tool_picker(SelftestSnake::Action::ToolOffsetsCalibration));
+}
+
+void MI_NOZZLE_OFFSET_CALIBRATE::click([[maybe_unused]] IWindowMenu &menu) {
+    const Toolhead selected = toolhead();
+    if (const auto *tool = std::get_if<PhysicalToolIndex>(&selected)) {
+        SelftestSnake::start_single_tool_offset_calibration(*tool);
+    }
+}
+#endif
 
 // * ScreenToolheadDetailNozzleOffset
 ScreenToolheadDetailNozzleOffset::ScreenToolheadDetailNozzleOffset(Toolhead toolhead)

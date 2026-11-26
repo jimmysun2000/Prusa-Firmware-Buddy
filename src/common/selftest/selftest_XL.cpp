@@ -205,8 +205,6 @@ static constexpr std::array<const DockConfig_t, PhysicalToolIndex::count> Config
     make_dock_config(PhysicalToolIndex::from_raw(4)),
 } };
 
-static constexpr ToolOffsetsConfig_t Config_ToolOffsets = {};
-
 // class representing whole self-test
 class CSelftest : public ISelftest {
 public:
@@ -228,6 +226,7 @@ protected:
     SelftestState_t m_State = stsIdle;
     SelftestMask_t m_Mask = stmNone;
     ToolMask tool_mask = AllTools {};
+    ToolOffsetsConfig_t config_tool_offsets { .request = ToolOffsetsCalibrationData::full() };
     selftest::IPartHandler *pXAxis = nullptr;
     selftest::IPartHandler *pYAxis = nullptr;
     selftest::IPartHandler *pZAxis = nullptr;
@@ -271,6 +270,12 @@ bool CSelftest::Start(const uint64_t test_mask, const selftest::TestData test_da
         this->tool_mask = AllTools {};
     }
 
+    if (std::holds_alternative<ToolOffsetsCalibrationData>(test_data)) {
+        config_tool_offsets.request = std::get<ToolOffsetsCalibrationData>(test_data);
+    } else {
+        config_tool_offsets.request = ToolOffsetsCalibrationData::full();
+    }
+
     m_State = stsStart;
     return true;
 }
@@ -295,7 +300,7 @@ void CSelftest::Loop() {
         }
         break;
     case stsToolOffsets:
-        if ((ret = selftest::phaseToolOffsets(tool_mask, pToolOffsets, Config_ToolOffsets))) {
+        if ((ret = selftest::phaseToolOffsets(tool_mask, pToolOffsets, config_tool_offsets))) {
             return;
         }
         break;

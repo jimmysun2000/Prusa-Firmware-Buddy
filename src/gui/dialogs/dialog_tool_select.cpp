@@ -72,6 +72,10 @@ public:
         index_mapping_.set_section_size<Item::prefix_section>(args.prefix_section_size);
 
         setup_items();
+
+        if (args.focused_tool.has_value()) {
+            move_focus_to_index(static_cast<int>(index_mapping_.to_index<Item::tool>(args.focused_tool->to_raw())));
+        }
     }
 
     int item_count() const final {

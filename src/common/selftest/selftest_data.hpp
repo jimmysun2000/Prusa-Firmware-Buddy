@@ -12,6 +12,30 @@ struct FirstLayerCalibrationData {
     uint8_t previous_sheet;
 };
 
-using TestData = std::variant<std::monostate, ToolMask, FirstLayerCalibrationData>;
+/// Tool that the pin-based tool offsets are measured against
+inline constexpr PhysicalToolIndex TOOL_OFFSETS_REFERENCE_TOOL = PhysicalToolIndex::from_raw(0);
+
+/// Which tools the pin-based tool offset calibration measures and which offsets it changes
+enum class ToolOffsetsMode : uint8_t {
+    /// All enabled tools are measured, all offsets are recomputed
+    full,
+    /// The reference tool and the other tool are measured, only the other tool's offset changes
+    single_tool,
+    /// The reference tool has changed; it is measured with the other tool, which has not changed,
+    /// and the offsets of all enabled tools except the reference tool are shifted by the same amount
+    rebase,
+};
+
+struct ToolOffsetsCalibrationData {
+    ToolOffsetsMode mode;
+    /// Tool measured together with the reference tool; unused in full mode
+    PhysicalToolIndex other_tool;
+
+    static constexpr ToolOffsetsCalibrationData full() {
+        return { .mode = ToolOffsetsMode::full, .other_tool = TOOL_OFFSETS_REFERENCE_TOOL };
+    }
+};
+
+using TestData = std::variant<std::monostate, ToolMask, FirstLayerCalibrationData, ToolOffsetsCalibrationData>;
 
 } // namespace selftest

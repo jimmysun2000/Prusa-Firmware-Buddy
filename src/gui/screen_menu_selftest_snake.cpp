@@ -32,6 +32,11 @@
     #include <feature/tool_offset_calibration/tool_offset_calibration.hpp>
 #endif
 
+#if HAS_TOOL_OFFSET_PIN_CALIBRATION()
+    #include <gui/dialogs/dialog_tool_select.hpp>
+    #include <selftest/selftest_data.hpp>
+#endif
+
 using namespace SelftestSnake;
 
 namespace SelftestSnake {
@@ -311,7 +316,7 @@ expands_t get_expands(Action action) {
     if (!is_multitool()) {
         return expands_t::no;
     }
-    return has_submenu(action) ? expands_t::yes : expands_t::no;
+    return (has_submenu(action) || has_tool_picker(action)) ? expands_t::yes : expands_t::no;
 }
 
 constexpr IWindowMenuItem::ColorScheme not_yet_ready_scheme {
@@ -377,7 +382,7 @@ void I_MI_STS::click(IWindowMenu &) {
     if (!can_run) {
         return;
     }
-    if (!has_submenu(action) || !is_multitool()) {
+    if (!(has_submenu(action) || has_tool_picker(action)) || !is_multitool()) {
         do_snake(action, get_first_enabled_tool());
     } else {
         Screens::Access()->Open(ScreenFactory::ScreenWithArg<ScreenSelftestSubmenu>(action));
@@ -406,12 +411,108 @@ I_MI_STS_SUBMENU::I_MI_STS_SUBMENU(const char *label_template, Action action, Ph
 }
 
 void I_MI_STS_SUBMENU::click(IWindowMenu &) {
+#if HAS_TOOL_OFFSET_PIN_CALIBRATION()
+    if (has_tool_picker(action)) {
+        start_single_tool_offset_calibration(tool);
+        return;
+    }
+#endif
     do_snake(action, tool);
 }
 
 void I_MI_STS_SUBMENU::Loop() {
     SetIconId(get_icon(action, tool));
 }
+
+I_MI_STS_ALL_TOOLS::I_MI_STS_ALL_TOOLS(Action action)
+    : IWindowMenuItem(_(label), nullptr, is_enabled_t::yes, is_hidden_t::no)
+    , action(action) {
+    set_icon_position(IconPosition::before_extension);
+}
+
+void I_MI_STS_ALL_TOOLS::click(IWindowMenu &) {
+    // The snake continues from the menu below, as if the action was clicked there
+    Screens::Access()->close_screen();
+    do_snake(action, get_first_enabled_tool());
+}
+
+void I_MI_STS_ALL_TOOLS::Loop() {
+    SetIconId(get_icon(action, AllTools {}));
+}
+
+#if HAS_TOOL_OFFSET_PIN_CALIBRATION()
+namespace {
+
+/// @returns the tool that tool 1 is re-aligned to, or nullopt if there is none or the user returned
+std::optional<PhysicalToolIndex> select_rebase_tool() {
+    const SelftestResult selftest_result = config_store().selftest_result.get();
+    const auto is_eligible = [&selftest_result](PhysicalToolIndex tool) {
+        return tool.is_enabled() && tool != selftest::TOOL_OFFSETS_REFERENCE_TOOL && selftest_result.get_tool_offset(tool) == TestResult::passed;
+    };
+
+    std::optional<VirtualToolIndex> first_eligible;
+    size_t eligible_count = 0;
+    for (const auto tool : VirtualToolIndex::all()) {
+        if (is_eligible(tool.to_physical())) {
+            if (!first_eligible.has_value()) {
+                first_eligible = tool;
+            }
+            eligible_count++;
+        }
+    }
+
+    if (eligible_count == 0) {
+        StringViewUtf8Parameters<4> params;
+        MsgBoxWarning(_("No other tool has a passed offset calibration to align tool %d to. Run the calibration for all tools instead.").formatted(params, selftest::TOOL_OFFSETS_REFERENCE_TOOL.display_index()), Responses_Ok);
+        return std::nullopt;
+    }
+
+    if (eligible_count == 1) {
+        return first_eligible->to_physical();
+    }
+
+    const auto selected = select_tool_dialog({
+        .allow_return = true,
+        .tool_filter = [&is_eligible](VirtualToolIndex tool) { return is_eligible(tool.to_physical()); },
+        .focused_tool = first_eligible,
+    });
+    if (!selected.has_value()) {
+        return std::nullopt;
+    }
+    return selected->to_physical();
+}
+
+} // namespace
+
+void SelftestSnake::start_single_tool_offset_calibration(PhysicalToolIndex tool) {
+    constexpr Action action = Action::ToolOffsetsCalibration;
+    if (!has_tool_picker(action) || !tool.is_enabled()) {
+        return;
+    }
+
+    if (!check_prerequisites_or_warn(action)) {
+        return;
+    }
+
+    if (!selftest::TOOL_OFFSETS_REFERENCE_TOOL.is_enabled()) {
+        StringViewUtf8Parameters<4> params;
+        MsgBoxWarning(_("Tool %d is the reference of this calibration and it is not enabled.").formatted(params, selftest::TOOL_OFFSETS_REFERENCE_TOOL.display_index()), Responses_Ok);
+        return;
+    }
+
+    selftest::ToolOffsetsCalibrationData request { .mode = selftest::ToolOffsetsMode::single_tool, .other_tool = tool };
+    if (tool == selftest::TOOL_OFFSETS_REFERENCE_TOOL) {
+        const auto rebase_tool = select_rebase_tool();
+        if (!rebase_tool.has_value()) {
+            return;
+        }
+        request = { .mode = selftest::ToolOffsetsMode::rebase, .other_tool = *rebase_tool };
+    }
+
+    // One-shot, the snake does not continue after it
+    marlin_client::test_start_with_data(get_test_mask(action), request);
+}
+#endif
 
 MI_BYPASS_DEPENDENCIES::MI_BYPASS_DEPENDENCIES()
     : WI_ICON_SWITCH_OFF_ON_t(bypass_dependencies, _(label), nullptr, is_enabled_t::yes, is_hidden_t::dev) {}

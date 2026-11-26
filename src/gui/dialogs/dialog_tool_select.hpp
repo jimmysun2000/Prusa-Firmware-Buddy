@@ -24,6 +24,9 @@ struct SelectToolDialogArgs {
     /// Constructor for the prefix section.
     /// @param index is the item index within the section
     stdext::inplace_function<void(WindowMenuVirtual::ItemVariant &item, int index)> prefix_section_ctor {};
+
+    /// Tool item focused when the dialog opens; the first item if not set
+    std::optional<VirtualToolIndex> focused_tool = std::nullopt;
 };
 
 /// Shows a dialog that prompts the user to select a tool

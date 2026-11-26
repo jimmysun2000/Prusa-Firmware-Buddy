@@ -90,6 +90,10 @@ constexpr bool has_submenu([[maybe_unused]] Action action) {
 #endif
 }
 
+/// @returns whether the action can also run for a single tool picked in a submenu, while running
+/// it from the main menu still covers all tools at once
+bool has_tool_picker(Action action);
+
 const char *get_action_label(Action action);
 
 }; // namespace SelftestSnake

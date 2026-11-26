@@ -71,9 +71,17 @@
 #include <bsod_gui.hpp>
 #include <marlin_server.hpp>
 #include <center_approx.hpp>
+#include <tool_offset_partial.hpp>
 #include <printers.h>
 #include <tool_index.hpp>
 #include <utils/storage/strong_index_array.hpp>
+#include <config_store/store_instance.hpp>
+#include <raii/scope_guard.hpp>
+
+#include <option/has_tool_offset_sensor.h>
+#if HAS_TOOL_OFFSET_SENSOR()
+    #include <feature/tool_offset_calibration/tool_offset_calibration.hpp>
+#endif
 
 /**
  * G425 backs away from the calibration object by various distances
@@ -133,6 +141,8 @@ namespace {
 METRIC_DEF(metric_center, "g425_cen", METRIC_VALUE_CUSTOM, 100, METRIC_ENABLED);
 // Tool offset relative to the first tool - result of the tool offset calibration [mm]
 METRIC_DEF(metric_offset, "g425_off", METRIC_VALUE_CUSTOM, 100, METRIC_ENABLED);
+// Previous tool offset and its change - result of a partial tool offset calibration [mm]
+METRIC_DEF(metric_offset_change, "g425_offchg", METRIC_VALUE_CUSTOM, 100, METRIC_ENABLED);
 // Raw XY probe [mm]
 METRIC_DEF(metric_xy_raw_hit, "g425_rxy", METRIC_VALUE_CUSTOM, 100, METRIC_ENABLED);
 // Verified XY probe - two raw probes agree on position [mm]
@@ -818,6 +828,232 @@ bool full_calibration() {
 
     return calibrate_all_simple();
 }
+
+namespace pin_tool_offset {
+
+namespace {
+
+    constexpr PhysicalToolIndex REFERENCE_TOOL = selftest::TOOL_OFFSETS_REFERENCE_TOOL;
+
+    struct AxisLimits {
+        AxisEnum axis;
+        float min;
+        float max;
+    };
+
+    constexpr AxisLimits OFFSET_LIMITS[] = {
+        { X_AXIS, X_MIN_OFFSET, X_MAX_OFFSET },
+        { Y_AXIS, Y_MIN_OFFSET, Y_MAX_OFFSET },
+        { Z_AXIS, Z_MIN_OFFSET, Z_MAX_OFFSET },
+    };
+
+    bool is_zero(const xyz_pos_t &offset) {
+        return offset.x == 0 && offset.y == 0 && offset.z == 0;
+    }
+
+    std::unexpected<Failure> fail(FailureReason reason, std::optional<PhysicalToolIndex> tool) {
+        SERIAL_ECHOLNPAIR("G425: Partial calibration failed, reason ", std::to_underlying(reason), " tool ", tool.has_value() ? tool->to_raw() : -1);
+        return std::unexpected(Failure { .reason = reason, .tool = tool });
+    }
+
+} // namespace
+
+bool is_partial_request_valid(const PartialRequest &request) {
+    if (request.mode != selftest::ToolOffsetsMode::single_tool && request.mode != selftest::ToolOffsetsMode::rebase) {
+        return false;
+    }
+    if (!prusa_toolchanger.is_toolchanger_enabled()) {
+        return false;
+    }
+#if HAS_TOOL_OFFSET_SENSOR()
+    if (tool_offset_calibration::is_hardware_available()) {
+        return false;
+    }
+#endif
+    return REFERENCE_TOOL.is_enabled() && request.other_tool.is_enabled() && request.other_tool != REFERENCE_TOOL;
+}
+
+std::expected<PartialResult, Failure> measure_partial(const PartialRequest &request) {
+    TEMPORARY_SOFT_ENDSTOP_STATE(false);
+    TEMPORARY_BED_LEVELING_STATE(false);
+
+    phase_stepping::EnsureDisabled ps_disabler {};
+
+    const PhysicalToolIndex other_tool = request.other_tool;
+
+    if (axis_unhomed_error()) {
+        return fail(FailureReason::not_homed, other_tool);
+    }
+
+    if (!is_partial_request_valid(request)) {
+        return fail(FailureReason::invalid_request, other_tool);
+    }
+
+    // Disable E steppers to reduce noise on loadcell
+    disable_e_steppers();
+
+#if HAS_CRASH_DETECTION()
+    // Disable crash recovery. It would recover, but the measurement will be inaccurate anyway.
+    Crash_Temporary_Deactivate ctd;
+#endif
+
+    // Reset planner state
+    planner.synchronize();
+    planner.reset_position();
+
+    // Disable PA to reduce filter delay during probe analysis
+    pressure_advance::PressureAdvanceDisabler pa_disabler;
+
+    prusa_toolchanger.load_tool_offsets();
+    StrongIndexArray<xyz_pos_t, PhysicalToolIndex::count, PhysicalToolIndex, PhysicalToolIndex::to_raw_static> stored_offsets;
+    for (const auto tool : PhysicalToolIndex::all()) {
+        stored_offsets[tool] = hotend_offset[tool];
+    }
+
+    if (const auto parked_tool = PhysicalToolIndex::currently_selected_opt(); !tool_change(NoTool {}, tool_return_t::no_return)) {
+        return fail(FailureReason::toolchange_failed, parked_tool);
+    }
+
+    ScopeGuard restore_offsets = [] {
+        prusa_toolchanger.load_tool_offsets();
+        const auto selected = PhysicalToolIndex::currently_selected_opt();
+        hotend_currently_applied_offset = selected.has_value() ? hotend_offset[*selected] : xyz_pos_t {};
+    };
+
+    // Both measured tools must have zero offset in RAM, as probing adds the applied Z offset and
+    // the toolchanger keeps the applied offset in sync with the RAM offset of the picked tool.
+    // The others keep theirs, they are never picked during the measurement.
+    reset_hotend_offset(REFERENCE_TOOL);
+    reset_hotend_offset(other_tool);
+    hotend_currently_applied_offset = xyz_pos_t {};
+
+    StrongIndexArray<MachinePosXYZ, PhysicalToolIndex::count, PhysicalToolIndex, PhysicalToolIndex::to_raw_static> centers;
+    for (const PhysicalToolIndex tool : { REFERENCE_TOOL, other_tool }) {
+        if (!tool_change(tool, tool_return_t::no_return)
+            || PhysicalToolIndex::currently_selected_opt() != tool
+            || !prusa_toolchanger.getTool(tool).is_picked()) {
+            return fail(FailureReason::toolchange_failed, tool);
+        }
+
+        const std::optional<MachinePosXYZ> center = get_xyz_center(tool.to_raw());
+        if (!center.has_value()) {
+            SERIAL_ECHOLNPAIR("G425: Tool ", tool.to_raw(), " center not found.");
+            mapi::park(mapi::get_parking_position(mapi::ParkPosition::filament_change));
+            marlin_server::set_warning(WarningType::NozzleDoesNotHaveRoundSection);
+            return fail(FailureReason::center_not_found, tool);
+        }
+        centers[tool] = center.value();
+        metric_record_custom(
+            &metric_center,
+            ",t=%u x=%.3f,y=%.3f,z=%.3f",
+            tool.to_raw(),
+            static_cast<double>(centers[tool].x),
+            static_cast<double>(centers[tool].y),
+            static_cast<double>(centers[tool].z));
+    }
+
+    // Park while the measured tools still have zero offset in RAM
+    if (!tool_change(NoTool {}, tool_return_t::no_return)) {
+        return fail(FailureReason::toolchange_failed, other_tool);
+    }
+
+    const xyz_pos_t &reference_old = stored_offsets[REFERENCE_TOOL];
+    if (!is_zero(reference_old)) {
+        SERIAL_ECHOLNPAIR("G425: Warning: T", REFERENCE_TOOL.to_raw(), " has a non-zero stored offset X", reference_old.x, " Y", reference_old.y, " Z", reference_old.z, ", keeping its frame");
+    }
+
+    PartialResult result;
+    switch (request.mode) {
+
+    case selftest::ToolOffsetsMode::single_tool:
+        result.new_offsets[other_tool] = tool_offset_partial::single_tool_offset(reference_old, centers[REFERENCE_TOOL], centers[other_tool]);
+        break;
+
+    case selftest::ToolOffsetsMode::rebase: {
+        const xyz_pos_t delta = tool_offset_partial::rebase_delta(reference_old, centers[REFERENCE_TOOL], centers[other_tool], stored_offsets[other_tool]);
+        for (const auto tool : PhysicalToolIndex::all().skip_all_disabled()) {
+            if (tool != REFERENCE_TOOL) {
+                result.new_offsets[tool] = stored_offsets[tool] + delta;
+            }
+        }
+        break;
+    }
+
+    case selftest::ToolOffsetsMode::full:
+        return fail(FailureReason::invalid_request, other_tool);
+    }
+
+    for (const auto tool : PhysicalToolIndex::all()) {
+        const std::optional<xyz_pos_t> &new_offset = result.new_offsets[tool];
+        if (!new_offset.has_value()) {
+            continue;
+        }
+        for (const AxisLimits &limits : OFFSET_LIMITS) {
+            const float value = (*new_offset)[limits.axis];
+            if (!tool_offset_partial::within_limits(value, limits.min, limits.max)) {
+                SERIAL_ECHOLNPAIR("G425: Tool ", tool.to_raw(), " offset ", "XYZ"[limits.axis], " ", value, " out of bounds, discarded");
+                return std::unexpected(Failure { .reason = FailureReason::out_of_bounds, .tool = tool, .axis = limits.axis, .value = value });
+            }
+        }
+    }
+
+    return result;
+}
+
+void commit_partial(const PartialRequest &request, const PartialResult &result) {
+    StrongIndexArray<xyz_pos_t, PhysicalToolIndex::count, PhysicalToolIndex, PhysicalToolIndex::to_raw_static> old_offsets;
+
+    const auto apply_and_store = [&] {
+        for (const auto tool : PhysicalToolIndex::all()) {
+            if (const auto &new_offset = result.new_offsets[tool]; new_offset.has_value()) {
+                old_offsets[tool] = hotend_offset[tool];
+                hotend_offset[tool] = *new_offset;
+                prusa_toolchanger.save_tool_offset(tool);
+            }
+        }
+    };
+
+    if (request.mode == selftest::ToolOffsetsMode::rebase) {
+        auto transaction = config_store().get_backend().transaction_guard();
+        apply_and_store();
+    } else {
+        apply_and_store();
+    }
+
+    for (const auto tool : PhysicalToolIndex::all()) {
+        if (!result.new_offsets[tool].has_value()) {
+            continue;
+        }
+        const xyz_pos_t &old_offset = old_offsets[tool];
+        const xyz_pos_t &new_offset = hotend_offset[tool];
+        const xyz_pos_t delta = new_offset - old_offset;
+        SERIAL_ECHOLNPAIR("G425: T", tool.to_raw(), " offset old X", old_offset.x, " Y", old_offset.y, " Z", old_offset.z,
+            " new X", new_offset.x, " Y", new_offset.y, " Z", new_offset.z,
+            " delta X", delta.x, " Y", delta.y, " Z", delta.z);
+
+        osDelay(100); // Some time to send the metric before sending the next one
+        metric_record_custom(
+            &metric_offset,
+            ",t=%u x=%.3f,y=%.3f,z=%.3f",
+            tool.to_raw(),
+            static_cast<double>(new_offset.x),
+            static_cast<double>(new_offset.y),
+            static_cast<double>(new_offset.z));
+        osDelay(100);
+        metric_record_custom(
+            &metric_offset_change,
+            ",t=%u ox=%.3f,oy=%.3f,oz=%.3f,dx=%.3f,dy=%.3f,dz=%.3f",
+            tool.to_raw(),
+            static_cast<double>(old_offset.x),
+            static_cast<double>(old_offset.y),
+            static_cast<double>(old_offset.z),
+            static_cast<double>(delta.x),
+            static_cast<double>(delta.y),
+            static_cast<double>(delta.z));
+    }
+}
+
+} // namespace pin_tool_offset
 
 /**
  * \addtogroup G-Codes

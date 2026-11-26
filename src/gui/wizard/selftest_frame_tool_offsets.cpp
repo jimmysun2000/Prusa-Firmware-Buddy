@@ -21,9 +21,24 @@ SelftestFrameToolOffsets::SelftestFrameToolOffsets(window_t *parent, PhasesSelft
 }
 
 void SelftestFrameToolOffsets::change() {
+    const SelftestToolOffsets_t data = SelftestToolOffsets_t::Deserialize(data_current);
+    const bool full_mode = data.mode == selftest::ToolOffsetsMode::full;
+    const int reference_tool = selftest::TOOL_OFFSETS_REFERENCE_TOOL.display_index();
+    const int other_tool = data.other_tool + 1;
+
     switch (phase_current) {
     case PhasesSelftest::ToolOffsets_wait_user_confirm_start:
-        text_phase.SetText(_("We will need your help with this calibration. You will be asked to screw in a calibration pin."));
+        switch (data.mode) {
+        case selftest::ToolOffsetsMode::full:
+            text_phase.SetText(_("We will need your help with this calibration. You will be asked to screw in a calibration pin."));
+            break;
+        case selftest::ToolOffsetsMode::single_tool:
+            text_phase.SetText(_("Tool %d will be calibrated against tool %d. Tool %d must be unchanged since its last calibration. You will be asked to screw in a calibration pin.").formatted(text_phase_params, other_tool, reference_tool, reference_tool));
+            break;
+        case selftest::ToolOffsetsMode::rebase:
+            text_phase.SetText(_("Tool %d will be calibrated against tool %d and the offsets of the other tools shifted with it. Tool %d must be unchanged since its last calibration. You will be asked to screw in a calibration pin.").formatted(text_phase_params, reference_tool, other_tool, other_tool));
+            break;
+        }
 
         // Quick user can
         //  1:15 - Home and install pin
@@ -31,13 +46,18 @@ void SelftestFrameToolOffsets::change() {
         //  0:15 - Remove pin and install sheet
         // For 2 tool printer - at least 6 minutes
         // For 5 tool printer - at least 12:45
-        text_detail.SetText(_("The calibration should take a little over %d minutes.").formatted(text_detail_params, (prusa_toolchanger.get_num_enabled_tools() <= 2) ? 7 : 14));
+        // A partial calibration measures two tools
+        text_detail.SetText(_("The calibration should take a little over %d minutes.").formatted(text_detail_params, (!full_mode || prusa_toolchanger.get_num_enabled_tools() <= 2) ? 7 : 14));
         text_detail.Show();
         break;
 
     case PhasesSelftest::ToolOffsets_wait_user_clean_nozzle_cold:
     case PhasesSelftest::ToolOffsets_wait_user_clean_nozzle_hot:
-        text_phase.SetText(_("Nozzle have to be perfectly clean for good calibration results.\n- Clean all nozzles\n- Clean parking plate\n- Press continue when done"));
+        if (full_mode) {
+            text_phase.SetText(_("Nozzle have to be perfectly clean for good calibration results.\n- Clean all nozzles\n- Clean parking plate\n- Press continue when done"));
+        } else {
+            text_phase.SetText(_("Nozzles have to be perfectly clean for good calibration results.\n- Clean nozzles of tools %d and %d\n- Clean parking plate\n- Press continue when done").formatted(text_phase_params, reference_tool, other_tool));
+        }
         text_detail.Hide();
         break;
 
@@ -64,7 +84,11 @@ void SelftestFrameToolOffsets::change() {
         break;
 
     case PhasesSelftest::ToolOffsets_wait_calibrate:
-        text_phase.SetText(_("Calibrating tool offsets."));
+        if (full_mode) {
+            text_phase.SetText(_("Calibrating tool offsets."));
+        } else {
+            text_phase.SetText(_("Calibrating tool offsets of tools %d and %d.").formatted(text_phase_params, reference_tool, other_tool));
+        }
         text_detail.Hide();
         break;
 
@@ -78,8 +102,49 @@ void SelftestFrameToolOffsets::change() {
         text_detail.Hide();
         break;
 
+    case PhasesSelftest::ToolOffsets_result_rejected:
+        show_rejected(data);
+        break;
+
     default:
         text_phase.Hide();
         text_detail.Hide();
     }
 };
+
+void SelftestFrameToolOffsets::show_rejected(const SelftestToolOffsets_t &data) {
+    const pin_tool_offset::Failure &failure = data.failure;
+    const int tool = failure.tool.has_value() ? failure.tool->display_index() : 0;
+
+    switch (failure.reason) {
+    case pin_tool_offset::FailureReason::not_homed:
+        text_phase.SetText(_("Calibration stopped, the printer is not homed."));
+        break;
+    case pin_tool_offset::FailureReason::invalid_request:
+        text_phase.SetText(_("Calibration stopped, it cannot run with the current tool setup."));
+        break;
+    case pin_tool_offset::FailureReason::toolchange_failed:
+        if (failure.tool.has_value()) {
+            text_phase.SetText(_("Calibration stopped, tool change of tool %d failed.").formatted(text_phase_params, tool));
+        } else {
+            text_phase.SetText(_("Calibration stopped, tool change failed."));
+        }
+        break;
+    case pin_tool_offset::FailureReason::center_not_found:
+        text_phase.SetText(_("Calibration stopped, tool %d did not find the center of the calibration pin.").formatted(text_phase_params, tool));
+        break;
+    case pin_tool_offset::FailureReason::out_of_bounds:
+        text_phase.SetText(_("Calibration rejected, the %c offset of tool %d would be %.2f mm, which is outside the allowed range.").formatted(text_phase_params, "XYZ"[failure.axis], tool, static_cast<double>(failure.value)));
+        break;
+    case pin_tool_offset::FailureReason::unknown:
+        text_phase.SetText(_("Calibration failed."));
+        break;
+    }
+
+    if (data.mode == selftest::ToolOffsetsMode::full) {
+        text_detail.Hide();
+    } else {
+        text_detail.SetText(_("The stored offsets were not changed."));
+        text_detail.Show();
+    }
+}

@@ -17,12 +17,13 @@ void Menu::setup(Action action) {
 }
 
 int Menu::item_count() const {
-    return PhysicalToolIndex::count + 1; // + MI_RETURN
+    // + MI_RETURN, + the all tools item of a tool picker
+    return PhysicalToolIndex::count + (has_tool_picker(action_) ? 2 : 1);
 }
 
 // Returns a printf-style format string with a single %d for the 1-based tool/dock index.
 constexpr auto get_submenu_label_template([[maybe_unused]] Action action) -> const char * {
-    debug_assert(has_submenu(action));
+    debug_assert(has_submenu(action) || has_tool_picker(action));
 #if PRINTER_IS_PRUSA_XL()
     switch (action) {
     case Action::DockCalibration:
@@ -33,6 +34,8 @@ constexpr auto get_submenu_label_template([[maybe_unused]] Action action) -> con
         return N_("Tool %d Filament Sensor Calibration");
     case Action::Gears:
         return N_("Tool %d Gearbox alignment");
+    case Action::ToolOffsetsCalibration:
+        return N_("Tool %d Offset Calibration");
     default:
         break;
     }
@@ -47,10 +50,20 @@ constexpr auto get_submenu_label_template([[maybe_unused]] Action action) -> con
 void Menu::setup_item(ItemVariant &variant, int index) {
     if (index == 0) {
         variant.emplace<MI_RETURN>();
-    } else {
-        const auto tool = PhysicalToolIndex::from_raw(index - 1);
-        variant.emplace<I_MI_STS_SUBMENU>(get_submenu_label_template(action_), action_, tool);
+        return;
     }
+
+    int first_tool_index = 1;
+    if (has_tool_picker(action_)) {
+        if (index == 1) {
+            variant.emplace<I_MI_STS_ALL_TOOLS>(action_);
+            return;
+        }
+        first_tool_index = 2;
+    }
+
+    const auto tool = PhysicalToolIndex::from_raw(index - first_tool_index);
+    variant.emplace<I_MI_STS_SUBMENU>(get_submenu_label_template(action_), action_, tool);
 }
 
 Screen::Screen(Action action)
