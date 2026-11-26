@@ -10,6 +10,18 @@ target_include_directories(
 target_link_libraries(center_approx buddy_utils)
 add_catch_test(center_approx)
 
+# tool_offset_partial
+add_executable(tool_offset_partial_tests tool_offset_partial_tests.cpp)
+
+target_include_directories(
+  tool_offset_partial_tests
+  PUBLIC ${CMAKE_SOURCE_DIR}/src/common/utils ${CMAKE_SOURCE_DIR}/tests/stubs
+         ${CMAKE_SOURCE_DIR}/lib/Marlin/Marlin/src ${CMAKE_SOURCE_DIR}/lib/Marlin/Marlin/src/inc
+  )
+
+target_link_libraries(tool_offset_partial_tests buddy_utils)
+add_catch_test(tool_offset_partial_tests)
+
 # dynamic_item_mapping
 add_executable(dynamic_index_mapping dynamic_index_mapping_tests.cpp)
 target_include_directories(dynamic_index_mapping PUBLIC ${CMAKE_SOURCE_DIR}/src/common/utils)
