@@ -55,6 +55,10 @@ if(HAS_ESP)
   target_sources(WUI INTERFACE espif.cpp)
 endif()
 
+if(PRINTER STREQUAL "XL")
+  target_sources(WUI INTERFACE nhttp/mesh_renderer.cpp)
+endif()
+
 file(GLOB AUTOMATA_GENERATORS ${PROJECT_ROOT_DIR}/utils/gen-automata/*.py)
 
 add_custom_command(

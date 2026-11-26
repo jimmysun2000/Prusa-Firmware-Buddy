@@ -8,6 +8,10 @@
 #include "../nhttp/send_json.h"
 #include "../nhttp/status_renderer.h"
 #include "../wui_api.h"
+#include <printers.h>
+#if PRINTER_IS_PRUSA_XL()
+    #include "../nhttp/mesh_renderer.h"
+#endif
 #include "prusa_api_helpers.hpp"
 
 #include <buddy/filename_defs.hpp>
@@ -121,6 +125,11 @@ Selector::Accepted PrusaLinkApiV1::accept(const RequestParser &parser, handler::
     } else if (suffix == "info") {
         get_only(SendJson(EmptyRenderer(get_info), parser.can_keep_alive()), parser, out);
         return Accepted::Accepted;
+#if PRINTER_IS_PRUSA_XL()
+    } else if (suffix == "mesh") {
+        get_only(SendJson(MeshRenderer(), parser.can_keep_alive()), parser, out);
+        return Accepted::Accepted;
+#endif
     } else if (auto job_suffix_opt = remove_prefix(suffix, "job/"); job_suffix_opt.has_value()) {
         auto job_suffix = *job_suffix_opt;
         auto id = get_job_id(job_suffix);

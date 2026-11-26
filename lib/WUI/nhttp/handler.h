@@ -52,6 +52,11 @@
     #include "networking_benchmark.h"
 #endif
 
+#include <printers.h>
+#if PRINTER_IS_PRUSA_XL()
+    #include "mesh_renderer.h"
+#endif
+
 namespace nhttp {
 
 namespace splice {
@@ -149,6 +154,9 @@ namespace handler {
         SendJson<EmptyRenderer>,
         SendJson<TransferRenderer>,
         SendJson<StatusRenderer>,
+#if PRINTER_IS_PRUSA_XL()
+        SendJson<MeshRenderer>,
+#endif
         printer::GcodeUpload,
         printer::GCodePreview,
         printer::JobCommand,

@@ -162,3 +162,18 @@ target_link_libraries(
   )
 
 add_catch_test(nhttp_tests)
+
+# Separate from nhttp_tests: the mesh endpoint exists only on the XL, the tests are built as MINI
+add_executable(
+  mesh_renderer_tests
+  ${CMAKE_CURRENT_SOURCE_DIR}/mesh_renderer_tests.cpp
+  ${CMAKE_SOURCE_DIR}/lib/WUI/nhttp/mesh_renderer.cpp
+  ${CMAKE_SOURCE_DIR}/src/common/bed_mesh_view_math.cpp
+  ${CMAKE_SOURCE_DIR}/src/common/segmented_json.cpp
+  ${CMAKE_SOURCE_DIR}/src/common/json_encode.cpp
+  )
+target_include_directories(
+  mesh_renderer_tests PRIVATE ${CMAKE_SOURCE_DIR}/lib/WUI/nhttp ${CMAKE_SOURCE_DIR}/src/common
+                              ${CMAKE_SOURCE_DIR}/src
+  )
+add_catch_test(mesh_renderer_tests)

@@ -97,5 +97,11 @@ void SendJson<Renderer>::step(std::string_view, bool, uint8_t *buffer, size_t bu
 template class SendJson<EmptyRenderer>;
 template class SendJson<TransferRenderer>;
 template class SendJson<StatusRenderer>;
+#if PRINTER_IS_PRUSA_XL()
+template class SendJson<MeshRenderer>;
+// Every connection reserves space for the largest handler; this one must not make it bigger
+static_assert(sizeof(SendJson<MeshRenderer>) <= sizeof(SendJson<StatusRenderer>));
+static_assert(alignof(SendJson<MeshRenderer>) <= alignof(SendJson<StatusRenderer>));
+#endif
 
 } // namespace nhttp::handler
