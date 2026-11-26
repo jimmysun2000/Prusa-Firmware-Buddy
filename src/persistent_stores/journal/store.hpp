@@ -38,6 +38,12 @@ public:
         visit_all_struct_fields(static_cast<Config &>(*this), callback, exclude_flags);
     }
 
+    /// Calls f(item) for every current store item. Meant for read-only use (see the items' for_each_entry).
+    template <typename F>
+    void visit_items(F f) {
+        visit_all_struct_fields(static_cast<Config &>(*this), f);
+    }
+
     void save_all() {
         dump_items();
     };

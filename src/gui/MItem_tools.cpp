@@ -72,6 +72,10 @@
     #include <module/temperature/temp_defines.hpp>
 #endif
 
+#if PRINTER_IS_PRUSA_XL()
+    #include <config_store/config_store_export.hpp>
+#endif
+
 #if HAS_INDX()
     #include <puppies/INDX.hpp>
 #endif
@@ -894,6 +898,31 @@ void MI_LOAD_SETTINGS::click(IWindowMenu & /*window_menu*/) {
 
     MsgBoxInfo(string_view_utf8::MakeRAM(msg.data()), Responses_Ok);
 }
+
+#if PRINTER_IS_PRUSA_XL()
+/**********************************************************************************************/
+// MI_EXPORT_SETTINGS
+
+MI_EXPORT_SETTINGS::MI_EXPORT_SETTINGS()
+    : IWindowMenuItem(_(label), nullptr, is_enabled_t::yes, is_hidden_t::no) {
+}
+
+void MI_EXPORT_SETTINGS::click(IWindowMenu & /*window_menu*/) {
+    config_store_export::FileName file_name {};
+    bool saved = false;
+    window_dlg_wait_t::wait_until(_("Saving settings backup..."), [&] {
+        saved = config_store_export::export_to_usb(file_name);
+        return true;
+    });
+
+    if (saved) {
+        StringViewUtf8Parameters<std::tuple_size_v<config_store_export::FileName>> params;
+        MsgBoxInfo(_("Settings backup saved to the USB drive as %s. Passwords and tokens are not included.").formatted(params, file_name.data()), Responses_Ok);
+    } else {
+        MsgBoxError(_("Failed to write the settings backup. Check the USB drive and try again."), Responses_Ok);
+    }
+}
+#endif
 
 #if HAS_LEDS()
 /**********************************************************************************************/

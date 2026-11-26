@@ -12,6 +12,9 @@ using ScreenMenuSystemBase = BasicScreenMenu<
     MI_LOG_TO_TXT,
     MI_DEVHASH_IN_QR,
     MI_LOAD_SETTINGS,
+#if PRINTER_IS_PRUSA_XL()
+    MI_EXPORT_SETTINGS,
+#endif
 #if HAS_E2EE_SUPPORT()
     MI_E2EE,
 #endif

@@ -529,6 +529,18 @@ public:
     virtual void click(IWindowMenu &) override;
 };
 
+#if PRINTER_IS_PRUSA_XL()
+/// Writes a backup of the settings (without passwords and tokens) to a new file on the USB drive
+class MI_EXPORT_SETTINGS : public IWindowMenuItem {
+    constexpr static const char *const label = N_("Export Settings to USB");
+
+public:
+    MI_EXPORT_SETTINGS();
+
+    virtual void click(IWindowMenu &) override;
+};
+#endif
+
 #if HAS_LEDS()
 class MI_LEDS_ENABLE : public WI_ICON_SWITCH_OFF_ON_t {
     static constexpr const char *const label = N_("RGB Status Bar");

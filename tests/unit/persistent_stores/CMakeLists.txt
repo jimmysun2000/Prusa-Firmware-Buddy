@@ -47,3 +47,13 @@ create_generate_hashes_target(
   )
 
 add_dependencies(eeprom_unit_tests generate_journal_hashes_tests)
+
+add_executable(
+  config_store_export_format_tests
+  ${CMAKE_CURRENT_SOURCE_DIR}/config_store_export_format_tests.cpp
+  ${CMAKE_SOURCE_DIR}/src/persistent_stores/store_instances/config_store/config_store_export_format.cpp
+  )
+target_include_directories(
+  config_store_export_format_tests PUBLIC ${CMAKE_SOURCE_DIR}/src/persistent_stores/store_instances
+  )
+add_catch_test(config_store_export_format_tests)

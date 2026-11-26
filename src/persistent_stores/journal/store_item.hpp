@@ -187,6 +187,13 @@ public:
             Base::ram_dump(hashed_id, default_val);
         }
     }
+
+    /// Read-only: calls f(hashed_id, flags, value) with a copy of the value.
+    /// Not inlined, so that visiting many items keeps only one value copy on the stack.
+    template <typename F>
+    [[gnu::noinline]] void for_each_entry(F &&f) {
+        f(hashed_id, flags, this->get());
+    }
 };
 
 template <StoreItemDataC DataT, auto DefaultVal, journal::BackendC BackendT, uint16_t HashedID>

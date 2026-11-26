@@ -6,3 +6,7 @@ if(NOT HAS_CONFIG_STORE_WO_BACKEND)
   target_sources(firmware PRIVATE filament_variant_decode.cpp migrations.cpp)
 
 endif()
+
+if(PRINTER STREQUAL "XL")
+  target_sources(firmware PRIVATE config_store_export.cpp config_store_export_format.cpp)
+endif()

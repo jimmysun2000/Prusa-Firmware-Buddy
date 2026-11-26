@@ -203,6 +203,15 @@ public:
         }
         backend().save(hashed_id_first + index, trivial_as_bytes(this->data_array[index]));
     }
+
+    /// Read-only: calls f(id, flags, value) for each element, with a copy of the value.
+    /// Not inlined, so that visiting many items keeps only one value copy on the stack.
+    template <typename F>
+    [[gnu::noinline]] void for_each_entry(F &&f) {
+        for (uint8_t i = 0; i < item_count; i++) {
+            f(static_cast<uint16_t>(hashed_id_first + i), this->flags, this->get(i));
+        }
+    }
 };
 
 /// Legacy variant of JournalItemArray for items that were arrays before arrays existed.
@@ -222,6 +231,15 @@ public:
             std::terminate();
         }
         backend().save(hashed_ids[index], trivial_as_bytes(this->data_array[index]));
+    }
+
+    /// Read-only: calls f(id, flags, value) for each element, with a copy of the value.
+    /// Not inlined, so that visiting many items keeps only one value copy on the stack.
+    template <typename F>
+    [[gnu::noinline]] void for_each_entry(F &&f) {
+        for (uint8_t i = 0; i < hashed_ids.size(); i++) {
+            f(hashed_ids[i], this->flags, this->get(i));
+        }
     }
 };
 
