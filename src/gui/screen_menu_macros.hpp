@@ -8,3 +8,6 @@ class MI_MACROS final : public MI_SCREEN_BASE {
 public:
     MI_MACROS();
 };
+
+/// @returns a creator for the Macros screen that MI_MACROS opens
+ScreenFactory::Creator screen_macros_creator();

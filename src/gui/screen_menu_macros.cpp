@@ -172,6 +172,10 @@ constexpr screen_menu_virtual::Configuration macros_menu {
 
 } // namespace
 
+ScreenFactory::Creator screen_macros_creator() {
+    return ScreenFactory::ScreenWithArg<ScreenMenuVirtual>(&macros_menu);
+}
+
 MI_MACROS::MI_MACROS()
-    : MI_SCREEN_BASE(ScreenFactory::ScreenWithArg<ScreenMenuVirtual>(&macros_menu), N_("Macros")) {
+    : MI_SCREEN_BASE(screen_macros_creator(), N_("Macros")) {
 }
