@@ -69,6 +69,16 @@ static FactoryReset::ItemBitset decode_items_to_keep(uint16_t encoded_params) {
     sys_reset();
 }
 
+journal::ItemFlags FactoryReset::excluded_flags(ItemBitset items_to_keep) {
+    journal::ItemFlags exclude_flags = 0;
+    for (size_t i = 0; i < std::to_underlying(Item::_cnt); i++) {
+        if (!items_to_keep.test(i)) {
+            exclude_flags |= items_config[i].item_flags;
+        }
+    }
+    return exclude_flags;
+}
+
 [[noreturn]] void FactoryReset::perform_internal() {
     const uint16_t encoded_params = crash_dump::load_message_error_code();
     crash_dump::message_set_displayed();
@@ -277,12 +287,7 @@ static FactoryReset::ItemBitset decode_items_to_keep(uint16_t encoded_params) {
 
         debug_assert(config_store().get_backend().get_journal_state() == journal::Backend::JournalState::ColdStart);
 
-        journal::ItemFlags exclude_flags = 0;
-        for (size_t i = 0; i < std::to_underlying(Item::_cnt); i++) {
-            if (!items_to_keep.test(i)) {
-                exclude_flags |= items_config[i].item_flags;
-            }
-        }
+        const journal::ItemFlags exclude_flags = excluded_flags(items_to_keep);
         config_store_journal().dump_items(exclude_flags);
 
         // If we're resetting hw config, make sure that we perform first run config setup

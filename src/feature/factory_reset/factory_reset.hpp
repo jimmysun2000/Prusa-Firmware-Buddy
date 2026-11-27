@@ -73,6 +73,10 @@ public:
     /// !!! Has to be executed on the GUI thread
     [[noreturn]] static void perform(bool hard_reset, ItemBitset items_to_keep);
 
+    /// Flags of the config store items that are reset when keeping @p items_to_keep:
+    /// an item is kept only if none of its flags is in the result
+    static journal::ItemFlags excluded_flags(ItemBitset items_to_keep);
+
 public:
     /// Constructs ItemBitset with the specified items set
     static constexpr ItemBitset item_bitset(const std::initializer_list<Item> &lst) {
