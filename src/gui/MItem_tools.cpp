@@ -44,6 +44,9 @@
 #if HAS_WASTEBIN_FILL_TRACKING()
     #include <feature/wastebin_watcher/wastebin_watcher.hpp>
 #endif
+#if HAS_AUTO_RETRACT()
+    #include <feature/auto_retract/auto_retract.hpp>
+#endif
 #include <raii/auto_restore.hpp>
 #include <time.h>
 #include <footer_items_heaters.hpp>
@@ -1139,6 +1142,10 @@ void MI_TOOL_OVERVIEW::update() {
         sb.append_printf("%4s", "?");
     } else if (*retracted <= 0.0f) {
         sb.append_printf("%4s", "-");
+    } else if (*retracted >= buddy::AutoRetract::full_retract_distance) {
+        std::array<char, 16> retracted_text;
+        _("Retr").copyToRAM(retracted_text);
+        sb.append_printf("%4s", retracted_text.data());
     } else {
         sb.append_printf("%2ldmm", std::lround(*retracted));
     }
