@@ -137,28 +137,92 @@ static constexpr Rect16 buttonTextRect(size_t col, size_t row) {
 #if PRINTER_IS_PRUSA_XL()
 namespace {
 
-// With shortcuts, a fourth column fits by narrowing the gaps between the columns
-constexpr size_t shortcut_layout_columns = 4;
-constexpr size_t shortcut_layout_x_spacing = 30;
-constexpr size_t shortcut_layout_text_spacing = GuiDefaults::ButtonIconSize + shortcut_layout_x_spacing - buttonTextWidth;
-constexpr size_t shortcut_layout_left_offset = (GuiDefaults::ScreenWidth - shortcut_layout_columns * GuiDefaults::ButtonIconSize - (shortcut_layout_columns - 1) * shortcut_layout_x_spacing) / 2;
-constexpr size_t shortcut_layout_texts_left_offset = (GuiDefaults::ScreenWidth - shortcut_layout_columns * buttonTextWidth - (shortcut_layout_columns - 1) * shortcut_layout_text_spacing) / 2;
+/// Columns of the home screen with shortcuts: the gaps between the icons narrow to fit them
+struct ShortcutLayout {
+    size_t columns;
+    /// Gap between the icons of two columns
+    size_t x_spacing;
+    /// At most the column pitch, so that the labels do not overlap
+    size_t text_width;
 
-constexpr Rect16 shortcut_layout_button_rect(size_t col, size_t row) {
-    return Rect16(
-        shortcut_layout_left_offset + (shortcut_layout_x_spacing + GuiDefaults::ButtonIconSize) * col,
-        buttonTopOffset + (GuiDefaults::ButtonIconVerticalSpacing + GuiDefaults::ButtonIconSize) * row,
-        GuiDefaults::ButtonIconSize,
-        GuiDefaults::ButtonIconSize);
-}
+    constexpr size_t pitch() const {
+        return GuiDefaults::ButtonIconSize + x_spacing;
+    }
 
-constexpr Rect16 shortcut_layout_text_rect(size_t col, size_t row) {
-    return Rect16(
-        shortcut_layout_texts_left_offset + (shortcut_layout_x_spacing + GuiDefaults::ButtonIconSize) * col,
-        buttonTextTopOffset + (GuiDefaults::ButtonIconVerticalSpacing + GuiDefaults::ButtonIconSize) * row,
-        buttonTextWidth,
-        buttonTextHeight);
+    constexpr size_t left_offset() const {
+        return (GuiDefaults::ScreenWidth - columns * GuiDefaults::ButtonIconSize - (columns - 1) * x_spacing) / 2;
+    }
+
+    constexpr size_t texts_left_offset() const {
+        return (GuiDefaults::ScreenWidth - columns * text_width - (columns - 1) * (pitch() - text_width)) / 2;
+    }
+
+    constexpr Rect16 button_rect(size_t col, size_t row) const {
+        return Rect16(
+            left_offset() + pitch() * col,
+            buttonTopOffset + (GuiDefaults::ButtonIconVerticalSpacing + GuiDefaults::ButtonIconSize) * row,
+            GuiDefaults::ButtonIconSize,
+            GuiDefaults::ButtonIconSize);
+    }
+
+    constexpr Rect16 text_rect(size_t col, size_t row) const {
+        return Rect16(
+            texts_left_offset() + pitch() * col,
+            buttonTextTopOffset + (GuiDefaults::ButtonIconVerticalSpacing + GuiDefaults::ButtonIconSize) * row,
+            text_width,
+            buttonTextHeight);
+    }
+
+    /// Characters a label shows; the text renderer cuts a longer one to this
+    constexpr size_t label_length() const {
+        return text_width / width(Font::small);
+    }
+
+    /// The icons and the labels lie inside the display, and the labels do not overlap
+    constexpr bool fits_display() const {
+        return text_width <= pitch()
+            && left_offset() + columns * pitch() - x_spacing <= GuiDefaults::ScreenWidth
+            && texts_left_offset() + (columns - 1) * pitch() + text_width <= GuiDefaults::ScreenWidth;
+    }
+};
+
+constexpr ShortcutLayout four_column_layout { .columns = 4, .x_spacing = 30, .text_width = buttonTextWidth };
+constexpr ShortcutLayout five_column_layout { .columns = 5, .x_spacing = 16, .text_width = 96 };
+
+static_assert(four_column_layout.fits_display() && five_column_layout.fits_display());
+static_assert(four_column_layout.left_offset() == 35 && four_column_layout.texts_left_offset() == 25);
+static_assert(five_column_layout.left_offset() == 8 && five_column_layout.texts_left_offset() == 0);
+static_assert(2 * five_column_layout.texts_left_offset() + five_column_layout.text_width == 2 * five_column_layout.left_offset() + GuiDefaults::ButtonIconSize,
+    "each label is centred under its icon");
+static_assert(four_column_layout.label_length() >= home_shortcut::home_label_length);
+
+constexpr size_t stock_columns = 3;
+constexpr size_t button_rows = 2;
+static_assert(stock_columns * button_rows == screen_home_data_t::button_count);
+
+/// The shortcuts fill the columns after the stock ones top to bottom: the first two the fourth, the next two the fifth
+constexpr size_t slot_column(size_t slot) {
+    return stock_columns + slot / button_rows;
 }
+static_assert(slot_column(home_shortcut::slot_count - 1) < five_column_layout.columns);
+
+/// @returns the layout that shows the slots set in @p shown; nullptr for the stock layout if none is set
+constexpr const ShortcutLayout *layout_for(const std::array<bool, home_shortcut::slot_count> &shown) {
+    const ShortcutLayout *layout = nullptr;
+    for (size_t slot = 0; slot < shown.size(); ++slot) {
+        if (!shown[slot]) {
+            continue;
+        }
+        if (slot_column(slot) >= four_column_layout.columns) {
+            return &five_column_layout;
+        }
+        layout = &four_column_layout;
+    }
+    return layout;
+}
+static_assert(layout_for({}) == nullptr);
+static_assert(layout_for({ true }) == &four_column_layout);
+static_assert(layout_for({ false, true }) == &four_column_layout);
 
 constexpr WindowMultiIconButton::Pngs shortcut_icon_home GEN_ICON_NAMES(home);
 // The XL packs no disabled variant of mapping and back; the shortcuts are never shadowed
@@ -439,46 +503,54 @@ void screen_home_data_t::filamentBtnSetState() {
 #if PRINTER_IS_PRUSA_XL()
 void screen_home_data_t::setup_shortcuts() {
     std::array<const home_shortcut::Action *, home_shortcut::slot_count> actions;
-    bool any_shown = false;
+    std::array<bool, home_shortcut::slot_count> shown;
     for (size_t slot = 0; slot < actions.size(); ++slot) {
         actions[slot] = &home_shortcut::find(config_store().home_shortcuts.get(slot));
-        any_shown = any_shown || actions[slot]->kind != home_shortcut::Kind::none;
+        shown[slot] = actions[slot]->kind != home_shortcut::Kind::none;
     }
 
-    if (any_shown) {
+    const ShortcutLayout *layout = layout_for(shown);
+    if (layout) {
         for (size_t i = 0; i < button_count; ++i) {
-            w_buttons[i].SetRect(shortcut_layout_button_rect(i % 3, i / 3));
-            w_labels[i].SetRect(shortcut_layout_text_rect(i % 3, i / 3));
+            w_buttons[i].SetRect(layout->button_rect(i % stock_columns, i / stock_columns));
+            w_labels[i].SetRect(layout->text_rect(i % stock_columns, i / stock_columns));
         }
     }
 
-    // The knob moves the focus in the order the windows are registered: each shown shortcut
-    // goes after the stock buttons of its row and before those of the rows below
-    for (size_t slot = 0; slot < actions.size(); ++slot) {
-        const home_shortcut::Action &action = *actions[slot];
-        WindowMultiIconButton &button = w_shortcut_buttons[slot];
-        window_text_t &label = w_shortcut_labels[slot];
+    // The knob moves the focus in the order the windows are registered: the shown shortcuts of a row,
+    // left to right, go after the stock buttons of that row and before those of the rows below
+    for (size_t row = 0; row < button_rows; ++row) {
+        bool row_has_shortcut = false;
+        for (size_t slot = row; slot < actions.size(); slot += button_rows) {
+            const home_shortcut::Action &action = *actions[slot];
+            WindowMultiIconButton &button = w_shortcut_buttons[slot];
+            window_text_t &label = w_shortcut_labels[slot];
 
-        if (action.kind == home_shortcut::Kind::none) {
-            // Not registered, so never drawn or touched; disabled, so a restored focus cannot land on it
-            button.Disable();
-            continue;
+            if (!shown[slot]) {
+                // Not registered, so never drawn or touched; disabled, so a restored focus cannot land on it
+                button.Disable();
+                continue;
+            }
+
+            button.SetRect(layout->button_rect(slot_column(slot), row));
+            button.SetRes(&shortcut_icon(action));
+            button.SetAction([id = action.id](window_t &) { home_shortcut::run(id); });
+            label.SetRect(layout->text_rect(slot_column(slot), row));
+            label.set_font(Font::small);
+            label.SetAlignment(Align_t::Center());
+            label.SetPadding({ 0, 0, 0, 0 });
+            label.SetText(home_shortcut::label(action, shortcut_label_params[slot], layout->label_length()));
+
+            RegisterSubWin(button);
+            RegisterSubWin(label);
+            row_has_shortcut = true;
         }
 
-        button.SetRect(shortcut_layout_button_rect(shortcut_layout_columns - 1, slot));
-        button.SetRes(&shortcut_icon(action));
-        button.SetAction([id = action.id](window_t &) { home_shortcut::run(id); });
-        label.SetRect(shortcut_layout_text_rect(shortcut_layout_columns - 1, slot));
-        label.set_font(Font::small);
-        label.SetAlignment(Align_t::Center());
-        label.SetPadding({ 0, 0, 0, 0 });
-        label.SetText(home_shortcut::label(action, shortcut_label_params[slot], home_shortcut::home_label_length));
-
-        RegisterSubWin(button);
-        RegisterSubWin(label);
-        for (size_t i = (slot + 1) * 3; i < button_count; ++i) {
-            UnregisterSubWin(w_buttons[i]);
-            RegisterSubWin(w_buttons[i]);
+        if (row_has_shortcut) {
+            for (size_t i = (row + 1) * stock_columns; i < button_count; ++i) {
+                UnregisterSubWin(w_buttons[i]);
+                RegisterSubWin(w_buttons[i]);
+            }
         }
     }
 }
