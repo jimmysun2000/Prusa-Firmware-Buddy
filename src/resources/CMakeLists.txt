@@ -106,6 +106,10 @@ add_gzip_resource("web/favicon.ico" "/web/favicon.ico")
 add_gzip_resource("web/index.html" "/web/index.html")
 add_gzip_resource("web/main.b41402ed4d6d019ca007.js" "/web/main.b41402ed4d6d019ca007.js")
 add_gzip_resource("web/main.71c989a4a290e5c10892.css" "/web/main.71c989a4a290e5c10892.css")
+if(PRINTER STREQUAL "XL")
+  # Kept apart from web/, which is replaced as a whole when the Prusa-Link-Web bundle is updated
+  add_gzip_resource("web_xl/index.html" "/web/xl/index.html")
+endif()
 
 # add languages
 set(compile_mo_py "${CMAKE_SOURCE_DIR}/utils/translations_and_fonts/compile_mo.py")

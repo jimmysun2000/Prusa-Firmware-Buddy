@@ -1,0 +1,498 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>XL data</title>
+<style>
+:root {
+    color-scheme: dark;
+    --bg: #151719;
+    --panel: #1f2225;
+    --line: #353a3f;
+    --text: #e6e6e6;
+    --muted: #9aa0a6;
+    --accent: #fa6831;
+    --bad: #ff7b6b;
+    --button: #2d3236;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+header { background: var(--panel); border-bottom: 1px solid var(--line); padding: 10px 16px; }
+.bar { max-width: 1100px; margin: 0 auto; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 20px; }
+h1 { margin: 0; font-size: 20px; color: var(--accent); }
+h2 { margin: 0 0 10px; font-size: 17px; }
+h3 { margin: 14px 0 6px; font-size: 14px; color: var(--muted); font-weight: 600; }
+main { max-width: 1100px; margin: 0 auto; padding: 16px; display: grid; gap: 16px; }
+section, .notice { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px 16px; min-width: 0; }
+.notice { border-color: var(--accent); }
+.notice p { margin: 0 0 10px; }
+a { color: var(--accent); }
+.muted { color: var(--muted); }
+.bad { color: var(--bad); }
+.spacer { flex: 1; }
+button { font: inherit; color: var(--text); background: var(--button); border: 1px solid var(--line); border-radius: 6px; padding: 4px 14px; cursor: pointer; }
+button:hover, button:focus-visible { border-color: var(--accent); }
+dl { display: grid; grid-template-columns: max-content 1fr; gap: 2px 16px; margin: 0; }
+dt { color: var(--muted); }
+dd { margin: 0; font-variant-numeric: tabular-nums; }
+.scroll { overflow-x: auto; }
+table { border-collapse: collapse; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; padding: 4px 16px 4px 0; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th { color: var(--muted); font-weight: 600; }
+.mesh { display: flex; flex-wrap: wrap; gap: 16px 28px; align-items: flex-start; }
+.mesh-plot { flex: 1 1 280px; max-width: 440px; min-width: 0; }
+#mesh-canvas { display: block; cursor: crosshair; }
+.front { text-align: center; color: var(--muted); font-size: 13px; margin-top: 2px; }
+#mesh-point { min-height: 1.45em; margin-top: 6px; }
+.mesh-side { flex: 1 1 240px; }
+.legend { display: flex; height: 14px; max-width: 260px; }
+.legend span { flex: 1; }
+.legend-labels { display: flex; justify-content: space-between; max-width: 260px; font-size: 13px; font-variant-numeric: tabular-nums; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; margin-top: 14px; }
+</style>
+</head>
+<body>
+<header>
+<div class="bar">
+<h1>XL data</h1>
+<span id="host" class="muted"></span>
+<span><span class="muted">Firmware</span> <span id="firmware">–</span></span>
+<span><span class="muted">State</span> <span id="state">–</span></span>
+<span id="updated" class="muted">Loading…</span>
+<span class="spacer"></span>
+<a href="/">PrusaLink</a>
+</div>
+</header>
+<main>
+<noscript><div class="notice">This page needs JavaScript.</div></noscript>
+<div id="login" class="notice" hidden>
+<p>Log in as <b>maker</b> with the PrusaLink password shown on the printer under Settings &gt; Network &gt; PrusaLink.</p>
+<button id="retry" type="button">Retry</button>
+</div>
+
+<section>
+<h2>Bed mesh</h2>
+<div class="mesh">
+<div class="mesh-plot">
+<canvas id="mesh-canvas" width="0" height="0" role="img" aria-label="Bed mesh, front of the bed at the bottom"></canvas>
+<div class="front">FRONT</div>
+<div id="mesh-point" class="muted">Hover or tap a point</div>
+</div>
+<div class="mesh-side">
+<dl>
+<dt>State</dt><dd id="mesh-state">–</dd>
+<dt>Min</dt><dd id="mesh-min">–</dd>
+<dt>Max</dt><dd id="mesh-max">–</dd>
+<dt>Range</dt><dd id="mesh-range">–</dd>
+<dt>Mean</dt><dd id="mesh-mean">–</dd>
+<dt>Probed points</dt><dd id="mesh-probed">–</dd>
+<dt>Grid</dt><dd id="mesh-grid">–</dd>
+<dt>Bed extent</dt><dd id="mesh-extent">–</dd>
+</dl>
+<h3>Deviation from mean</h3>
+<div id="mesh-legend" class="legend"></div>
+<div class="legend-labels"><span id="legend-low">–</span><span class="muted">mm</span><span id="legend-high">–</span></div>
+<div class="actions">
+<button id="mesh-refresh" type="button">Refresh</button>
+<a href="/api/v1/mesh" target="_blank" rel="noopener">Raw JSON</a>
+</div>
+</div>
+</div>
+</section>
+
+<section>
+<h2>Tools</h2>
+<div class="scroll">
+<table>
+<thead><tr><th>Tool</th><th>Filament</th></tr></thead>
+<tbody id="tool-rows"></tbody>
+</table>
+</div>
+<h3>Active tool</h3>
+<dl>
+<dt>Nozzle</dt><dd id="nozzle">–</dd>
+<dt>Hotend fan</dt><dd id="fan-hotend">–</dd>
+<dt>Print fan</dt><dd id="fan-print">–</dd>
+<dt>Flow</dt><dd id="flow">–</dd>
+<dt>Bed</dt><dd id="bed">–</dd>
+</dl>
+</section>
+</main>
+
+<script>
+'use strict';
+
+// Same as bed_mesh_view::color_steps and bed_mesh_view::min_full_scale [mm] in the firmware
+const COLOR_STEPS = 16;
+const MIN_FULL_SCALE = 0.10;
+const NO_DATA_COLOR = '#404040';
+
+const RETRY_MS = 5000;
+const REQUEST_TIMEOUT_MS = 20000;
+
+const $ = id => document.getElementById(id);
+
+function setText(id, value) {
+    $(id).textContent = value;
+}
+
+function isNumber(value) {
+    return typeof value === 'number' && Number.isFinite(value);
+}
+
+function fixed(value, digits, unit = '') {
+    return isNumber(value) ? value.toFixed(digits) + unit : '–';
+}
+
+function signed(value, digits, unit = '') {
+    return isNumber(value) ? (value >= 0 ? '+' : '') + value.toFixed(digits) + unit : '–';
+}
+
+function tableRow(cells) {
+    const row = document.createElement('tr');
+    for (const cell of cells) {
+        const td = document.createElement('td');
+        td.textContent = cell;
+        row.append(td);
+    }
+    return row;
+}
+
+class HttpError extends Error {
+    constructor(status) {
+        super(`HTTP ${status}`);
+        this.status = status;
+    }
+}
+
+async function getJson(path) {
+    const abort = new AbortController();
+    const timeout = setTimeout(() => abort.abort(), REQUEST_TIMEOUT_MS);
+    try {
+        const response = await fetch(path, { headers: { Accept: 'application/json' }, cache: 'no-store', signal: abort.signal });
+        if (!response.ok) {
+            throw new HttpError(response.status);
+        }
+        return await response.json();
+    } finally {
+        clearTimeout(timeout);
+    }
+}
+
+// Header
+
+function renderVersion(version) {
+    setText('host', version.hostname || '');
+    setText('firmware', version.firmware || '–');
+}
+
+function renderStatus(status) {
+    const printer = status.printer || {};
+    setText('state', printer.state || '–');
+    renderTools(status);
+}
+
+function showUpdated() {
+    const updated = $('updated');
+    updated.className = 'muted';
+    updated.textContent = `Updated ${new Date().toLocaleTimeString()}`;
+}
+
+function showError(path, error) {
+    const updated = $('updated');
+    updated.className = 'bad';
+    const reason = error.name === 'AbortError' ? 'no answer' : error.message;
+    updated.textContent = `Error ${new Date().toLocaleTimeString()}: ${path}: ${reason}`;
+}
+
+// Bed mesh
+
+function isMajor(i, n, border, step) {
+    return i >= border && i + border < n && step > 0 && (i - border) % step === 0;
+}
+
+function meshValue(mesh, ix, iy) {
+    const row = mesh.z[iy];
+    return row ? row[ix] : null;
+}
+
+function meshProbed(mesh, ix, iy) {
+    const row = mesh.probed ? mesh.probed[iy] : null;
+    return row ? row[ix] === 1 : false;
+}
+
+// Same as bed_mesh_view::compute_stats() in the firmware
+function meshStats(mesh) {
+    const nx = mesh.grid.x;
+    const ny = mesh.grid.y;
+    const { border, step } = mesh.major;
+    const stats = { count: 0, min: 0, max: 0, mean: 0, fullScale: MIN_FULL_SCALE };
+    let sum = 0;
+    for (let iy = 0; iy < ny; iy++) {
+        if (!isMajor(iy, ny, border, step)) {
+            continue;
+        }
+        for (let ix = 0; ix < nx; ix++) {
+            if (!isMajor(ix, nx, border, step)) {
+                continue;
+            }
+            const v = meshValue(mesh, ix, iy);
+            if (!isNumber(v)) {
+                continue;
+            }
+            if (stats.count === 0) {
+                stats.min = stats.max = v;
+            } else {
+                stats.min = Math.min(stats.min, v);
+                stats.max = Math.max(stats.max, v);
+            }
+            sum += v;
+            stats.count++;
+        }
+    }
+    if (stats.count > 0) {
+        stats.mean = sum / stats.count;
+        stats.fullScale = Math.max(MIN_FULL_SCALE, stats.max - stats.mean, stats.mean - stats.min);
+    }
+    return stats;
+}
+
+// Same as bed_mesh_view::color_step() in the firmware
+function colorStep(deviation, fullScale) {
+    const half = COLOR_STEPS / 2;
+    if (!isNumber(deviation) || !(fullScale > 0)) {
+        return half;
+    }
+    const step = Math.floor(deviation / fullScale * half) + half;
+    return Math.min(Math.max(step, 0), COLOR_STEPS - 1);
+}
+
+// Same as bed_mesh_view::color_of_step() in the firmware
+function colorOfStep(step) {
+    const half = COLOR_STEPS / 2;
+    const low = [0, 64, 255];
+    const high = [255, 32, 0];
+    step = Math.min(Math.max(step, 0), COLOR_STEPS - 1);
+    const isHigh = step >= half;
+    const weight = isHigh ? step - half + 1 : half - step;
+    const [r, g, b] = (isHigh ? high : low).map(channel => 255 - Math.floor((255 - channel) * weight / half));
+    return `rgb(${r}, ${g}, ${b})`;
+}
+
+const MESH_STATES = {
+    none: 'None (no mesh measured yet)',
+    partial: 'Partial (probing or incomplete)',
+    complete: 'Complete',
+};
+
+let meshView = null;
+
+function drawMesh(mesh) {
+    const nx = mesh.grid.x;
+    const ny = mesh.grid.y;
+    const hasData = mesh.state !== 'none';
+    const stats = meshStats(mesh);
+    const palette = Array.from({ length: COLOR_STEPS }, (_, i) => colorOfStep(i));
+
+    const canvas = $('mesh-canvas');
+    const available = Math.min(canvas.parentElement.clientWidth, 440);
+    const cell = Math.max(3, Math.floor(available / Math.max(nx, ny, 1)));
+    const ratio = window.devicePixelRatio || 1;
+    canvas.style.width = `${nx * cell}px`;
+    canvas.style.height = `${ny * cell}px`;
+    canvas.width = Math.round(nx * cell * ratio);
+    canvas.height = Math.round(ny * cell * ratio);
+    const ctx = canvas.getContext('2d');
+    ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+
+    const dot = Math.max(2, Math.round(cell * 0.35));
+    const dotOffset = (cell - dot) / 2;
+    for (let iy = 0; iy < ny; iy++) {
+        // The front of the bed (y index 0) is at the bottom
+        const top = (ny - 1 - iy) * cell;
+        for (let ix = 0; ix < nx; ix++) {
+            const v = meshValue(mesh, ix, iy);
+            ctx.fillStyle = hasData && isNumber(v) ? palette[colorStep(v - stats.mean, stats.fullScale)] : NO_DATA_COLOR;
+            ctx.fillRect(ix * cell, top, cell, cell);
+            // A dot tells a measured point from one the leveling filled in
+            if (hasData && meshProbed(mesh, ix, iy)) {
+                ctx.fillStyle = '#000';
+                ctx.fillRect(ix * cell + dotOffset, top + dotOffset, dot, dot);
+            }
+        }
+    }
+    meshView = { mesh, cell };
+
+    let probed = 0;
+    for (let iy = 0; iy < ny; iy++) {
+        for (let ix = 0; ix < nx; ix++) {
+            probed += meshProbed(mesh, ix, iy) ? 1 : 0;
+        }
+    }
+
+    const hasStats = hasData && stats.count > 0;
+    setText('mesh-state', MESH_STATES[mesh.state] || mesh.state);
+    setText('mesh-min', hasStats ? signed(stats.min, 3, ' mm') : '–');
+    setText('mesh-max', hasStats ? signed(stats.max, 3, ' mm') : '–');
+    setText('mesh-range', hasStats ? fixed(stats.max - stats.min, 3, ' mm') : '–');
+    setText('mesh-mean', hasStats ? signed(stats.mean, 3, ' mm') : '–');
+    setText('mesh-probed', probed > 0 ? String(probed) : '–');
+    setText('mesh-grid', `${nx} × ${ny} points`);
+    setText('mesh-extent', `X ${fixed(mesh.min.x, 1)} to ${fixed(mesh.max.x, 1)} mm, Y ${fixed(mesh.min.y, 1)} to ${fixed(mesh.max.y, 1)} mm`);
+    setText('legend-low', fixed(-stats.fullScale, 2));
+    setText('legend-high', signed(stats.fullScale, 2));
+}
+
+function pointPosition(first, last, index, count) {
+    return count > 1 ? first + (last - first) * index / (count - 1) : first;
+}
+
+function showMeshPoint(event) {
+    if (!meshView) {
+        return;
+    }
+    const { mesh, cell } = meshView;
+    const rect = $('mesh-canvas').getBoundingClientRect();
+    const ix = Math.floor((event.clientX - rect.left) / cell);
+    const iy = mesh.grid.y - 1 - Math.floor((event.clientY - rect.top) / cell);
+    if (ix < 0 || iy < 0 || ix >= mesh.grid.x || iy >= mesh.grid.y) {
+        return;
+    }
+    const x = pointPosition(mesh.min.x, mesh.max.x, ix, mesh.grid.x);
+    const y = pointPosition(mesh.min.y, mesh.max.y, iy, mesh.grid.y);
+    const z = meshValue(mesh, ix, iy);
+    let value = 'no value';
+    if (mesh.state === 'none') {
+        value = 'no mesh';
+    } else if (isNumber(z)) {
+        value = `Z ${signed(z, 3, ' mm')}${meshProbed(mesh, ix, iy) ? ', probed' : ''}`;
+    }
+    setText('mesh-point', `X ${fixed(x, 1)} mm, Y ${fixed(y, 1)} mm: ${value}`);
+}
+
+// Tools
+
+function retractedText(retracted) {
+    if (retracted === true) {
+        return 'Retracted';
+    }
+    if (retracted === false) {
+        return 'Not retracted';
+    }
+    return 'Unknown or no tool';
+}
+
+function renderTools(status) {
+    const printer = status.printer || {};
+    const retracted = Array.isArray(printer.tools_retracted) ? printer.tools_retracted : [];
+    const rows = retracted.map((value, index) => tableRow([`Tool ${index + 1}`, retractedText(value)]));
+    if (rows.length === 0) {
+        rows.push(tableRow(['–', 'Not reported']));
+    }
+    $('tool-rows').replaceChildren(...rows);
+
+    setText('nozzle', `${fixed(printer.temp_nozzle, 1)} / ${fixed(printer.target_nozzle, 0)} °C`);
+    setText('fan-hotend', fixed(printer.fan_hotend, 0, ' RPM'));
+    setText('fan-print', fixed(printer.fan_print, 0, ' RPM'));
+    setText('flow', fixed(printer.flow, 0, ' %'));
+    setText('bed', `${fixed(printer.temp_bed, 1)} / ${fixed(printer.target_bed, 0)} °C`);
+}
+
+// Polling
+
+const sources = [
+    { path: '/api/version', period: Infinity, render: renderVersion },
+    { path: '/api/v1/status', period: 5000, render: renderStatus },
+    { path: '/api/v1/mesh', period: 30000, render: drawMesh },
+];
+for (const source of sources) {
+    source.due = 0;
+}
+
+let busy = false;
+let loginNeeded = false;
+let timer = 0;
+
+function schedule(delay) {
+    clearTimeout(timer);
+    timer = setTimeout(tick, Math.min(Math.max(delay, 0), 60000));
+}
+
+// One request at a time: the printer serves only a few connections, shared with the PrusaLink tab and uploads
+async function tick() {
+    if (busy || loginNeeded || document.hidden) {
+        return;
+    }
+    const now = Date.now();
+    const source = sources.find(s => s.due <= now);
+    if (!source) {
+        schedule(Math.min(...sources.map(s => s.due)) - now);
+        return;
+    }
+    busy = true;
+    try {
+        source.render(await getJson(source.path));
+        source.due = Date.now() + source.period;
+        showUpdated();
+    } catch (error) {
+        source.due = Date.now() + Math.min(source.period, RETRY_MS);
+        if (error instanceof HttpError && error.status === 401) {
+            // Polling on would ask for the login again every few seconds
+            loginNeeded = true;
+            $('login').hidden = false;
+            setText('updated', 'Login needed');
+        } else {
+            showError(source.path, error);
+        }
+    } finally {
+        busy = false;
+    }
+    schedule(100);
+}
+
+$('retry').addEventListener('click', () => {
+    loginNeeded = false;
+    $('login').hidden = true;
+    for (const source of sources) {
+        source.due = Math.min(source.due, Date.now());
+    }
+    schedule(0);
+});
+
+$('mesh-refresh').addEventListener('click', () => {
+    sources.find(s => s.path === '/api/v1/mesh').due = 0;
+    schedule(0);
+});
+
+document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) {
+        schedule(0);
+    }
+});
+
+let resizeTimer = 0;
+window.addEventListener('resize', () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => meshView && drawMesh(meshView.mesh), 150);
+});
+
+const meshCanvas = $('mesh-canvas');
+meshCanvas.addEventListener('pointermove', showMeshPoint);
+meshCanvas.addEventListener('pointerdown', showMeshPoint);
+meshCanvas.addEventListener('pointerleave', event => {
+    if (event.pointerType === 'mouse') {
+        setText('mesh-point', 'Hover or tap a point');
+    }
+});
+
+$('mesh-legend').replaceChildren(...Array.from({ length: COLOR_STEPS }, (_, i) => {
+    const swatch = document.createElement('span');
+    swatch.style.background = colorOfStep(i);
+    return swatch;
+}));
+
+schedule(0);
+</script>
+</body>
+</html>
