@@ -148,6 +148,10 @@ LoopResult CSelftestPart_ToolOffsets::state_ask_user_install_pin() {
     return LoopResult::RunNext;
 }
 
+LoopResult CSelftestPart_ToolOffsets::state_mark_retry() {
+    return LoopResult::MarkLoop0;
+}
+
 LoopResult CSelftestPart_ToolOffsets::state_wait_stable_temp() {
     IPartHandler::SetFsmPhase(PhasesSelftest::ToolOffsets_wait_stable_temp);
     if (all_nozzles_at_target(config.request)) {
@@ -187,7 +191,7 @@ LoopResult CSelftestPart_ToolOffsets::state_finish_calibration() {
 LoopResult CSelftestPart_ToolOffsets::state_review_result() {
     if (failure.has_value()) {
         result.failure = *failure;
-        IPartHandler::SetFsmPhase(PhasesSelftest::ToolOffsets_result_rejected);
+        IPartHandler::SetFsmPhase(pin_tool_offset::can_rerun_after(failure->reason) ? PhasesSelftest::ToolOffsets_result_rejected_retry : PhasesSelftest::ToolOffsets_result_rejected);
         return LoopResult::RunNext;
     }
 
@@ -203,7 +207,19 @@ LoopResult CSelftestPart_ToolOffsets::state_wait_review() {
         return LoopResult::RunNext;
     }
 
-    if (state_machine.GetButtonPressed() != Response::Continue) {
+    const auto button_pressed = state_machine.GetButtonPressed();
+
+    if (button_pressed == Response::Retry && pin_tool_offset::can_rerun_after(failure->reason)) {
+        failure.reset();
+        partial_result.reset();
+        result.failure = {};
+        // Measure again only from a stable calibration temperature, as the first time
+        set_nozzle_temps(SelftestToolOffsets_t::TOOL_CALIBRATION_TEMPERATURE, config.request);
+        quick_cooling.set_active(true);
+        return LoopResult::GoToMark0;
+    }
+
+    if (button_pressed != Response::Continue) {
         return LoopResult::RunCurrent;
     }
 

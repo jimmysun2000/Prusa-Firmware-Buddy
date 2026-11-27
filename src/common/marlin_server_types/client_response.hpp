@@ -211,8 +211,9 @@ enum class PhasesSelftest : PhaseUnderlyingType {
     ToolOffsets_wait_move_away,
     ToolOffsets_wait_user_remove_pin,
     ToolOffsets_result_rejected, ///< The measured offsets were not stored, shows which tool and step failed
+    ToolOffsets_result_rejected_retry, ///< As ToolOffsets_result_rejected, and the measurement can be repeated
     _first_Tool_Offsets = ToolOffsets_wait_user_confirm_start,
-    _last_Tool_Offsets = ToolOffsets_result_rejected,
+    _last_Tool_Offsets = ToolOffsets_result_rejected_retry,
 
     RevisePrinterStatus_ask_revise, ///< Notifies that a selftest part failed and asks if the user wants to revise the setup
     RevisePrinterStatus_revise, ///< ScreenPrinterSetup being shown, user revising the printer setup
@@ -634,6 +635,7 @@ inline constexpr EnumArray<PhasesSelftest, PhaseResponses, CountPhases<PhasesSel
         { PhasesSelftest::ToolOffsets_wait_move_away, {} },
         { PhasesSelftest::ToolOffsets_wait_user_remove_pin, { Response::Continue } },
         { PhasesSelftest::ToolOffsets_result_rejected, { Response::Continue } },
+        { PhasesSelftest::ToolOffsets_result_rejected_retry, { Response::Retry, Response::Continue } },
         { PhasesSelftest::RevisePrinterStatus_ask_revise, { Response::Adjust, Response::Skip } },
         { PhasesSelftest::RevisePrinterStatus_revise, { Response::Done } },
         { PhasesSelftest::RevisePrinterStatus_ask_retry, { Response::Yes, Response::No } },

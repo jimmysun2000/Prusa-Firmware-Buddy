@@ -106,6 +106,11 @@ void SelftestFrameToolOffsets::change() {
         show_rejected(data);
         break;
 
+    case PhasesSelftest::ToolOffsets_result_rejected_retry:
+        show_rejected(data);
+        show_retry_hint(data);
+        break;
+
     default:
         text_phase.Hide();
         text_detail.Hide();
@@ -147,4 +152,21 @@ void SelftestFrameToolOffsets::show_rejected(const SelftestToolOffsets_t &data) 
         text_detail.SetText(_("The stored offsets were not changed."));
         text_detail.Show();
     }
+}
+
+void SelftestFrameToolOffsets::show_retry_hint(const SelftestToolOffsets_t &data) {
+    const std::optional<PhysicalToolIndex> &tool = data.failure.tool;
+    const int reference_tool = selftest::TOOL_OFFSETS_REFERENCE_TOOL.display_index();
+    const int other_tool = data.other_tool + 1;
+
+    // A re-base can reject the shifted offset of a tool that was not measured
+    const bool tool_measured = tool.has_value()
+        && (data.mode == selftest::ToolOffsetsMode::full || *tool == selftest::TOOL_OFFSETS_REFERENCE_TOOL || tool->to_raw() == data.other_tool);
+
+    if (tool_measured) {
+        text_detail.SetText(_("Clean the nozzle of tool %d and check the pin, then retry.").formatted(text_detail_params, tool->display_index()));
+    } else {
+        text_detail.SetText(_("Clean the nozzles of tools %d and %d and check the pin, then retry.").formatted(text_detail_params, reference_tool, other_tool));
+    }
+    text_detail.Show();
 }

@@ -24,6 +24,8 @@ public:
     LoopResult state_home_park();
     LoopResult state_wait_moves_done();
     LoopResult state_ask_user_install_pin();
+    /// A retry of a rejected measurement continues after this state
+    LoopResult state_mark_retry();
     LoopResult state_wait_stable_temp();
     LoopResult state_calibrate();
     LoopResult state_finish_calibration();

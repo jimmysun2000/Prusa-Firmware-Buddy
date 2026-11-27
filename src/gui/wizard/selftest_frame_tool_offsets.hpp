@@ -12,12 +12,14 @@ class SelftestFrameToolOffsets : public SelftestFrameNamedWithRadio {
     FooterLine footer;
     window_wizard_progress_t progress;
     window_text_t text_phase;
-    window_text_t text_detail; ///< Estimate (how long it will take) | calibration target temperature
+    window_text_t text_detail; ///< Estimate (how long it will take) | calibration target temperature | what follows a rejected result
     char target_temp_text[10];
     StringViewUtf8Parameters<32> text_phase_params;
-    StringViewUtf8Parameters<3> text_detail_params;
+    StringViewUtf8Parameters<4> text_detail_params;
 
     void show_rejected(const SelftestToolOffsets_t &data);
+    /// What to do before repeating the rejected measurement
+    void show_retry_hint(const SelftestToolOffsets_t &data);
 
 protected:
     virtual void change() override;
