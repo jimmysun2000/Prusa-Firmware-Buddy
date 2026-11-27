@@ -40,6 +40,7 @@ dd { margin: 0; font-variant-numeric: tabular-nums; }
 table { border-collapse: collapse; font-variant-numeric: tabular-nums; }
 th, td { text-align: left; padding: 4px 16px 4px 0; border-bottom: 1px solid var(--line); white-space: nowrap; }
 th { color: var(--muted); font-weight: 600; }
+tr.active td:first-child { color: var(--accent); font-weight: 600; }
 .mesh { display: flex; flex-wrap: wrap; gap: 16px 28px; align-items: flex-start; }
 .mesh-plot { flex: 1 1 280px; max-width: 440px; min-width: 0; }
 #mesh-canvas { display: block; cursor: crosshair; }
@@ -105,12 +106,13 @@ th { color: var(--muted); font-weight: 600; }
 <h2>Tools</h2>
 <div class="scroll">
 <table>
-<thead><tr><th>Tool</th><th>Filament</th></tr></thead>
+<thead><tr><th>Tool</th><th>Dock</th><th>Nozzle</th><th>Filament</th><th>Retraction</th><th>Nozzle Ø</th></tr></thead>
 <tbody id="tool-rows"></tbody>
 </table>
 </div>
 <h3>Active tool</h3>
 <dl>
+<dt>Tool</dt><dd id="active-tool">–</dd>
 <dt>Nozzle</dt><dd id="nozzle">–</dd>
 <dt>Hotend fan</dt><dd id="fan-hotend">–</dd>
 <dt>Print fan</dt><dd id="fan-print">–</dd>
@@ -188,9 +190,10 @@ function renderVersion(version) {
 }
 
 function renderStatus(status) {
+    lastStatus = status;
     const printer = status.printer || {};
     setText('state', printer.state || '–');
-    renderTools(status);
+    renderTools();
 }
 
 function showUpdated() {
@@ -383,15 +386,71 @@ function retractedText(retracted) {
     return 'Unknown or no tool';
 }
 
-function renderTools(status) {
-    const printer = status.printer || {};
+function dockText(tool) {
+    if (tool.picked && !tool.parked) {
+        return 'Picked';
+    }
+    if (tool.parked && !tool.picked) {
+        return 'Parked';
+    }
+    return 'Unknown';
+}
+
+function retractionText(tool, fullyRetracted) {
+    if (!isNumber(tool.retracted)) {
+        return 'Unknown';
+    }
+    if (fullyRetracted === true) {
+        return `Retracted (${fixed(tool.retracted, 0)} mm)`;
+    }
+    return tool.retracted > 0 ? fixed(tool.retracted, 0, ' mm') : 'None';
+}
+
+let lastStatus = null;
+let lastTools = null;
+
+function renderToolList(tools) {
+    lastTools = tools;
+    renderTools();
+}
+
+// Combines the tools route with the fully retracted flags of the status route
+function renderTools() {
+    const printer = (lastStatus && lastStatus.printer) || {};
     const retracted = Array.isArray(printer.tools_retracted) ? printer.tools_retracted : [];
-    const rows = retracted.map((value, index) => tableRow([`Tool ${index + 1}`, retractedText(value)]));
+    const tools = lastTools && Array.isArray(lastTools.tools) ? lastTools.tools : [];
+    const active = lastTools ? lastTools.active : null;
+
+    const rows = [];
+    for (let i = 0; i < Math.max(tools.length, retracted.length); i++) {
+        const tool = tools[i];
+        const name = `Tool ${i + 1}`;
+        let row;
+        if (!tool) {
+            row = tableRow([name, '–', '–', '–', retractedText(retracted[i]), '–']);
+        } else if (!tool.enabled) {
+            row = tableRow([name, 'Not installed', '', '', '', '']);
+        } else {
+            row = tableRow([
+                i === active ? `${name} (active)` : name,
+                dockText(tool),
+                `${fixed(tool.temp, 1)} / ${fixed(tool.target, 0)} °C`,
+                tool.filament || 'None',
+                retractionText(tool, retracted[i]),
+                fixed(tool.nozzle_diameter, 2, ' mm'),
+            ]);
+        }
+        if (i === active) {
+            row.className = 'active';
+        }
+        rows.push(row);
+    }
     if (rows.length === 0) {
         rows.push(tableRow(['–', 'Not reported']));
     }
     $('tool-rows').replaceChildren(...rows);
 
+    setText('active-tool', isNumber(active) ? `Tool ${active + 1}` : lastTools ? 'None' : '–');
     setText('nozzle', `${fixed(printer.temp_nozzle, 1)} / ${fixed(printer.target_nozzle, 0)} °C`);
     setText('fan-hotend', fixed(printer.fan_hotend, 0, ' RPM'));
     setText('fan-print', fixed(printer.fan_print, 0, ' RPM'));
@@ -404,6 +463,7 @@ function renderTools(status) {
 const sources = [
     { path: '/api/version', period: Infinity, render: renderVersion },
     { path: '/api/v1/status', period: 5000, render: renderStatus },
+    { path: '/api/v1/tools', period: 5000, render: renderToolList },
     { path: '/api/v1/mesh', period: 30000, render: drawMesh },
 ];
 for (const source of sources) {

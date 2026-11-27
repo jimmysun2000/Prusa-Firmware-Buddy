@@ -55,6 +55,7 @@
 #include <printers.h>
 #if PRINTER_IS_PRUSA_XL()
     #include "mesh_renderer.h"
+    #include "tools_renderer.h"
 #endif
 
 namespace nhttp {
@@ -156,6 +157,7 @@ namespace handler {
         SendJson<StatusRenderer>,
 #if PRINTER_IS_PRUSA_XL()
         SendJson<MeshRenderer>,
+        SendJson<ToolsRenderer>,
 #endif
         printer::GcodeUpload,
         printer::GCodePreview,

@@ -102,6 +102,9 @@ template class SendJson<MeshRenderer>;
 // Every connection reserves space for the largest handler; this one must not make it bigger
 static_assert(sizeof(SendJson<MeshRenderer>) <= sizeof(SendJson<StatusRenderer>));
 static_assert(alignof(SendJson<MeshRenderer>) <= alignof(SendJson<StatusRenderer>));
+template class SendJson<ToolsRenderer>;
+static_assert(sizeof(SendJson<ToolsRenderer>) <= sizeof(SendJson<StatusRenderer>));
+static_assert(alignof(SendJson<ToolsRenderer>) <= alignof(SendJson<StatusRenderer>));
 #endif
 
 } // namespace nhttp::handler
