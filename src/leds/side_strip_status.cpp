@@ -29,7 +29,7 @@ std::optional<Look> look(Status status, SideStripStatusMode mode) {
         return pulse(yellow_color, pulse_dark_factor);
     case Status::busy:
         return pulse(purple_color, slow_pulse_dark_factor);
-    case Status::print_heating:
+    case Status::print_start:
         return steady(blue_color);
     case Status::preheating:
         return pulse(blue_color, slow_pulse_dark_factor);
@@ -64,14 +64,11 @@ Status resolve(const Inputs &inputs) {
     if (inputs.busy) {
         return Status::busy;
     }
-    if (inputs.heating) {
-        if (inputs.activity != Activity::printing) {
-            return Status::preheating;
-        }
-        // Later waits, such as for a nozzle at a tool change, belong to printing
-        if (!inputs.first_layer_started) {
-            return Status::print_heating;
-        }
+    if (inputs.activity == Activity::printing && !inputs.first_layer_started) {
+        return Status::print_start;
+    }
+    if (inputs.heating && inputs.activity != Activity::printing) {
+        return Status::preheating;
     }
 
     switch (inputs.activity) {

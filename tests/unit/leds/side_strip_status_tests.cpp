@@ -28,7 +28,7 @@ constexpr Status all_statuses[] = {
     Status::warning_dialog,
     Status::waiting,
     Status::busy,
-    Status::print_heating,
+    Status::print_start,
     Status::preheating,
     Status::printing,
     Status::stopped,
@@ -97,7 +97,7 @@ TEST_CASE("side_strip_status: looks") {
         { Status::warning_dialog, red_color, ColorRGBW(25, 0, 0), 3000 },
         { Status::waiting, yellow_color, ColorRGBW(38, 38, 0), 1000 },
         { Status::busy, purple_color, ColorRGBW(16, 0, 25), 3000 },
-        { Status::print_heating, blue_color, blue_color, 0 },
+        { Status::print_start, blue_color, blue_color, 0 },
         { Status::preheating, blue_color, ColorRGBW(0, 15, 25), 3000 },
         { Status::stopped, red_color, red_color, 0 },
         { Status::finished_warm, green_color, ColorRGBW(0, 25, 0), 3000 },
@@ -178,7 +178,7 @@ TEST_CASE("side_strip_status: pulse phase") {
     CHECK(pulse_period_ms(Status::busy) == 3000);
     CHECK(pulse_period_ms(Status::preheating) == 3000);
     CHECK(pulse_period_ms(Status::finished_warm) == 3000);
-    for (const auto status : { Status::recovering, Status::print_heating, Status::stopped, Status::finished, Status::hot }) {
+    for (const auto status : { Status::recovering, Status::print_start, Status::stopped, Status::finished, Status::hot }) {
         CHECK(pulse_period_ms(status) == 0);
     }
 
@@ -278,7 +278,7 @@ Status expected_status(const Inputs &in) {
         { in.warning_dialog, Status::warning_dialog },
         { in.waits_for_owner, Status::waiting },
         { in.busy, Status::busy },
-        { in.heating && printing && !in.first_layer_started, Status::print_heating },
+        { printing && !in.first_layer_started, Status::print_start },
         { in.heating && !printing, Status::preheating },
         { printing, Status::printing },
         { in.activity == Activity::stopped, Status::stopped },
@@ -340,15 +340,20 @@ TEST_CASE("side_strip_status: resolve cases") {
     in.bed_warm = true;
     CHECK(resolve(in) == Status::idle);
 
-    // Printing ignores the hot bed; heating at the print start, then a prompt
+    // The print start, also with a hot bed, then a prompt
     in = make(Activity::printing);
     in.hot = true;
     in.bed_warm = true;
-    CHECK(resolve(in) == Status::printing);
-    in.heating = true;
-    CHECK(resolve(in) == Status::print_heating);
+    CHECK(resolve(in) == Status::print_start);
     in.waits_for_owner = true;
     CHECK(resolve(in) == Status::waiting);
+
+    // Printing ignores the hot bed
+    in = make(Activity::printing);
+    in.first_layer_started = true;
+    in.hot = true;
+    in.bed_warm = true;
+    CHECK(resolve(in) == Status::printing);
 
     // Finished: the bed cools down, then finished even with a hot nozzle
     in = make(Activity::finished);
@@ -441,14 +446,22 @@ TEST_CASE("side_strip_status: resolve cases") {
 }
 
 TEST_CASE("side_strip_status: first layer") {
-    // A wait for temperature is blue until the first layer begins, then plain white like printing
+    // The whole print start is blue, with or without a wait for temperature
     auto in = make(Activity::printing);
+    CHECK(resolve(in) == Status::print_start);
     in.heating = true;
-    CHECK(resolve(in) == Status::print_heating);
+    CHECK(resolve(in) == Status::print_start);
+
+    // From the first layer on it is plain white, waits for temperature included
     in.first_layer_started = true;
     CHECK(resolve(in) == Status::printing);
     in.heating = false;
     CHECK(resolve(in) == Status::printing);
+
+    // Busy never applies inside a print, but would still rank above the print start
+    in = make(Activity::printing);
+    in.busy = true;
+    CHECK(resolve(in) == Status::busy);
 
     // Only a print has a first layer
     for (const auto activity : { Activity::idle, Activity::finished }) {
@@ -527,7 +540,8 @@ const Scenario scenarios[] = {
     { "5 filament change or crash recovery in a print", inputs_of(Activity::idle, { &Inputs::waits_for_owner, &Inputs::hot }), Status::waiting },
     { "6 paused print", inputs_of(Activity::idle, { &Inputs::waits_for_owner, &Inputs::hot }), Status::waiting },
     { "7 working on its own outside a print", inputs_of(Activity::idle, { &Inputs::busy, &Inputs::heating, &Inputs::hot }), Status::busy },
-    { "8 print start heating", inputs_of(Activity::printing, { &Inputs::heating }), Status::print_heating },
+    { "8 print start, before the first layer", inputs_of(Activity::printing, {}), Status::print_start },
+    { "8 print start, bed hot from the last print", inputs_of(Activity::printing, { &Inputs::hot, &Inputs::bed_warm }), Status::print_start },
     { "9 heating outside a print", inputs_of(Activity::idle, { &Inputs::heating }), Status::preheating },
     { "10 printing", inputs_of(Activity::printing, { &Inputs::first_layer_started, &Inputs::hot, &Inputs::bed_warm }), Status::printing },
     { "10 wait for a nozzle after the first layer", inputs_of(Activity::printing, { &Inputs::heating, &Inputs::first_layer_started, &Inputs::hot }), Status::printing },

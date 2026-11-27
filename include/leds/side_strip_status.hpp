@@ -24,8 +24,8 @@ enum class Status : uint8_t {
     waiting,
     /// The printer works on its own outside a print: a wizard, a calibration, a filament load, G-code
     busy,
-    /// A print waits for a temperature before its first layer
-    print_heating,
+    /// A print has not begun its first layer yet: heating, homing, bed levelling, purging
+    print_start,
     /// A heater warms up outside a print
     preheating,
     printing,
@@ -106,7 +106,7 @@ constexpr bool shows_color(Status status) {
     case Status::warning_dialog:
     case Status::waiting:
     case Status::busy:
-    case Status::print_heating:
+    case Status::print_start:
     case Status::preheating:
     case Status::stopped:
     case Status::finished_warm:
@@ -170,7 +170,7 @@ struct Inputs {
     bool waits_for_owner = false;
     /// The printer works on its own outside a print
     bool busy = false;
-    /// A print waits for a temperature, or a heater warms up to a target outside a print
+    /// A heater warms up to a target outside a print
     bool heating = false;
     /// The print has extruded inside the print area, so its first layer has begun
     bool first_layer_started = false;
@@ -181,9 +181,8 @@ struct Inputs {
 };
 
 /// @returns the status to show, the first of these that applies: error, owner_present, recovering,
-/// warning_dialog, waiting, busy, print_heating or preheating, printing, stopped,
+/// warning_dialog, waiting, busy, print_start or preheating, printing, stopped,
 /// finished_warm or finished, hot, idle.
-/// A print waiting for a temperature after its first layer has begun shows as printing.
 Status resolve(const Inputs &inputs);
 
 /// @returns transition time to use when the tint changes

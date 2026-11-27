@@ -9,7 +9,6 @@
     #include <client_response.hpp>
     #include <feature/print_status_message/print_status_message_mgr.hpp>
     #include <fsm/filament_change_phases.hpp>
-    #include <option/has_chamber_api.h>
     #include <option/has_extruder_fsensor.h>
     #include <option/has_loadcell.h>
     #include <option/has_side_fsensor.h>
@@ -52,18 +51,6 @@ namespace {
             hottest = std::max<float>(hottest, vars.hotend(tool).temp_nozzle);
         }
         return hottest;
-    }
-
-    /// Takes the lock of the status messages
-    bool print_waits_for_heat() {
-        const auto type = print_status_message().current_message().message.type;
-        return type == PrintStatusMessage::waiting_for_hotend_temp
-            || type == PrintStatusMessage::waiting_for_bed_temp
-    #if HAS_CHAMBER_API()
-            // Enclosure soak and M191
-            || type == PrintStatusMessage::waiting_for_chamber_temp
-    #endif
-            || type == PrintStatusMessage::absorbing_heat;
     }
 
     bool is_power_panic_recovery(marlin_server::State state) {
@@ -168,9 +155,11 @@ side_strip_status::Inputs SideStripHandler::read_inputs(uint32_t now_ms) {
 
     case StateAnimation::Printing:
         inputs.activity = Activity::printing;
-        inputs.heating = print_waits_for_heat();
-        // Raised only by extruding inside the print area, so the purge lines in front of the bed do not count
-        inputs.first_layer_started = vars.max_printed_z > 0;
+        // Raised only by extruding inside the print area, so the purge lines in front of the bed do not
+        // count. The print start resets it only when it leaves PrintInit.
+        inputs.first_layer_started = vars.max_printed_z > 0
+            && print_state != marlin_server::State::PrintInit
+            && print_state != marlin_server::State::SerialPrintInit;
         break;
 
     case StateAnimation::Finished:
