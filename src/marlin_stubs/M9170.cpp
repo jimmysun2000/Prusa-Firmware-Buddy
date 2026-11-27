@@ -45,7 +45,7 @@ bool heat_up(int16_t bed_temperature, PhysicalToolIndex tool) {
     if (bed_temperature > 0 && (!thermalManager.wait_for_bed(false) || interrupted())) {
         return false;
     }
-    return thermalManager.wait_for_hotend(tool, { .no_wait_for_cooling = false }) && !interrupted();
+    return thermalManager.wait_for_hotend(tool, { .no_wait_for_cooling = false, .fan_cooling = true }) && !interrupted();
 }
 
 } // namespace
@@ -65,6 +65,10 @@ bool heat_up(int16_t bed_temperature, PhysicalToolIndex tool) {
  * of the whole bed (G29 P1), fills in the rest of the mesh (G29 P3.2, G29 P3.13)
  * and lifts the head by 10 mm. Does not clean the nozzle, activate the mesh,
  * change or park the tool.
+ *
+ * While waiting for the nozzle, the print fan runs at full power if the nozzle
+ * has to cool down and is off if it has to heat up; it has its previous value
+ * again before homing.
  *
  * Every way out sets the bed target and the target of the measuring nozzle to
  * 0; the other nozzles are left alone. A click on the wait screen ends the run
