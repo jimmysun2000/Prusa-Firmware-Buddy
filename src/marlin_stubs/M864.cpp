@@ -22,18 +22,26 @@ static_assert(HAS_SPOOL_JOIN());
  *
  *#### Usage
  *
- *    M864 [ J | A | B | R ]
+ *    M864 [ J | A | B | R | D ]
  *
  *#### Parameters
  *
+ * - `J` - Add a join, together with `A` and `B`
+ * - `A` - Tool that runs out of filament
+ * - `B` - Tool that continues; joined at the end of the chain `A` is in
+ * - `R` - Remove all joins
+ * - `D` - Remove this tool from the joins; the tools before and after it stay joined
  *
  *#### Examples
  *
  *    M864 J A1 B2 ; When tool 1 runs out of filament, continue with tool 2
+ *    M864 D2      ; Remove tool 2 from the joins
  *    M864 R       ; reset any settings
  *    M864         ; Print current join settings
  *
  * Without parameters prints the current Spool join mapping
+ *
+ * Tools are numbered from 0.
  */
 void PrusaGcodeSuite::M864() {
     if (parser.seen('J') && parser.seen("A") && parser.seen("B")) {
@@ -48,6 +56,13 @@ void PrusaGcodeSuite::M864() {
     } else if (parser.seen('R')) {
         // reset spool join settings
         spool_join.reset();
+    } else if (parser.seenval('D')) {
+        const uint8_t spool = parser.byteval('D');
+        if (spool >= VirtualToolIndex::count) {
+            SERIAL_ERROR_MSG("Invalid tool");
+        } else {
+            spool_join.reroute_joins_containing(VirtualToolIndex::from_raw(spool));
+        }
     } else {
         // print current spool join settings
         SERIAL_ECHOLN("Spool joins: ");
