@@ -223,7 +223,19 @@ enum class PhasesSelftest : PhaseUnderlyingType {
     _first_RevisePrinterStatus = RevisePrinterStatus_ask_revise,
     _last_RevisePrinterStatus = RevisePrinterStatus_ask_retry,
 
+    #if HAS_TOOLCHANGER() && !HAS_INDX()
+    HotendPid_confirm_start, ///< Shows the tool, target temperature and fan speed of the tuning
+    HotendPid_heating, ///< Heating up with the heater switched fully on and off
+    HotendPid_measuring, ///< Recording the temperature oscillation
+    HotendPid_result_accepted, ///< Shows the old and new gains, asks whether to store the new ones
+    HotendPid_result_rejected, ///< Nothing was stored, shows why
+    _first_HotendPid = HotendPid_confirm_start,
+    _last_HotendPid = HotendPid_result_rejected,
+
+    _last = _last_HotendPid,
+    #else
     _last = _last_RevisePrinterStatus,
+    #endif
 };
 constexpr inline ClientFSM client_fsm_from_phase(PhasesSelftest) { return ClientFSM::Selftest; }
 
@@ -643,6 +655,13 @@ inline constexpr EnumArray<PhasesSelftest, PhaseResponses, CountPhases<PhasesSel
         { PhasesSelftest::RevisePrinterStatus_ask_revise, { Response::Adjust, Response::Skip } },
         { PhasesSelftest::RevisePrinterStatus_revise, { Response::Done } },
         { PhasesSelftest::RevisePrinterStatus_ask_retry, { Response::Yes, Response::No } },
+    #if HAS_TOOLCHANGER() && !HAS_INDX()
+        { PhasesSelftest::HotendPid_confirm_start, { Response::Continue, Response::Abort } },
+        { PhasesSelftest::HotendPid_heating, { Response::Abort } },
+        { PhasesSelftest::HotendPid_measuring, { Response::Abort } },
+        { PhasesSelftest::HotendPid_result_accepted, { Response::Yes, Response::No } },
+        { PhasesSelftest::HotendPid_result_rejected, { Response::Continue } },
+    #endif
 };
 
 inline constexpr PhaseResponses FanSelftestResponses[] = {
@@ -990,6 +1009,9 @@ enum class SelftestParts {
     ToolOffsets,
     #endif
     RevisePrinterSetup,
+    #if HAS_TOOLCHANGER() && !HAS_INDX()
+    HotendPid,
+    #endif
     _none, // cannot be created, must have same index as _count
     _count = _none
 };
@@ -1018,6 +1040,10 @@ inline constexpr PhasesSelftest SelftestGetFirstPhaseFromPart(SelftestParts part
     #endif
     case SelftestParts::RevisePrinterSetup:
         return PhasesSelftest::_first_RevisePrinterStatus;
+    #if HAS_TOOLCHANGER() && !HAS_INDX()
+    case SelftestParts::HotendPid:
+        return PhasesSelftest::_first_HotendPid;
+    #endif
 
     case SelftestParts::_none:
         break;
@@ -1049,6 +1075,10 @@ inline constexpr PhasesSelftest SelftestGetLastPhaseFromPart(SelftestParts part)
     #endif
     case SelftestParts::RevisePrinterSetup:
         return PhasesSelftest::_last_RevisePrinterStatus;
+    #if HAS_TOOLCHANGER() && !HAS_INDX()
+    case SelftestParts::HotendPid:
+        return PhasesSelftest::_last_HotendPid;
+    #endif
 
     case SelftestParts::_none:
         break;

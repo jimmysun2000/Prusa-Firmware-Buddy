@@ -54,3 +54,7 @@ if(HAS_DWARF)
                      selftest_tool_offsets_interface.cpp
     )
 endif()
+
+if(HAS_TOOLCHANGER AND NOT HAS_INDX)
+  target_sources(firmware PRIVATE selftest_hotend_pid.cpp selftest_hotend_pid_interface.cpp)
+endif()

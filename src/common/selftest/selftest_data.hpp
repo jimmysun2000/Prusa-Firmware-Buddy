@@ -5,6 +5,8 @@
 #include <type_traits>
 
 #include "selftest_types.hpp"
+#include <option/has_indx.h>
+#include <option/has_toolchanger.h>
 
 namespace selftest {
 
@@ -36,6 +38,20 @@ struct ToolOffsetsCalibrationData {
     }
 };
 
-using TestData = std::variant<std::monostate, ToolMask, FirstLayerCalibrationData, ToolOffsetsCalibrationData>;
+#if HAS_TOOLCHANGER() && !HAS_INDX()
+/// What the hotend PID tuning of one tool runs with, chosen by the user for each run
+struct HotendPidTuningData {
+    PhysicalToolIndex tool;
+    int16_t target_temp; ///< [°C]
+    uint8_t print_fan_pwm;
+};
+#endif
+
+using TestData = std::variant<std::monostate, ToolMask, FirstLayerCalibrationData, ToolOffsetsCalibrationData
+#if HAS_TOOLCHANGER() && !HAS_INDX()
+    ,
+    HotendPidTuningData
+#endif
+    >;
 
 } // namespace selftest

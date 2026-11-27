@@ -23,6 +23,7 @@
 #include "selftest_netstatus_interface.hpp"
 #include "selftest_dock_interface.hpp"
 #include "selftest_tool_offsets_interface.hpp"
+#include "selftest_hotend_pid_interface.hpp"
 #include "selftest_axis_config.hpp"
 #include "selftest_heater_config.hpp"
 #include "selftest_loadcell_config.hpp"
@@ -235,6 +236,8 @@ protected:
     std::array<selftest::IPartHandler *, PhysicalToolIndex::count> m_pLoadcell;
     std::array<selftest::IPartHandler *, PhysicalToolIndex::count> pDocks;
     selftest::IPartHandler *pToolOffsets;
+    HotendPidConfig_t config_hotend_pid {};
+    selftest::IPartHandler *pHotendPid = nullptr;
 
     SelftestResult m_result;
 };
@@ -274,6 +277,11 @@ bool CSelftest::Start(const uint64_t test_mask, const selftest::TestData test_da
         config_tool_offsets.request = std::get<ToolOffsetsCalibrationData>(test_data);
     } else {
         config_tool_offsets.request = ToolOffsetsCalibrationData::full();
+    }
+
+    config_hotend_pid = {};
+    if (const auto *request = std::get_if<HotendPidTuningData>(&test_data); request && request->tool.to_raw() < PhysicalToolIndex::count) {
+        config_hotend_pid = { .heater = &Config_HeaterNozzle[request->tool.to_raw()], .request = *request };
     }
 
     m_State = stsStart;
@@ -383,6 +391,11 @@ void CSelftest::Loop() {
             }
         }
         break;
+    case stsHotendPid:
+        if ((ret = selftest::phaseHotendPid(pHotendPid, config_hotend_pid))) {
+            return;
+        }
+        break;
     case stsSelftestStop:
         restoreAfterSelftest();
         break;
@@ -424,6 +437,7 @@ bool CSelftest::Abort() {
         abort_part(&dock);
     }
     abort_part(&pToolOffsets);
+    abort_part(&pHotendPid);
     selftest_invocation::mark_aborted();
     m_State = stsAborted;
 

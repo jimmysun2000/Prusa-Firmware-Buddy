@@ -54,6 +54,11 @@ ScreenSelftest::fnc ScreenSelftest::Get(SelftestParts part) {
     case SelftestParts::RevisePrinterSetup:
         return creator<SelftestFrameRevisePrinterSetup>;
 
+#if HAS_TOOLCHANGER() && !HAS_INDX()
+    case SelftestParts::HotendPid:
+        break;
+#endif
+
     case SelftestParts::_none:
         break;
     }
@@ -114,6 +119,9 @@ string_view_utf8 ScreenSelftest::getCaption(SelftestParts part) {
     case SelftestParts::Dock:
     case SelftestParts::ToolOffsets:
 #endif
+#if HAS_TOOLCHANGER() && !HAS_INDX()
+    case SelftestParts::HotendPid:
+#endif
         return _(en_selftest);
     case SelftestParts::FirstLayer:
     case SelftestParts::FirstLayerQuestions:
@@ -138,6 +146,9 @@ const img::Resource *ScreenSelftest::getIconId(SelftestParts part) {
 #if BOARD_IS_XLBUDDY()
     case SelftestParts::Dock:
     case SelftestParts::ToolOffsets:
+#endif
+#if HAS_TOOLCHANGER() && !HAS_INDX()
+    case SelftestParts::HotendPid:
 #endif
         return &img::selftest_16x16;
     case SelftestParts::_none:

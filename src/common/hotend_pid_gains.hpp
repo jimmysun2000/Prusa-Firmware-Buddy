@@ -38,4 +38,14 @@ constexpr Config to_config(const HotendPIDGains &gains, float pid_dt) {
     return config;
 }
 
+/// Inverse of to_config
+template <class Config>
+constexpr HotendPIDGains from_config(const Config &config, float pid_dt) {
+    return {
+        .kp = config.Kp,
+        .ki = config.Ki / pid_dt,
+        .kd = config.Kd * pid_dt,
+    };
+}
+
 } // namespace hotend_pid

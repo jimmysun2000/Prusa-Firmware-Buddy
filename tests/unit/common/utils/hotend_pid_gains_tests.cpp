@@ -86,3 +86,13 @@ TEST_CASE("hotend_pid: to_config scales like M301") {
     CHECK(config.Kd == Catch::Approx(625.0f));
     CHECK(config.Kc == 7.0f);
 }
+
+TEST_CASE("hotend_pid: from_config undoes to_config") {
+    constexpr float pid_dt = 0.16f;
+    const HotendPIDGains gains { 23.4f, 0.567f, 178.9f };
+    const HotendPIDGains round_trip = from_config(to_config<Config>(gains, pid_dt), pid_dt);
+
+    CHECK(round_trip.kp == gains.kp);
+    CHECK(round_trip.ki == Catch::Approx(gains.ki));
+    CHECK(round_trip.kd == Catch::Approx(gains.kd));
+}

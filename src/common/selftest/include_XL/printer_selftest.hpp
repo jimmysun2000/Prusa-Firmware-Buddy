@@ -21,6 +21,7 @@ typedef enum {
     stsHeaters,
     stsWait_heaters,
     stsReviseSetupAfterHeaters,
+    stsHotendPid,
     stsSelftestStop,
     stsFinish,
     stsFinished,
@@ -48,4 +49,5 @@ enum SelftestMask_t : uint32_t {
     stmSelftestStop = to_one_hot(stsSelftestStop),
     stmDocks = to_one_hot(stsDocks),
     stmToolOffsets = to_one_hot(stsToolOffsets),
+    stmHotendPid = to_one_hot(stsHotendPid),
 };
