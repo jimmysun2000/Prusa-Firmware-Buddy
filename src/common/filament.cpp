@@ -84,6 +84,50 @@ FilamentTypeParameters user_preset_parameters(PresetFilamentType type) {
     return result;
 }
 
+filament_preset_override::Adjustable adjustable_values(const FilamentTypeParameters &params) {
+    return {
+        .chamber_min_temperature = params.chamber_min_temperature,
+        .chamber_max_temperature = params.chamber_max_temperature,
+        .chamber_target_temperature = params.chamber_target_temperature,
+    };
+}
+
+/// \returns the chamber record of a custom filament holding \p values
+FilamentTypeParameters_EEPROM2 adhoc_chamber_record(const filament_preset_override::Adjustable &values) {
+    return {
+        .chamber_min_temperature = FilamentTypeParameters_EEPROM2::encode_chamber_temp(values.chamber_min_temperature),
+        .chamber_max_temperature = FilamentTypeParameters_EEPROM2::encode_chamber_temp(values.chamber_max_temperature),
+        .chamber_target_temperature = FilamentTypeParameters_EEPROM2::encode_chamber_temp(values.chamber_target_temperature),
+    };
+}
+
+/// Gives the edit of a preset from \p before to \p after to the copies loaded in the tools that follow it,
+/// see filament_preset_override::copy_follows_edit()
+void carry_to_loaded_copies(const FilamentTypeParameters &before, const FilamentTypeParameters &after) {
+    const auto values_before = adjustable_values(before);
+    const auto values_after = adjustable_values(after);
+
+    for (const VirtualToolIndex tool : VirtualToolIndex::all()) {
+        const FilamentType copy = AdHocFilamentType { .tool = tool };
+        if (FilamentType::for_tool(tool) != copy) {
+            continue;
+        }
+
+        const FilamentTypeParameters params = copy.parameters();
+        if (!filament_preset_override::copy_follows_edit(params.name, adjustable_values(params), before.name, values_before, values_after)) {
+            continue;
+        }
+
+        // Only the chamber record of the copy is written, and only while it still holds the values from before the edit,
+        // in case a load has replaced the copy since it was read
+        const auto record_before = adhoc_chamber_record(values_before);
+        const auto record_after = adhoc_chamber_record(values_after);
+        config_store().adhoc_filament_parameters_2.transform(tool.to_raw(), [&](const FilamentTypeParameters_EEPROM2 current) {
+            return current == record_before ? record_after : current;
+        });
+    }
+}
+
 } // namespace
 #endif
 
@@ -407,6 +451,7 @@ void FilamentType::set_parameters(const FilamentTypeParameters &set) const {
 #if XL_ENCLOSURE_SUPPORT()
             // Everything else of a preset stays as built in
             using filament_preset_override::encode;
+            const FilamentTypeParameters before = parameters();
             const FilamentTypeParameters built_in = preset_filament_parameters(v);
             config_store().preset_filament_chamber_parameters.set(std::to_underlying(v),
                 FilamentTypeParameters_EEPROM2 {
@@ -414,6 +459,7 @@ void FilamentType::set_parameters(const FilamentTypeParameters &set) const {
                     .chamber_max_temperature = encode(set.chamber_max_temperature, built_in.chamber_max_temperature),
                     .chamber_target_temperature = encode(set.chamber_target_temperature, built_in.chamber_target_temperature),
                 });
+            carry_to_loaded_copies(before, parameters());
 #else
             debug_assert(false);
 #endif

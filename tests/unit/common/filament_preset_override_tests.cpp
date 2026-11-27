@@ -53,3 +53,61 @@ TEST_CASE("filament_preset_override: round trip") {
         }
     }
 }
+
+namespace {
+
+constexpr Adjustable asa_built_in {
+    .chamber_min_temperature = 40,
+    .chamber_max_temperature = 75,
+    .chamber_target_temperature = 70,
+};
+
+constexpr Adjustable asa_edited {
+    .chamber_min_temperature = 35,
+    .chamber_max_temperature = 75,
+    .chamber_target_temperature = 70,
+};
+
+} // namespace
+
+TEST_CASE("filament_preset_override: a copy with the values from before the edit follows") {
+    CHECK(copy_follows_edit("ASA", asa_built_in, "ASA", asa_built_in, asa_edited));
+
+    // And back, on restoring the built-in values
+    CHECK(copy_follows_edit("ASA", asa_edited, "ASA", asa_edited, asa_built_in));
+}
+
+TEST_CASE("filament_preset_override: nothing follows without a change") {
+    CHECK(!copy_follows_edit("ASA", asa_built_in, "ASA", asa_built_in, asa_built_in));
+}
+
+TEST_CASE("filament_preset_override: a copy of another name keeps its values") {
+    // Renamed by the user, or copied from another filament
+    CHECK(!copy_follows_edit("ASA2", asa_built_in, "ASA", asa_built_in, asa_edited));
+    CHECK(!copy_follows_edit("CUSTOM", asa_built_in, "ASA", asa_built_in, asa_edited));
+}
+
+TEST_CASE("filament_preset_override: a copy the user changed keeps its values") {
+    for (const auto changed : {
+             Adjustable { .chamber_min_temperature = 45, .chamber_max_temperature = 75, .chamber_target_temperature = 70 },
+             Adjustable { .chamber_min_temperature = 40, .chamber_max_temperature = 80, .chamber_target_temperature = 70 },
+             Adjustable { .chamber_min_temperature = 40, .chamber_max_temperature = 75, .chamber_target_temperature = 0 },
+         }) {
+        CHECK(!copy_follows_edit("ASA", changed, "ASA", asa_built_in, asa_edited));
+    }
+}
+
+TEST_CASE("filament_preset_override: a copy made after the edit is left alone") {
+    CHECK(!copy_follows_edit("ASA", asa_edited, "ASA", asa_built_in, asa_edited));
+}
+
+TEST_CASE("filament_preset_override: None counts as a value") {
+    // The filament detail screen saves None as 0
+    constexpr Adjustable no_soak {
+        .chamber_min_temperature = 0,
+        .chamber_max_temperature = 75,
+        .chamber_target_temperature = 70,
+    };
+    CHECK(copy_follows_edit("ASA", no_soak, "ASA", no_soak, asa_built_in));
+    CHECK(!copy_follows_edit("ASA", asa_built_in, "ASA", no_soak, asa_edited));
+}
