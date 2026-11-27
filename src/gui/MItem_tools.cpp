@@ -834,6 +834,24 @@ MI_CLEANING_TEMPERATURE::MI_CLEANING_TEMPERATURE()
 void MI_CLEANING_TEMPERATURE::OnClick() {
     config_store().cleaning_filament_temperature.set(static_cast<int16_t>(value()));
 }
+
+namespace {
+// Stored in 0.1 mm
+constexpr NumericInputConfig probing_clearance_spin_config {
+    .min_value = config_store_ns::probing_clearance_min / 10.f,
+    .max_value = config_store_ns::probing_clearance_max / 10.f,
+    .step = 0.1f,
+    .max_decimal_places = 1,
+    .unit = Unit::millimeter,
+};
+} // namespace
+
+MI_PROBING_CLEARANCE::MI_PROBING_CLEARANCE()
+    : WiSpin(std::clamp(config_store().probing_clearance.get(), config_store_ns::probing_clearance_min, config_store_ns::probing_clearance_max) / 10.f, probing_clearance_spin_config, _(label)) {}
+
+void MI_PROBING_CLEARANCE::OnClick() {
+    config_store().probing_clearance.set(static_cast<uint8_t>(std::lround(value() * 10)));
+}
 #endif
 
 #if HAS_TOOL_MAPPING()

@@ -490,6 +490,17 @@ public:
 protected:
     void OnClick() override;
 };
+
+/// Bed drop above the point just tapped before the travel to the next mesh probing point
+class MI_PROBING_CLEARANCE : public WiSpin {
+    static constexpr const char *const label = N_("Bed Drop Between Probes");
+
+public:
+    MI_PROBING_CLEARANCE();
+
+protected:
+    void OnClick() override;
+};
 #endif
 
 #if HAS_TOOL_MAPPING()

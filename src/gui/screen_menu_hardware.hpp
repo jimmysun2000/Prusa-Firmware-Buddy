@@ -74,6 +74,9 @@ using ScreenMenuHardwareBase = BasicScreenMenu<
 #if HAS_MODULAR_BED()
     MI_HEAT_ENTIRE_BED,
 #endif
+#if PRINTER_IS_PRUSA_XL()
+    MI_PROBING_CLEARANCE,
+#endif
 #if HAS_SHEET_PROFILES()
     MI_STEEL_SHEETS,
 #endif
