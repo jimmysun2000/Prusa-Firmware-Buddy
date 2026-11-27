@@ -105,6 +105,22 @@ TEST_CASE("chamber_requirements::missing_parameters_place_no_requirement") {
     CHECK(requirements.arms_heating(threshold));
 }
 
+TEST_CASE("chamber_requirements::zero_places_no_requirement") {
+    // What the filament detail screen saves for unset chamber temperatures
+    ChamberRequirements requirements;
+    requirements.add(0, 0, 0);
+    CHECK(!requirements.target.has_value());
+    CHECK(!requirements.soak_goal.has_value());
+    CHECK(!requirements.limit.has_value());
+
+    add(requirements, asa);
+    requirements.add(0, 0, 0);
+    CHECK(requirements.target == 70);
+    CHECK(requirements.soak_goal == 40);
+    CHECK(requirements.limit == 75);
+    CHECK(requirements.arms_heating(threshold));
+}
+
 TEST_CASE("chamber_requirements::target_without_minimum_arms") {
     ChamberRequirements requirements;
     requirements.add(std::nullopt, 60, 55);

@@ -19,11 +19,11 @@ struct ChamberRequirements {
     OptionalTemperature limit;
 
     /// Takes the chamber parameters of one more used filament into account.
-    /// A missing parameter places no requirement.
+    /// A missing parameter, or 0, places no requirement.
     constexpr void add(OptionalTemperature min_temperature, OptionalTemperature max_temperature, OptionalTemperature target_temperature) {
         raise(target, target_temperature);
         raise(soak_goal, min_temperature);
-        if (max_temperature.has_value() && (!limit.has_value() || *max_temperature < *limit)) {
+        if (is_set(max_temperature) && (!limit.has_value() || *max_temperature < *limit)) {
             limit = max_temperature;
         }
     }
@@ -38,8 +38,13 @@ struct ChamberRequirements {
     }
 
 private:
+    /// The filament detail screen saves an unset chamber temperature as 0
+    static constexpr bool is_set(OptionalTemperature value) {
+        return value.has_value() && *value > 0;
+    }
+
     static constexpr void raise(OptionalTemperature &value, OptionalTemperature candidate) {
-        if (candidate.has_value() && (!value.has_value() || *candidate > *value)) {
+        if (is_set(candidate) && (!value.has_value() || *candidate > *value)) {
             value = candidate;
         }
     }

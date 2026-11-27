@@ -15,9 +15,35 @@
 #include <option/xl_enclosure_support.h>
 #if XL_ENCLOSURE_SUPPORT()
     #include <xl_enclosure.hpp>
+    #include <feature/chamber/chamber.hpp>
+    #include <feature/chamber/chamber_requirements.hpp>
+    #include "overtemp_vent.hpp"
 #endif
 
 namespace buddy {
+
+#if XL_ENCLOSURE_SUPPORT()
+namespace {
+    /// Only used by ChamberFiltration::step(), under its mutex
+    OvertempVent overtemp_vent;
+
+    /// \returns whether Vent When Too Warm wants the fan at full power
+    bool update_overtemp_vent() {
+        if (!config_store().xl_enclosure_overtemp_venting.get()) {
+            return overtemp_vent.update(std::nullopt, std::nullopt);
+        }
+
+        // The estimate is only known while printing, from 5 minutes in
+        const auto current = chamber().current_temperature();
+        if (!current.has_value()) {
+            return overtemp_vent.update(std::nullopt, std::nullopt);
+        }
+
+        const auto limit = print_chamber_requirements().limit;
+        return overtemp_vent.update(current, limit.has_value() ? std::optional<float>(*limit) : std::nullopt);
+    }
+} // namespace
+#endif
 
 ChamberFiltration &chamber_filtration() {
     static ChamberFiltration instance;
@@ -119,6 +145,12 @@ void ChamberFiltration::step() {
         output_pwm_ = {};
         last_filtration_need_s_ = std::nullopt;
     }
+
+#if XL_ENCLOSURE_SUPPORT()
+    if (update_overtemp_vent()) {
+        output_pwm_ = PWM255::from_percent(100);
+    }
+#endif
 
     if (post_print_hold_) {
         output_pwm_ = {};

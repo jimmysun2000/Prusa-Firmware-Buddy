@@ -5,3 +5,7 @@ add_catch_test(chamber_requirements_tests)
 add_executable(bed_cooldown_ramp_tests bed_cooldown_ramp_tests.cpp)
 target_include_directories(bed_cooldown_ramp_tests PRIVATE ${CMAKE_SOURCE_DIR}/src)
 add_catch_test(bed_cooldown_ramp_tests)
+
+add_executable(overtemp_vent_tests overtemp_vent_tests.cpp)
+target_include_directories(overtemp_vent_tests PRIVATE ${CMAKE_SOURCE_DIR}/src)
+add_catch_test(overtemp_vent_tests)

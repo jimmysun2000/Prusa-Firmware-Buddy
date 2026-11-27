@@ -90,3 +90,11 @@ void MI_ENCLOSURE_COOLDOWN_RATE::OnClick() {
 void MI_ENCLOSURE_COOLDOWN_RATE::Loop() {
     set_enabled(config_store().xl_enclosure_bed_heating.get());
 }
+
+MI_ENCLOSURE_OVERTEMP_VENTING::MI_ENCLOSURE_OVERTEMP_VENTING()
+    : WI_ICON_SWITCH_OFF_ON_t(config_store().xl_enclosure_overtemp_venting.get(), _("Vent When Too Warm")) {
+}
+
+void MI_ENCLOSURE_OVERTEMP_VENTING::OnChange([[maybe_unused]] size_t old_index) {
+    config_store().xl_enclosure_overtemp_venting.set(value());
+}

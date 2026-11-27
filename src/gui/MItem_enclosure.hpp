@@ -50,3 +50,12 @@ protected:
     void OnClick() override;
     void Loop() override;
 };
+
+/// Run the enclosure fan at full power while the chamber is warmer than a printed filament allows
+class MI_ENCLOSURE_OVERTEMP_VENTING : public WI_ICON_SWITCH_OFF_ON_t {
+public:
+    MI_ENCLOSURE_OVERTEMP_VENTING();
+
+protected:
+    void OnChange(size_t old_index) override;
+};
