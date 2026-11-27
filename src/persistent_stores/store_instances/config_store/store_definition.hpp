@@ -1170,6 +1170,12 @@ struct CurrentStore
     #endif
 #endif
 
+#if PRINTER_IS_PRUSA_XL()
+    /// Bed drop above the point just tapped before the travel to the next mesh probing point [0.1 mm].
+    /// Clamped to probing_clearance_min..max when used, and never less than the printer's stock drop.
+    StoreItem<uint8_t, probing_clearance_default, ItemFlag::features, journal::hash("Probing Clearance")> probing_clearance;
+#endif
+
 private:
     void perform_config_migrations();
 };

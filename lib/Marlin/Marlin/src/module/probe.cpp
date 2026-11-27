@@ -104,6 +104,7 @@ LOG_COMPONENT_DEF(Probe, logging::Severity::info);
 #include <mapi/motion.hpp>
 #include <gcode/temperature/M104_M109.hpp>
 #include <config_store/store_instance.hpp>
+#include <algorithm>
 #include <numbers>
 #include <filament.hpp>
 #include "printers.h"
@@ -212,6 +213,21 @@ inline void do_probe_raise(const float z_raise) {
   if (z_dest > current_position.z)
     do_blocking_move_to_z(z_dest);
 }
+
+namespace {
+
+/// Lift above the point just tapped before the travel to the next probing point
+float clearance_between_probes() {
+  #if PRINTER_IS_PRUSA_XL()
+    const uint8_t stored = std::clamp(config_store().probing_clearance.get(), config_store_ns::probing_clearance_min, config_store_ns::probing_clearance_max);
+    // The setting's minimum reads 0.2 mm and stands for the stock drop, which is slightly larger
+    return std::max<float>(Z_CLEARANCE_BETWEEN_PROBES, stored / 10.0f);
+  #else
+    return Z_CLEARANCE_BETWEEN_PROBES;
+  #endif
+}
+
+} // namespace
 
 FORCE_INLINE void probe_specific_action(const bool deploy) {
   #if ENABLED(NOZZLE_LOAD_CELL)
@@ -960,7 +976,7 @@ float probe_at_point(const xy_pos_t &pos, const ProbePtRaise raise_after/*=PROBE
 
     const bool big_raise = raise_after == PROBE_PT_BIG_RAISE;
     if (big_raise || raise_after == PROBE_PT_RAISE) {
-      plan_park_move_to(current_position.x, current_position.y, move_away_from + (big_raise ? 25 : Z_CLEARANCE_BETWEEN_PROBES), MMM_TO_MMS(XY_PROBE_SPEED), MMM_TO_MMS(Z_PROBE_SPEED_FAST), Segmented::no);
+      plan_park_move_to(current_position.x, current_position.y, move_away_from + (big_raise ? 25 : clearance_between_probes()), MMM_TO_MMS(XY_PROBE_SPEED), MMM_TO_MMS(Z_PROBE_SPEED_FAST), Segmented::no);
     } else if (raise_after == PROBE_PT_STOW)
       if (STOW_PROBE()) measured_z = NAN;
   }

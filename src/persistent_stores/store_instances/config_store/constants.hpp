@@ -43,6 +43,13 @@ inline constexpr uint8_t purge_speed_min { 30 };
 inline constexpr uint8_t purge_speed_max { 80 };
 inline constexpr uint8_t purge_speed_default { 45 };
 
+// Bed drop between mesh probing points, above the point just tapped, in 0.1 mm.
+// The minimum stands for the stock drop; the maximum stays below the height the first point is approached from.
+inline constexpr uint8_t probing_clearance_min { 2 };
+inline constexpr uint8_t probing_clearance_max { 30 };
+inline constexpr uint8_t probing_clearance_default { 10 };
+static_assert(probing_clearance_min <= probing_clearance_default && probing_clearance_default <= probing_clearance_max);
+
 #if HAS_AUTO_RETRACT()
 inline constexpr uint8_t invalid_retracted_distance = 255;
 #endif
