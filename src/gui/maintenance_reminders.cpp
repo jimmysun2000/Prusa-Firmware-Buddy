@@ -10,6 +10,7 @@
 #include <DialogHandler.hpp>
 
 #include <cinttypes>
+#include <ctime>
 
 namespace maintenance_reminders {
 
@@ -32,6 +33,8 @@ namespace {
             return { 1000, N_("m") };
         case Metric::tool_changes:
             return { 1, N_("changes") };
+        case Metric::months:
+            return { seconds_per_month, N_("months") };
         }
         return { 1, "" };
     }
@@ -39,7 +42,7 @@ namespace {
     /// RAM only: counter value from which a postponed slot shows again, 0 = not postponed
     std::array<uint32_t, slot_count> postponed_until_counter {};
 
-    /// @returns the odometer counter of @p slot in the counting unit
+    /// @returns the counter of @p slot in the counting unit: of the odometer, or of the clock for calendar rows (0 = unknown)
     uint32_t counter(const Slot &slot) {
         auto &odometer = Odometer_s::instance();
         const auto &tool = slot.tool;
@@ -53,12 +56,15 @@ namespace {
         }
         case Metric::tool_changes:
             return tool ? odometer.get_toolpick(*tool) : odometer.get_toolpick_all();
+        case Metric::months:
+            return date_counter(time(nullptr));
         }
         return 0;
     }
 
     uint32_t usage_in_counts(const Slot &slot, uint32_t counter_value) {
-        return usage(counter_value, config_store().maintenance_baseline.get(slot.index()));
+        const uint32_t baseline = config_store().maintenance_baseline.get(slot.index());
+        return (items[slot.item].metric == Metric::months) ? date_usage(counter_value, baseline) : usage(counter_value, baseline);
     }
 
     /// Calls @p f(slot) for every slot of row @p item, including disabled tools, until it returns false
@@ -229,6 +235,10 @@ void format_progress(StringBuilder &sb, const Slot &slot) {
         sb.append_string_view(_("Off"));
         return;
     }
+    if (items[slot.item].metric == Metric::months && counter(slot) == 0) {
+        sb.append_string_view(_("no clock"));
+        return;
+    }
     sb.append_printf("%" PRIu32 "/", usage(slot));
     append_amount(sb, slot_interval, items[slot.item].metric);
 }
@@ -248,6 +258,14 @@ bool prompt_due_items() {
         const uint32_t slot_interval = interval(slot.item);
         const uint32_t unit_size = metric_info(items[slot.item].metric).unit_size;
         const uint32_t counter_value = counter(slot);
+
+        auto &baselines = config_store().maintenance_baseline;
+        if (items[slot.item].metric == Metric::months && slot_interval != 0 && needs_date_stamp(counter_value, baselines.get(slot.index()))) {
+            // Turned on or reset while the clock was unknown: the counting starts at the first known date
+            baselines.set(slot.index(), counter_value);
+            return true;
+        }
+
         const uint32_t used = usage_in_counts(slot, counter_value);
         if (!is_due(used, slot_interval, unit_size) || counter_value < postponed_until_counter[slot.index()]) {
             return true;

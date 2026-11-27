@@ -89,6 +89,74 @@ TEST_CASE("maintenance_reminders::starts_counting") {
     }
 }
 
+TEST_CASE("maintenance_reminders::date_counter") {
+    SECTION("a clock that was never set is unknown") {
+        CHECK(date_counter(-1) == 0);
+        CHECK(date_counter(0) == 0);
+        CHECK(date_counter(first_valid_clock - 1) == 0);
+    }
+
+    SECTION("a known date is the counter") {
+        CHECK(date_counter(first_valid_clock) == first_valid_clock);
+        CHECK(date_counter(1'795'000'000) == 1'795'000'000);
+        CHECK(date_counter(u32_max) == u32_max);
+    }
+
+    SECTION("beyond the counter range is unknown") {
+        CHECK(date_counter(int64_t { u32_max } + 1) == 0);
+    }
+}
+
+TEST_CASE("maintenance_reminders::date_usage") {
+    constexpr uint32_t start = 1'780'000'000;
+
+    SECTION("time since the baseline") {
+        CHECK(date_usage(start + 100, start) == 100);
+        CHECK(date_usage(start, start) == 0);
+    }
+
+    SECTION("unknown clock: no usage, never due") {
+        CHECK(date_usage(0, start) == 0);
+        CHECK_FALSE(is_due(date_usage(0, start), 6, seconds_per_month));
+    }
+
+    SECTION("pending baseline: no usage, never due") {
+        CHECK(date_usage(start, 0) == 0);
+        CHECK_FALSE(is_due(date_usage(start, 0), 6, seconds_per_month));
+        CHECK_FALSE(is_due(date_usage(u32_max, 0), 1, seconds_per_month));
+    }
+
+    SECTION("clock set back before the baseline: no usage") {
+        CHECK(date_usage(start - 1, start) == 0);
+        CHECK_FALSE(is_due(date_usage(start - 86'400, start), 1, seconds_per_month));
+    }
+
+    SECTION("due after the interval in months") {
+        CHECK_FALSE(is_due(date_usage(start + 6 * seconds_per_month - 1, start), 6, seconds_per_month));
+        CHECK(is_due(date_usage(start + 6 * seconds_per_month, start), 6, seconds_per_month));
+        // The longest interval the menu offers fits the counter
+        CHECK(interval_in_counts(24, seconds_per_month) == 24 * seconds_per_month);
+    }
+}
+
+TEST_CASE("maintenance_reminders::needs_date_stamp") {
+    constexpr uint32_t now = 1'780'000'000;
+
+    CHECK(needs_date_stamp(now, 0));
+    CHECK_FALSE(needs_date_stamp(now, now - 100));
+
+    SECTION("never while the clock is unknown") {
+        CHECK_FALSE(needs_date_stamp(0, 0));
+        CHECK_FALSE(needs_date_stamp(0, now));
+    }
+
+    SECTION("the stamped baseline counts from then on") {
+        const uint32_t baseline = now;
+        CHECK_FALSE(needs_date_stamp(now, baseline));
+        CHECK(date_usage(now, baseline) == 0);
+    }
+}
+
 TEST_CASE("maintenance_reminders::first_row_to_default") {
     SECTION("first start: every row") {
         CHECK(first_row_to_default(0, 5) == 0);

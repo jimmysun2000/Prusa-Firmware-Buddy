@@ -15,6 +15,7 @@ enum class Metric : uint8_t {
     print_hours, ///< Printing time; counted in s, set in h
     filament_m, ///< Extruded filament; counted in mm, set in m
     tool_changes, ///< Tool picks; counted and set in picks
+    months, ///< Calendar time; counted in s of the real-time clock, set in months
 };
 
 enum class Scope : uint8_t {
@@ -38,12 +39,14 @@ struct Item {
 /// A default interval starts counting when it is applied, so a new row is never due by itself.
 /// The defaults of 300 h, 500 h and 700 h are the intervals of Prusa's XL maintenance article;
 /// the general inspection covers the belts, the fans and the tool changer.
+/// The article asks for the linear rails every 3 to 6 months; 6 is the owner's choice.
 inline constexpr std::array items {
     Item { N_("General inspection"), Metric::print_hours, Scope::printer, 300 },
     Item { N_("Z-axis lubrication"), Metric::print_hours, Scope::printer, 500 },
     Item { N_("Dock check"), Metric::tool_changes, Scope::printer, 0 },
     Item { N_("Nozzle wear"), Metric::filament_m, Scope::per_tool, 0 },
     Item { N_("Electronics check"), Metric::print_hours, Scope::printer, 700 },
+    Item { N_("Rail lubrication"), Metric::months, Scope::printer, 6 },
 };
 
 inline constexpr size_t item_count = items.size();

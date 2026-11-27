@@ -6,7 +6,7 @@
 
 class StringBuilder;
 
-/// Maintenance reminders: a counter of the odometer minus its value at the last reset,
+/// Maintenance reminders: a counter of the odometer (or of the clock) minus its value at the last reset,
 /// against a user-set interval per table row. Information only, nothing is controlled.
 /// GUI thread only.
 namespace maintenance_reminders {
@@ -32,11 +32,12 @@ Slot visible_slot(size_t n);
 /// @returns the translatable setting unit of @p metric
 const char *unit_name(Metric metric);
 
-/// @returns the interval of row @p item in its setting unit (h, m, picks), 0 = Off
+/// @returns the interval of row @p item in its setting unit (h, m, picks, months), 0 = Off
 uint32_t interval(uint8_t item);
 
 /// Stores the interval of row @p item. Turning a row from Off on starts its counting
-/// from the current counters. Writes the config store if the value changed.
+/// from the current counters; for a calendar row while the clock is unknown, from the first
+/// known date (prompt_due_items). Writes the config store if the value changed.
 void set_interval(uint8_t item, uint32_t interval);
 
 /// Gives every printer row with a default interval that default, once per row: when a firmware
@@ -46,25 +47,30 @@ void set_interval(uint8_t item, uint32_t interval);
 /// Writes the config store if anything changed.
 void apply_defaults();
 
-/// @returns the usage since the last reset, in the setting unit (h, m, picks)
+/// @returns the usage since the last reset, in the setting unit (h, m, picks, months);
+/// 0 for a calendar row while the clock is unknown or its counting has not started
 uint32_t usage(const Slot &slot);
 
-/// @returns whether the usage reached the interval; never when the row is Off
+/// @returns whether the usage reached the interval; never when the row is Off,
+/// nor for a calendar row while the clock is unknown or its counting has not started
 bool is_due(const Slot &slot);
 
-/// Starts the counting of @p slot anew from the current counter. Writes the config store.
+/// Starts the counting of @p slot anew from the current counter; for a calendar row while the
+/// clock is unknown, from the first known date (prompt_due_items). Writes the config store.
 void reset(const Slot &slot);
 
 /// Appends the name, e.g. "Nozzle wear T2"
 void format_name(StringBuilder &sb, const Slot &slot);
 
-/// Appends the usage against the interval, e.g. "812/2000 m", or "Off"
+/// Appends the usage against the interval, e.g. "812/2000 m", or "Off";
+/// "no clock" for a calendar row while the clock is unknown
 void format_progress(StringBuilder &sb, const Slot &slot);
 
 /// Applies the default intervals (apply_defaults), then shows a blocking message box for each due
 /// reminder that was not postponed. DONE resets the counter, NOT NOW postpones it (RAM only)
 /// until the usage grows by another 10 % of the interval. A box closes without an answer when a
 /// print starts. Does nothing unless the printer is idle and no dialog is open.
+/// A calendar row waiting for a known date starts its counting here once the clock is known.
 /// @returns true if the check was done
 bool prompt_due_items();
 

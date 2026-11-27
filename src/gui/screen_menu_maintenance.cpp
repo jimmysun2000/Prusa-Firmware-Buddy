@@ -36,12 +36,20 @@ const NumericInputConfig tool_changes_interval_config {
     .special_value = 0,
 };
 
+const NumericInputConfig months_interval_config {
+    .max_value = 24,
+    .step = 1,
+    .special_value = 0,
+};
+
 const NumericInputConfig &interval_config(Metric metric) {
     switch (metric) {
     case Metric::print_hours:
         return hours_interval_config;
     case Metric::filament_m:
         return filament_interval_config;
+    case Metric::months:
+        return months_interval_config;
     case Metric::tool_changes:
         break;
     }
