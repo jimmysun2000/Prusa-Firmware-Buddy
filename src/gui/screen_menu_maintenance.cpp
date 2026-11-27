@@ -25,7 +25,7 @@ const NumericInputConfig hours_interval_config {
 };
 
 const NumericInputConfig filament_interval_config {
-    .max_value = 100000,
+    .max_value = 500000,
     .step = 100,
     .special_value = 0,
 };
@@ -68,7 +68,7 @@ public:
     }
 
     void click(IWindowMenu &) override {
-        if (maintenance_reminders::interval(slot_.item) == 0) {
+        if (maintenance_reminders::interval(slot_) == 0) {
             return;
         }
 
@@ -92,37 +92,37 @@ private:
 
 class MenuItemMaintenanceInterval final : public WiSpin {
 public:
-    MenuItemMaintenanceInterval(uint8_t item)
-        : WiSpin(static_cast<float>(maintenance_reminders::interval(item)), interval_config(maintenance_reminders::items[item].metric), string_view_utf8 {})
-        , item_(item) {
-        const auto &table_item = maintenance_reminders::items[item];
+    MenuItemMaintenanceInterval(const Slot &slot)
+        : WiSpin(static_cast<float>(maintenance_reminders::interval(slot)), interval_config(maintenance_reminders::items[slot.item].metric), string_view_utf8 {})
+        , slot_(slot) {
         auto sb = StringBuilder::from_ptr(label_.data(), label_.size());
-        sb.append_string_view(_(table_item.name));
+        maintenance_reminders::format_name(sb, slot_);
         sb.append_string(" (");
-        sb.append_string_view(_(maintenance_reminders::unit_name(table_item.metric)));
+        sb.append_string_view(_(maintenance_reminders::unit_name(maintenance_reminders::items[slot.item].metric)));
         sb.append_char(')');
         SetLabel(string_view_utf8::MakeRAM(label_.data()));
     }
 
 protected:
     void OnClick() override {
-        maintenance_reminders::set_interval(item_, static_cast<uint32_t>(value()));
+        maintenance_reminders::set_interval(slot_, static_cast<uint32_t>(value()));
     }
 
 private:
-    uint8_t item_;
+    Slot slot_;
     LabelBuffer label_ {};
 };
 
+/// One interval per visible slot: per row, and per enabled tool for nozzle wear
 constexpr screen_menu_virtual::Configuration intervals_menu {
     .item_count = []() -> int {
-        return maintenance_reminders::item_count + 1; // + MI_RETURN
+        return static_cast<int>(maintenance_reminders::visible_slot_count()) + 1; // + MI_RETURN
     },
     .item_constructor = [](WindowMenuVirtual::ItemVariant &variant, int index) {
         if (index == 0) {
             variant.emplace<MI_RETURN>();
         } else {
-            variant.emplace<MenuItemMaintenanceInterval>(static_cast<uint8_t>(index - 1));
+            variant.emplace<MenuItemMaintenanceInterval>(maintenance_reminders::visible_slot(index - 1));
         } //
     },
     .title = N_("MAINTENANCE INTERVALS"),

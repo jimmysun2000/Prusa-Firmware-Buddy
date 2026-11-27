@@ -53,6 +53,12 @@ inline constexpr size_t item_count = items.size();
 
 static_assert(std::ranges::all_of(items, [](const Item &item) { return item.scope == Scope::printer || item.default_interval == 0; }));
 
+/// The only per-tool row; its interval is stored per tool, apart from the row intervals
+inline constexpr uint8_t nozzle_wear_item = 3;
+
+static_assert(items[nozzle_wear_item].scope == Scope::per_tool);
+static_assert(std::ranges::count(items, Scope::per_tool, &Item::scope) == 1);
+
 constexpr size_t slot_span(Scope scope) {
     return (scope == Scope::per_tool) ? PhysicalToolIndex::count : 1;
 }

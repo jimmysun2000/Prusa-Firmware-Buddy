@@ -165,33 +165,48 @@ const char *unit_name(Metric metric) {
     return metric_info(metric).unit;
 }
 
-uint32_t interval(uint8_t item) {
-    return config_store().maintenance_interval.get(item);
+uint32_t interval(const Slot &slot) {
+    auto &store = config_store();
+    return slot.tool ? store.maintenance_nozzle_interval.get(slot.tool->to_raw()) : store.maintenance_interval.get(slot.item);
 }
 
-void set_interval(uint8_t item, uint32_t new_interval) {
+void set_interval(const Slot &slot, uint32_t new_interval) {
     auto &store = config_store();
-    const uint32_t old_interval = store.maintenance_interval.get(item);
+    const uint32_t old_interval = interval(slot);
     if (new_interval == old_interval) {
         return;
     }
 
     auto transaction = store.get_backend().transaction_guard();
 
-    // While Off, the baselines are not maintained: a usage would include everything since they were last set
+    // While Off, the baseline is not maintained: a usage would include everything since it was last set
     if (starts_counting(old_interval, new_interval)) {
-        for_each_slot_of(item, [&](const Slot &slot) {
-            store.maintenance_baseline.set(slot.index(), counter(slot));
-            return true;
-        });
+        store.maintenance_baseline.set(slot.index(), counter(slot));
     }
-    store.maintenance_interval.set(item, new_interval);
+    if (slot.tool) {
+        store.maintenance_nozzle_interval.set(slot.tool->to_raw(), new_interval);
+    } else {
+        store.maintenance_interval.set(slot.item, new_interval);
+    }
 
-    std::fill(postponed_until_counter.begin() + first_slot(item), postponed_until_counter.begin() + first_slot(item + 1), 0);
+    postponed_until_counter[slot.index()] = 0;
 }
 
 void apply_defaults() {
     auto &store = config_store();
+
+    // Older firmware stored one nozzle wear interval for all tools: it becomes the interval of each tool without one.
+    // The baselines stay, the tools keep counting.
+    if (const uint32_t row_interval = store.maintenance_interval.get(nozzle_wear_item); row_interval != 0) {
+        auto transaction = store.get_backend().transaction_guard();
+        for (const auto tool : PhysicalToolIndex::all()) {
+            if (store.maintenance_nozzle_interval.get(tool.to_raw()) == 0) {
+                store.maintenance_nozzle_interval.set(tool.to_raw(), row_interval);
+            }
+        }
+        store.maintenance_interval.set(nozzle_wear_item, 0);
+    }
+
     const size_t applied = store.maintenance_defaults_applied.get();
     const size_t first_row = first_row_to_default(applied, item_count);
     if (first_row == item_count) {
@@ -201,8 +216,9 @@ void apply_defaults() {
     auto transaction = store.get_backend().transaction_guard();
     for (uint8_t row = static_cast<uint8_t>(first_row); row < item_count; ++row) {
         const Item &item = items[row];
-        if (item.scope == Scope::printer && item.default_interval != 0 && interval(row) == 0) {
-            set_interval(row, item.default_interval);
+        const Slot slot { row, std::nullopt };
+        if (item.scope == Scope::printer && item.default_interval != 0 && interval(slot) == 0) {
+            set_interval(slot, item.default_interval);
         }
     }
     store.maintenance_defaults_applied.set(static_cast<uint8_t>(item_count));
@@ -213,7 +229,7 @@ uint32_t usage(const Slot &slot) {
 }
 
 bool is_due(const Slot &slot) {
-    return is_due(usage_in_counts(slot, counter(slot)), interval(slot.item), metric_info(items[slot.item].metric).unit_size);
+    return is_due(usage_in_counts(slot, counter(slot)), interval(slot), metric_info(items[slot.item].metric).unit_size);
 }
 
 void reset(const Slot &slot) {
@@ -230,7 +246,7 @@ void format_name(StringBuilder &sb, const Slot &slot) {
 }
 
 void format_progress(StringBuilder &sb, const Slot &slot) {
-    const uint32_t slot_interval = interval(slot.item);
+    const uint32_t slot_interval = interval(slot);
     if (slot_interval == 0) {
         sb.append_string_view(_("Off"));
         return;
@@ -255,7 +271,7 @@ bool prompt_due_items() {
             return false;
         }
 
-        const uint32_t slot_interval = interval(slot.item);
+        const uint32_t slot_interval = interval(slot);
         const uint32_t unit_size = metric_info(items[slot.item].metric).unit_size;
         const uint32_t counter_value = counter(slot);
 

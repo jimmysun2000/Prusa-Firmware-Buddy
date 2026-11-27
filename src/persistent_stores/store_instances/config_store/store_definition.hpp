@@ -1094,6 +1094,8 @@ struct CurrentStore
     StoreItemArray<uint32_t, uint32_t { 0 }, ItemFlag::stats, journal::hash("Maintenance Reminder Baseline"), 32, maintenance_reminders::slot_count> maintenance_baseline;
     /// Number of leading maintenance reminder table rows that got their default interval. Use maintenance_reminders.
     StoreItem<uint8_t, 0, ItemFlag::features, journal::hash("Maintenance Defaults Applied")> maintenance_defaults_applied;
+    /// Nozzle wear reminder interval per tool [m], 0 = Off; replaces the nozzle wear row of maintenance_interval. Use maintenance_reminders.
+    StoreItemArray<uint32_t, uint32_t { 0 }, ItemFlag::features, journal::hash("Maintenance Nozzle Interval"), 16, PhysicalToolIndex::count> maintenance_nozzle_interval;
 #endif
 
 #if HAS_CUSTOM_NOZZLE_WIPER()

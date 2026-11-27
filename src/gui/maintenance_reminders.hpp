@@ -32,18 +32,21 @@ Slot visible_slot(size_t n);
 /// @returns the translatable setting unit of @p metric
 const char *unit_name(Metric metric);
 
-/// @returns the interval of row @p item in its setting unit (h, m, picks, months), 0 = Off
-uint32_t interval(uint8_t item);
+/// @returns the interval of @p slot in its setting unit (h, m, picks, months), 0 = Off.
+/// Nozzle wear has one per tool, the other rows one per row.
+uint32_t interval(const Slot &slot);
 
-/// Stores the interval of row @p item. Turning a row from Off on starts its counting
-/// from the current counters; for a calendar row while the clock is unknown, from the first
+/// Stores the interval of @p slot. Turning it from Off on starts its counting
+/// from its current counter; for a calendar row while the clock is unknown, from the first
 /// known date (prompt_due_items). Writes the config store if the value changed.
-void set_interval(uint8_t item, uint32_t interval);
+void set_interval(const Slot &slot, uint32_t interval);
 
 /// Gives every printer row with a default interval that default, once per row: when a firmware
 /// that has the row calls this for the first time, or after the settings were reset.
 /// Only rows that are Off then get it, their counting starts from the current counters.
 /// A row turned Off later stays Off; a row the user set keeps its interval and counting.
+/// A nozzle wear interval an older firmware stored for all tools becomes the interval of each
+/// tool without one, keeping their counting.
 /// Writes the config store if anything changed.
 void apply_defaults();
 
@@ -51,7 +54,7 @@ void apply_defaults();
 /// 0 for a calendar row while the clock is unknown or its counting has not started
 uint32_t usage(const Slot &slot);
 
-/// @returns whether the usage reached the interval; never when the row is Off,
+/// @returns whether the usage reached the interval; never when the slot is Off,
 /// nor for a calendar row while the clock is unknown or its counting has not started
 bool is_due(const Slot &slot);
 

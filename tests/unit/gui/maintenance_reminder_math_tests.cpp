@@ -46,6 +46,13 @@ TEST_CASE("maintenance_reminders::is_due") {
         CHECK(is_due(500 * seconds_per_hour, 500, seconds_per_hour));
     }
 
+    SECTION("the longest filament intervals fit the counter") {
+        CHECK(interval_in_counts(100'000, mm_per_m) == 100'000'000);
+        CHECK(interval_in_counts(500'000, mm_per_m) == 500'000'000);
+        CHECK_FALSE(is_due(100'000'000 - 1, 100'000, mm_per_m));
+        CHECK(is_due(100'000'000, 100'000, mm_per_m));
+    }
+
     SECTION("intervals beyond the counter range saturate") {
         CHECK(interval_in_counts(2'000'000, seconds_per_hour) == u32_max);
         CHECK_FALSE(is_due(u32_max - 1, 2'000'000, seconds_per_hour));
