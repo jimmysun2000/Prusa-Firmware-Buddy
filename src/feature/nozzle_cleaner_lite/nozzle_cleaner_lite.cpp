@@ -29,6 +29,7 @@
 
 #if HAS_CUSTOM_NOZZLE_WIPER()
     #include "custom_wiper_geometry.hpp"
+    #include <cooling_fan_assist.hpp>
     #include <filament.hpp>
     #include <marlin_server.hpp>
     #include <marlin_stubs/skippable_gcode.hpp>
@@ -314,12 +315,23 @@ namespace {
         target_changed,
     };
 
+    /// The print fan value Marlin applies to the picked tool
+    struct PrintFanPort {
+        uint8_t get() const {
+            return thermalManager.get_print_fan_speed();
+        }
+        void set(uint8_t pwm) const {
+            thermalManager.set_print_fan_speed(pwm);
+        }
+    };
+
     /// Waits for the nozzle to get between \p min_temp and \p max_temp while
-    /// its heater holds \p target. Runs the print fan once the nozzle is too hot.
+    /// its heater holds \p target. Runs the print fan while the nozzle is too hot
+    /// and puts the fan back on the way out, before the nozzle may touch the wiper.
     WaitResult wait_for_touch_range(PhysicalToolIndex tool, int16_t target, float min_temp, float max_temp, PrintStatusMessageGuard &status) {
         Hotend &hotend = Hotend::for_tool(tool);
         const uint32_t start_ms = ticks_ms();
-        bool fan_on = false;
+        cooling_fan_assist::Guard<PrintFanPort> fan;
 
         while (true) {
             if (planner.draining()) {
@@ -335,11 +347,8 @@ namespace {
                     return WaitResult::reached;
                 }
 
+                fan.update(temp, target, max_temp);
                 const bool too_hot = temp > max_temp;
-                if (too_hot && !fan_on) {
-                    thermalManager.set_print_fan_speed(255);
-                    fan_on = true;
-                }
                 status.update<PrintStatusMessage::waiting_for_hotend_temp>({
                     .progress = { .current = temp, .target = too_hot ? max_temp : static_cast<float>(target) },
                     .tool = tool.to_raw(),
@@ -413,12 +422,8 @@ namespace {
         ScopeGuard restore_nozzle_target([&] {
             hotend.set_nozzle_target_temp(restore_target);
         });
-        const uint8_t saved_fan_speed = thermalManager.get_print_fan_speed();
-        ScopeGuard restore_fan_speed([&] {
-            thermalManager.set_print_fan_speed(saved_fan_speed);
-        });
 
-        // Declared after the temperature guards so that the nozzle leaves before they restore
+        // Declared after the target guard so that the nozzle leaves before the target is restored
         ScopeGuard retreat([&] {
             if (planner.draining()) {
                 return;
@@ -709,10 +714,6 @@ bool deep_clean(uint16_t hold_s) {
 
     ScopeGuard restore_nozzle_target([&] {
         hotend.set_nozzle_target_temp(saved_nozzle_target);
-    });
-    const uint8_t saved_fan_speed = thermalManager.get_print_fan_speed();
-    ScopeGuard restore_fan_speed([&] {
-        thermalManager.set_print_fan_speed(saved_fan_speed);
     });
 
     // The soak point is beside the wiper and above it, so only Z can be left to restore
