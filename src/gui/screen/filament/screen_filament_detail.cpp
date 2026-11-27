@@ -9,6 +9,7 @@
 #include <utils/string_builder.hpp>
 #include <screen/screen_preheat.hpp>
 #include <bsod/bsod.h>
+#include <option/xl_enclosure_support.h>
 
 #if HAS_CHAMBER_API()
     #include <feature/chamber/chamber.hpp>
@@ -324,7 +325,10 @@ void ScreenFilamentDetail::setup(FilamentType filament_type, const FilamentTypeP
 
     const bool is_customizable = filament_type.is_customizable() && !args.force_disable_customizable;
 
-#if HAS_CHAMBER_API()
+#if XL_ENCLOSURE_SUPPORT()
+    // Shown also without Chamber Heating: Vent When Too Warm uses the chamber maximum on its own
+    const bool hide_chamber_items = chamber().backend() != Chamber::Backend::xl_enclosure;
+#elif HAS_CHAMBER_API()
     const bool hide_chamber_items = !chamber().capabilities().temperature_control_generally();
 #endif
 
