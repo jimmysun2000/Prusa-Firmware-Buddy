@@ -67,6 +67,10 @@ static_assert(HAS_PAUSE());
 #include <mapi/feedrates/standard_feedrates.hpp>
 #include <feature/gcode_exception/gcode_exception.hpp>
 
+#if PRINTER_IS_PRUSA_XL()
+    #include <cooling_fan_assist.hpp>
+#endif
+
 #include <option/has_human_interactions.h>
 #include <option/has_wastebin.h>
 #include <option/has_side_fsensor.h>
@@ -404,6 +408,22 @@ bool Pause::is_target_temperature_safe() {
     }
 }
 
+#if PRINTER_IS_PRUSA_XL()
+namespace {
+
+/// The print fan value Marlin applies to the picked tool
+struct PrintFanPort {
+    uint8_t get() const {
+        return thermalManager.get_print_fan_speed();
+    }
+    void set(uint8_t pwm) const {
+        thermalManager.set_print_fan_speed(pwm);
+    }
+};
+
+} // namespace
+#endif
+
 bool Pause::ensureSafeTemperatureNotifyProgress() {
     // Do not disable heaters while we're waiting for the heatup, duh.
     // Also resets the safety timer, so it prevents it from triggering if we're periodically calling this
@@ -442,12 +462,25 @@ bool Pause::ensureSafeTemperatureNotifyProgress() {
     PauseFsmNotifier N(*this, Temperature::degHotend(active_extruder),
         Temperature::degTargetHotend(active_extruder) - heating_phase_min_hotend_diff, marlin_vars().hotend(settings.physical_tool()).temp_nozzle);
 
+#if PRINTER_IS_PRUSA_XL()
+    // A tip is shaped at the filament's temperature, so the print fan helps a hotter nozzle down
+    // to it. Leaving this function puts back the fan value found (off, as the load keeps it), so
+    // the fan is off again before the filament moves. Every other load keeps the fan off.
+    cooling_fan_assist::Guard<PrintFanPort> fan;
+#endif
+
     // Wait until temperature is close
     while (!is_tempreature_reached()) {
         const Response response = getResponse();
         if (check_user_stop(response) || check_user_retry(response) || gcode_exceptions().is_unwinding()) {
             return false;
         }
+#if PRINTER_IS_PRUSA_XL()
+        if (load_type == LoadType::shape_tip) {
+            const int16_t target = Temperature::degTargetHotend(active_extruder);
+            fan.update(Temperature::degHotend(active_extruder), target, target + heating_phase_min_hotend_diff);
+        }
+#endif
         idle(true);
     }
 
