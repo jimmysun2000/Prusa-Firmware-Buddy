@@ -2,21 +2,29 @@
 #include "screen_bed_mesh.hpp"
 
 #include <DialogHandler.hpp>
+#include <MItem_tools.hpp>
 #include <ScreenFactory.hpp>
 #include <ScreenHandler.hpp>
 #include <common/bed_mesh_view.hpp>
 #include <common/marlin_vars.hpp>
 #include <config_store/store_instance.hpp>
+#include <dialog_numeric_input.hpp>
 #include <display.hpp>
 #include <display_helper.h>
 #include <i18n.h>
+#include <marlin_client.hpp>
+#include <marlin_stubs/M9170.hpp>
+#include <numeric_input_config_common.hpp>
 #include <sound.hpp>
 #include <timing.h>
+#include <tool_index.hpp>
 #include <utils/string_builder.hpp>
+#include <window_msgbox.hpp>
 
 #include <array>
 #include <cmath>
 #include <cstdio>
+#include <optional>
 
 namespace {
 
@@ -37,6 +45,11 @@ constexpr Rect16 legend_bar_rect(panel_left, 144, 192, 14);
 constexpr int16_t legend_labels_top = 160;
 constexpr Rect16 status_rect(panel_left, 196, panel_width, 3 * line_height);
 constexpr Rect16 probed_rect(panel_left, 250, panel_width, line_height);
+constexpr Rect16 buttons_rect(panel_left, 280, 192, 32);
+static_assert(probed_rect.Bottom() < buttons_rect.Top());
+
+constexpr IRadioButton::Responses_t back_only { Response::Back, Response::_none, Response::_none, Response::_none };
+constexpr IRadioButton::Responses_t back_and_measure { Response::Back, Response::Calibrate, Response::_none, Response::_none };
 
 constexpr Color no_data_color = COLOR_DARK_GRAY;
 constexpr uint16_t probed_dot_size = 3;
@@ -183,6 +196,68 @@ struct PopupTracker {
 
 PopupTracker popup_tracker;
 
+constexpr const char *printer_busy_text = N_("Printer is busy. Please try repeating the action later.");
+
+/// No print, pause or other G-code is running
+bool printer_free() {
+    return marlin_client::is_idle() && !marlin_vars().is_processing.get();
+}
+
+/// @returns how many points a measurement of the whole bed probes
+unsigned whole_bed_point_count() {
+    const auto info = bed_mesh_view::info();
+    const auto major_points = [&](uint8_t n) {
+        unsigned count = 0;
+        for (uint8_t i = 0; i < n; i++) {
+            count += bed_mesh_view::is_major(i, n, info.border, info.major_step);
+        }
+        return count;
+    };
+    return major_points(info.nx) * major_points(info.ny);
+}
+
+/// Asks for the bed temperature and a confirmation, then starts the measurement with the picked tool
+void start_measurement() {
+    if (!printer_free()) {
+        MsgBoxWarning(_(printer_busy_text), Responses_Ok);
+        return;
+    }
+
+    const std::optional<PhysicalToolIndex> tool = PhysicalToolIndex::currently_selected_opt();
+    if (!tool.has_value()) {
+        MsgBoxWarning(_("No tool is picked. Pick a tool first."), Responses_Ok);
+        return;
+    }
+
+    const DialogNumericInput::Result entered = DialogNumericInput::exec(_("Bed temperature for the measurement"), marlin_vars().target_bed.get(), numeric_input_config::bed_temperature);
+    if (!entered.has_value()) {
+        return;
+    }
+    const int bed_temperature = static_cast<int>(std::lround(*entered));
+
+    const unsigned tool_number = tool->to_raw() + 1;
+    const int nozzle_temperature = bed_mesh_measurement::nozzle_temperature;
+    StringViewUtf8Parameters<32> params;
+    const string_view_utf8 question = (bed_temperature > 0)
+        ? _("The bed will be heated to %d °C and the nozzle of tool %u to %d °C. Then the nozzle travels just above the whole bed and taps it %u times. Remove any print and check the steel sheet. Continue?")
+              .formatted(params, bed_temperature, tool_number, nozzle_temperature, whole_bed_point_count())
+        : _("The bed heater will be off and the nozzle of tool %u heated to %d °C. Then the nozzle travels just above the whole bed and taps it %u times. Remove any print and check the steel sheet. Continue?")
+              .formatted(params, tool_number, nozzle_temperature, whole_bed_point_count());
+    if (MsgBoxWarning(question, Responses_YesNo, 1) != Response::Yes) {
+        return;
+    }
+
+    // A print can start remotely, or the tool can change, while the questions are shown
+    if (!printer_free() || PhysicalToolIndex::currently_selected_opt() != tool) {
+        MsgBoxWarning(_(printer_busy_text), Responses_Ok);
+        return;
+    }
+
+    ArrayStringBuilder<sizeof("M9170 S999")> gcode;
+    gcode.append_printf("M9170 S%d", bed_temperature);
+    gui_try_gcode_with_msg(gcode.str());
+}
+
 } // namespace
 
 WindowBedMesh::WindowBedMesh(window_t *parent, Rect16 rect)
@@ -226,20 +301,30 @@ ScreenBedMesh::ScreenBedMesh(bool auto_opened)
     : screen_t()
     , header(this, _("BED MESH"))
     , mesh(this, window_rect)
+    , buttons(this, buttons_rect, back_only)
     , opened_ms(ticks_ms())
     , last_update_ms(opened_ms)
     , auto_opened(auto_opened) {
     ClrMenuTimeoutClose();
+    CaptureNormalWindow(buttons);
+    update_buttons();
+}
+
+void ScreenBedMesh::update_buttons() {
+    buttons.Change((!auto_opened && marlin_client::is_idle()) ? back_and_measure : back_only);
 }
 
 void ScreenBedMesh::windowEvent(window_t *sender, GUI_event_t event, void *param) {
     switch (event) {
 
-    case GUI_event_t::CLICK:
-    case GUI_event_t::TOUCH_SWIPE_LEFT:
-    case GUI_event_t::TOUCH_SWIPE_RIGHT:
+    // The buttons also turn a swipe into Back
+    case GUI_event_t::CHILD_CLICK:
         sound::play(SoundType::button_echo);
-        close_screen();
+        if (event_conversion_union { .pvoid = param }.response == Response::Calibrate) {
+            start_measurement();
+        } else {
+            close_screen();
+        }
         return;
 
     case GUI_event_t::LOOP: {
@@ -251,6 +336,7 @@ void ScreenBedMesh::windowEvent(window_t *sender, GUI_event_t event, void *param
         if (ticks_diff(now, last_update_ms) >= static_cast<int32_t>(update_period_ms)) {
             last_update_ms = now;
             mesh.update();
+            update_buttons();
         }
         break;
     }

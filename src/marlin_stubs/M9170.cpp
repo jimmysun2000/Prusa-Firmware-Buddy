@@ -1,3 +1,4 @@
+#include "M9170.hpp"
 #include "PrusaGcodeSuite.hpp"
 
 #include <common/marlin_vars.hpp>
@@ -17,9 +18,6 @@
 #include <optional>
 
 namespace {
-
-/// The nozzle temperature the stock start G-code probes the bed at [°C]
-constexpr int16_t probing_nozzle_temperature = 170;
 
 /// How far the head rises when the measurement is done [mm]
 constexpr float final_lift = 10;
@@ -42,7 +40,7 @@ bool heat_up(int16_t bed_temperature, PhysicalToolIndex tool) {
     };
 
     thermalManager.setTargetBed(bed_temperature);
-    thermalManager.setTargetHotend(probing_nozzle_temperature, tool.to_raw());
+    thermalManager.setTargetHotend(bed_mesh_measurement::nozzle_temperature, tool.to_raw());
 
     if (bed_temperature > 0 && (!thermalManager.wait_for_bed(false) || interrupted())) {
         return false;

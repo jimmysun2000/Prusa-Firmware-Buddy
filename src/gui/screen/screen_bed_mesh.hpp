@@ -1,6 +1,7 @@
 /// @file
 #pragma once
 
+#include <radio_button.hpp>
 #include <screen.hpp>
 #include <window_header.hpp>
 
@@ -32,6 +33,7 @@ private:
 };
 
 /// Shows the bed leveling mesh (from the last probing since boot).
+/// When opened from a menu while no print runs, it also offers to measure the whole bed (M9170).
 class ScreenBedMesh final : public screen_t {
 public:
     /// @param auto_opened opened by the printer after probing rather than from a menu; closes itself after a while
@@ -41,8 +43,12 @@ protected:
     void windowEvent(window_t *sender, GUI_event_t event, void *param) override;
 
 private:
+    /// Offers the measurement only while the printer is idle and the screen was not auto-opened
+    void update_buttons();
+
     window_header_t header;
     WindowBedMesh mesh;
+    RadioButton buttons;
 
     uint32_t opened_ms;
     uint32_t last_update_ms;
