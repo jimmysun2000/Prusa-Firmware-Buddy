@@ -81,6 +81,9 @@ void SelftestFrameHotendPid::change() {
         text_phase.Hide();
         text_detail.Hide();
     }
+
+    // The formatted texts share one parameter buffer, so setting one is not seen as a change of the text
+    text_phase.Invalidate();
 }
 
 void SelftestFrameHotendPid::show_rejected(const SelftestHotendPid_t &data) {
