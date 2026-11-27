@@ -40,6 +40,11 @@
     #include <feature/contactless_offset/clo_config.hpp>
 #endif
 
+#include <option/has_toolchanger.h>
+#if HAS_TOOLCHANGER() && !HAS_INDX()
+    #include <hotend_pid_gains.hpp>
+#endif
+
 #include <option/has_sheet_support.h>
 #include <option/has_loadcell.h>
 #include <option/has_phase_stepping.h>
@@ -175,6 +180,11 @@ namespace defaults {
 #if HAS_TOOL_OFFSET_SENSOR()
     inline constexpr xy_pos_t tool_offset_sensor_position = tool_offset::default_sensor_position;
     inline constexpr xy_pos_t tool_offset_sensor_displacement = { { { 0.f, 0.f } } };
+#endif
+
+#if HAS_TOOLCHANGER() && !HAS_INDX()
+    inline constexpr HotendPIDGains hotend_pid_gains { DEFAULT_Kp, DEFAULT_Ki, DEFAULT_Kd };
+    static_assert(hotend_pid::is_valid(hotend_pid_gains));
 #endif
 
     inline constexpr float nozzle_diameter {

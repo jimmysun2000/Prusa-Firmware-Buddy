@@ -43,3 +43,8 @@ add_executable(progress_mapper_tests progress_mapper_tests.cpp)
 target_compile_definitions(progress_mapper_tests PUBLIC NDEBUG) # Disable assert failures
 target_link_libraries(progress_mapper_tests buddy_utils)
 add_catch_test(progress_mapper_tests)
+
+# hotend_pid_gains
+add_executable(hotend_pid_gains_tests hotend_pid_gains_tests.cpp)
+target_include_directories(hotend_pid_gains_tests PUBLIC ${CMAKE_SOURCE_DIR}/src/common)
+add_catch_test(hotend_pid_gains_tests)

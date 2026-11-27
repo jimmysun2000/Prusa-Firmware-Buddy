@@ -129,6 +129,7 @@
 
 #if HAS_TOOLCHANGER() && !HAS_INDX()
     #include <gui/maintenance_reminder_table.hpp>
+    #include <hotend_pid_gains.hpp>
 #endif
 
 #include <option/has_custom_nozzle_wiper.h>
@@ -1131,6 +1132,11 @@ struct CurrentStore
 #if PRINTER_IS_PRUSA_XL()
     /// Action ID of each home screen shortcut, see home_shortcut::actions
     StoreItemArray<uint8_t, uint8_t { 0 }, ItemFlag::user_interface, journal::hash("Home Shortcut"), 8, 2> home_shortcuts;
+#endif
+
+#if HAS_TOOLCHANGER() && !HAS_INDX()
+    /// Nozzle PID gains per tool; a value failing hotend_pid::is_valid must never be applied
+    StoreItemArray<HotendPIDGains, defaults::hotend_pid_gains, ItemFlag::calibrations | ItemFlag::common_misconfigurations, journal::hash("Hotend PID Gains Per Tool"), 16, PhysicalToolIndex::count> hotend_pid_gains;
 #endif
 
 private:
