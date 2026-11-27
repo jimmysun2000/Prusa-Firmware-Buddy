@@ -118,6 +118,9 @@ public:
     static constexpr uint16_t hashed_id { HashedID };
     static constexpr ItemFlags flags { flags_ }; // All items have flag 1 (for easier filtering)
 
+    /// The value lives in the RAM only and is never written to the journal
+    static constexpr bool is_ram_only { ram_only };
+
     using Base = JournalItemBase<DataT, backend, ram_only>;
 
 public:
@@ -193,6 +196,19 @@ public:
     template <typename F>
     [[gnu::noinline]] void for_each_entry(F &&f) {
         f(hashed_id, flags, this->get());
+    }
+
+    /// If @p id is this item's, calls f(flags, value, set) with a copy of the value.
+    /// set(new_value) stores the new value through set().
+    /// Not inlined, so that visiting many items keeps only one value copy on the stack.
+    /// @returns whether @p id is this item's
+    template <typename F>
+    [[gnu::noinline]] bool visit_entry(uint16_t id, F &&f) {
+        if (id != hashed_id) {
+            return false;
+        }
+        f(flags, this->get(), [this](const DataT &value) { this->set(value); });
+        return true;
     }
 };
 

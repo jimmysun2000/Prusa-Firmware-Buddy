@@ -212,6 +212,20 @@ public:
             f(static_cast<uint16_t>(hashed_id_first + i), this->flags, this->get(i));
         }
     }
+
+    /// If @p id is one of this item's elements, calls f(flags, value, set) with a copy of the element's value.
+    /// set(new_value) stores the new value of the element through set().
+    /// Not inlined, so that visiting many items keeps only one value copy on the stack.
+    /// @returns whether @p id is one of this item's elements
+    template <typename F>
+    [[gnu::noinline]] bool visit_entry(uint16_t id, F &&f) {
+        if (id < hashed_id_first || id > hashed_id_last) {
+            return false;
+        }
+        const auto index = static_cast<uint8_t>(id - hashed_id_first);
+        f(this->flags, this->get(index), [this, index](const DataT &value) { this->set(index, value); });
+        return true;
+    }
 };
 
 /// Legacy variant of JournalItemArray for items that were arrays before arrays existed.
@@ -240,6 +254,21 @@ public:
         for (uint8_t i = 0; i < hashed_ids.size(); i++) {
             f(hashed_ids[i], this->flags, this->get(i));
         }
+    }
+
+    /// If @p id is one of this item's elements, calls f(flags, value, set) with a copy of the element's value.
+    /// set(new_value) stores the new value of the element through set().
+    /// Not inlined, so that visiting many items keeps only one value copy on the stack.
+    /// @returns whether @p id is one of this item's elements
+    template <typename F>
+    [[gnu::noinline]] bool visit_entry(uint16_t id, F &&f) {
+        const auto index = stdext::index_of_opt(hashed_ids, id);
+        if (!index.has_value()) {
+            return false;
+        }
+        const auto i = static_cast<uint8_t>(*index);
+        f(this->flags, this->get(i), [this, i](const DataT &value) { this->set(i, value); });
+        return true;
     }
 };
 

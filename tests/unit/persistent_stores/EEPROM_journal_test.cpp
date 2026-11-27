@@ -870,3 +870,100 @@ TEST_CASE("journal::EEPROM::Power loss during bank migration") {
         REQUIRE((store->int_item.get() == last_safely_stored_value || store->int_item.get() == 99));
     }
 }
+
+inline constexpr std::array<uint16_t, 3> visit_legacy_ids { 0x300, 0x305, 0x30A };
+
+struct StoreConfig_VisitEntry : public CurrentStoreConfig<Backend, Test_EEPROM_journal> {
+    StoreItem<int32_t, default_int32_t, ItemFlags { 1 }, 0x10> int_item;
+    StoreItemArray<uint16_t, uint16_t { 7 }, ItemFlags { 2 }, 0x100, 8, 4> array_item;
+    StoreItemLegacyArray<int32_t, default_int32_t, ItemFlags { 4 }, visit_legacy_ids> legacy_item;
+    StoreItem<bool, false, ItemFlags { 8 }, 0x200, 1, true> ram_item;
+};
+
+static_assert(!decltype(StoreConfig_VisitEntry::int_item)::is_ram_only);
+static_assert(decltype(StoreConfig_VisitEntry::ram_item)::is_ram_only);
+
+TEST_CASE("journal::EEPROM::visit_entry") {
+    using VisitStore = Store<StoreConfig_VisitEntry, TestDeprecatedEEPROMJournalItemsV0, test_migration_functions_span_v0>;
+    eeprom_chip.clear();
+
+    const auto boot = []() -> auto {
+        reinit_journal();
+        auto store = std::make_unique<VisitStore>();
+        store->init();
+        store->load_all();
+        return store;
+    };
+
+    auto store = boot();
+
+    ItemFlags flags = 0;
+    bool called = false;
+
+    SECTION("scalar") {
+        CHECK(store->int_item.visit_entry(0x10, [&](ItemFlags f, int32_t value, auto set) {
+            flags = f;
+            CHECK(value == 0);
+            set(-42);
+        }));
+        CHECK(flags == 1);
+        CHECK(store->int_item.get() == -42);
+
+        CHECK_FALSE(store->int_item.visit_entry(0x11, [&](auto...) { called = true; }));
+        CHECK_FALSE(called);
+
+        store = boot();
+        CHECK(store->int_item.get() == -42);
+    }
+
+    SECTION("array") {
+        CHECK(store->array_item.visit_entry(0x102, [&](ItemFlags f, uint16_t value, auto set) {
+            flags = f;
+            CHECK(value == 7);
+            set(9);
+        }));
+        CHECK(flags == 2);
+        CHECK(store->array_item.get(2) == 9);
+        CHECK(store->array_item.get(1) == 7);
+        CHECK(store->array_item.get(3) == 7);
+
+        CHECK_FALSE(store->array_item.visit_entry(0xFF, [&](auto...) { called = true; }));
+        CHECK_FALSE(store->array_item.visit_entry(0x104, [&](auto...) { called = true; }));
+        CHECK_FALSE(called);
+
+        store = boot();
+        CHECK(store->array_item.get(2) == 9);
+        CHECK(store->array_item.get(0) == 7);
+    }
+
+    SECTION("legacy array") {
+        CHECK(store->legacy_item.visit_entry(0x305, [&](ItemFlags f, int32_t value, auto set) {
+            flags = f;
+            CHECK(value == 0);
+            set(5);
+        }));
+        CHECK(flags == 4);
+        CHECK(store->legacy_item.get(1) == 5);
+        CHECK(store->legacy_item.get(0) == 0);
+        CHECK(store->legacy_item.get(2) == 0);
+
+        CHECK_FALSE(store->legacy_item.visit_entry(0x301, [&](auto...) { called = true; }));
+        CHECK_FALSE(called);
+
+        store = boot();
+        CHECK(store->legacy_item.get(1) == 5);
+    }
+
+    SECTION("RAM-only") {
+        CHECK(store->ram_item.visit_entry(0x200, [&](ItemFlags f, bool value, auto set) {
+            flags = f;
+            CHECK_FALSE(value);
+            set(true);
+        }));
+        CHECK(flags == 8);
+        CHECK(store->ram_item.get());
+
+        store = boot();
+        CHECK_FALSE(store->ram_item.get());
+    }
+}
