@@ -10,30 +10,38 @@
 /// Status colours of the side strip, as pure functions without any printer access
 namespace leds::side_strip_status {
 
-/// Printer status as shown by the side strip
+/// Printer status as shown by the side strip, highest priority first
 enum class Status : uint8_t {
-    idle,
-    heating,
-    printing,
-    finished,
-    warning,
+    /// A red screen or another error
     error,
-    /// States shown without a tint (power panic, power up, the owner at the printer)
-    untinted,
+    /// The owner has used the knob or the touch screen lately, the strip is a plain work light
+    owner_present,
+    /// Power panic recovery
+    recovering,
+    /// The printer waits for the owner: a prompt or a paused print
+    waiting,
     /// The printer works on its own outside a print: a wizard, a calibration, a filament load, G-code
     busy,
+    /// A print waits for a temperature before its first layer
+    print_heating,
+    /// A heater warms up outside a print
+    preheating,
+    printing,
+    /// A print has finished and its bed is still warm
+    finished_warm,
+    /// A print has finished and its end screen is still open
+    finished,
     /// Nothing runs and the bed or a nozzle is hot
     hot,
-    /// A print has finished and its bed is still warm
-    cooling,
+    idle,
 };
 
-inline constexpr ColorRGBW heating_color { 255, 96, 0 };
-inline constexpr ColorRGBW printing_color { 0, 150, 255 };
-inline constexpr ColorRGBW finished_color { 0, 255, 0 };
-inline constexpr ColorRGBW warning_color { 255, 255, 0 };
-inline constexpr ColorRGBW error_color { 255, 0, 0 };
-inline constexpr ColorRGBW busy_color { 160, 0, 255 };
+inline constexpr ColorRGBW red_color { 255, 0, 0 };
+inline constexpr ColorRGBW yellow_color { 255, 255, 0 };
+inline constexpr ColorRGBW green_color { 0, 255, 0 };
+inline constexpr ColorRGBW blue_color { 0, 150, 255 };
+inline constexpr ColorRGBW purple_color { 160, 0, 255 };
+inline constexpr ColorRGBW orange_color { 255, 96, 0 };
 
 /// Above this the bed or a nozzle counts as hot, as for touching it
 inline constexpr float hot_temp = 50.0f;
@@ -60,12 +68,11 @@ inline constexpr float warm_up_margin = 3.0f;
 /// @returns period of the pulsing states, 0 for the steady ones
 constexpr uint32_t pulse_period_ms(Status status) {
     switch (status) {
-    case Status::heating:
     case Status::busy:
+    case Status::preheating:
+    case Status::finished_warm:
         return 3000;
-    case Status::cooling:
-        return 4000;
-    case Status::warning:
+    case Status::waiting:
         return 1000;
     case Status::error:
         return 500;
@@ -84,7 +91,7 @@ struct Look {
 
 /// @returns whether the status lowers the white so that its colour stands out
 constexpr bool is_alert(Status status) {
-    return status == Status::warning || status == Status::error;
+    return status == Status::waiting || status == Status::error;
 }
 
 /// Highest white under an alert, 25 % as the brightness settings count it
@@ -120,8 +127,8 @@ enum class Activity : uint8_t {
     printing,
     /// A print has finished and its end screen is still open
     finished,
-    /// Power panic recovery and power up, shown without a tint
-    untinted,
+    /// Power panic recovery
+    recovering,
 };
 
 /// Everything the side strip status depends on, as read from the printer
@@ -137,16 +144,17 @@ struct Inputs {
     bool busy = false;
     /// A print waits for a temperature, or a heater warms up outside a print
     bool heating = false;
+    /// The print has extruded inside the print area, so its first layer has begun
+    bool first_layer_started = false;
     /// The bed cool-down after a print runs or the bed is not cool yet
     bool bed_warm = false;
     /// The bed or a nozzle is hot
     bool hot = false;
 };
 
-/// @returns the status to show, the highest of the ones that apply:
-/// error, warning, busy, heating, printing, cooling, finished, hot, idle.
-/// Power panic recovery, power up and the owner at the printer show no tint whatever else applies,
-/// except an error.
+/// @returns the status to show, the first of these that applies: error, owner_present, recovering,
+/// waiting, busy, print_heating or preheating, printing, finished_warm or finished, hot, idle.
+/// A print waiting for a temperature after its first layer has begun shows as printing.
 Status resolve(const Inputs &inputs);
 
 /// @returns transition time to use when the tint changes

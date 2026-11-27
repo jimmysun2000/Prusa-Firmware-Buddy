@@ -15,25 +15,28 @@ std::optional<Look> look(Status status, SideStripStatusMode mode) {
     };
 
     switch (status) {
-    case Status::idle:
-    case Status::untinted:
-        return std::nullopt;
-    case Status::heating:
-        return pulse(heating_color, slow_pulse_dark_factor);
-    case Status::printing:
-        return steady(printing_color);
-    case Status::finished:
-        return steady(finished_color);
-    case Status::warning:
-        return pulse(warning_color, pulse_dark_factor);
     case Status::error:
-        return pulse(error_color, pulse_dark_factor);
+        return pulse(red_color, pulse_dark_factor);
+    case Status::owner_present:
+    case Status::printing:
+    case Status::idle:
+        return std::nullopt;
+    case Status::recovering:
+        return steady(orange_color);
+    case Status::waiting:
+        return pulse(yellow_color, pulse_dark_factor);
     case Status::busy:
-        return pulse(busy_color, slow_pulse_dark_factor);
+        return pulse(purple_color, slow_pulse_dark_factor);
+    case Status::print_heating:
+        return steady(blue_color);
+    case Status::preheating:
+        return pulse(blue_color, slow_pulse_dark_factor);
+    case Status::finished_warm:
+        return pulse(green_color, slow_pulse_dark_factor);
+    case Status::finished:
+        return steady(green_color);
     case Status::hot:
-        return steady(heating_color);
-    case Status::cooling:
-        return Look { finished_color, heating_color, static_cast<uint16_t>(pulse_period_ms(status)) };
+        return steady(purple_color);
     }
     return std::nullopt;
 }
@@ -42,30 +45,39 @@ Status resolve(const Inputs &inputs) {
     if (inputs.error) {
         return Status::error;
     }
-    if (inputs.activity == Activity::untinted || inputs.user_present) {
-        return Status::untinted;
+    if (inputs.user_present) {
+        return Status::owner_present;
+    }
+    if (inputs.activity == Activity::recovering) {
+        return Status::recovering;
     }
     if (inputs.waits_for_owner) {
-        return Status::warning;
+        return Status::waiting;
     }
     if (inputs.busy) {
         return Status::busy;
     }
     if (inputs.heating) {
-        return Status::heating;
+        if (inputs.activity != Activity::printing) {
+            return Status::preheating;
+        }
+        // Later waits, such as for a nozzle at a tool change, belong to printing
+        if (!inputs.first_layer_started) {
+            return Status::print_heating;
+        }
     }
 
     switch (inputs.activity) {
     case Activity::printing:
         return Status::printing;
     case Activity::finished:
-        return inputs.bed_warm ? Status::cooling : Status::finished;
+        return inputs.bed_warm ? Status::finished_warm : Status::finished;
     case Activity::idle:
         return inputs.hot ? Status::hot : Status::idle;
-    case Activity::untinted:
-        break;
+    case Activity::recovering:
+        return Status::recovering;
     }
-    return Status::untinted;
+    return Status::idle;
 }
 
 std::optional<ColorRGBW> tint(Status status, SideStripStatusMode mode, uint32_t time_ms) {

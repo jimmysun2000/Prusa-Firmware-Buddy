@@ -66,6 +66,17 @@ namespace {
             || type == PrintStatusMessage::absorbing_heat;
     }
 
+    bool is_power_panic_recovery(marlin_server::State state) {
+        switch (state) {
+        case marlin_server::State::PowerPanic_acFault:
+        case marlin_server::State::PowerPanic_Resume:
+        case marlin_server::State::PowerPanic_AwaitingResume:
+            return true;
+        default:
+            return false;
+        }
+    }
+
     /// Takes the lock of the status messages
     bool bed_cooldown_runs() {
     #if XL_ENCLOSURE_SUPPORT()
@@ -153,6 +164,8 @@ side_strip_status::Inputs SideStripHandler::read_inputs(uint32_t now_ms) {
     case StateAnimation::Printing:
         inputs.activity = Activity::printing;
         inputs.heating = print_waits_for_heat();
+        // Raised only by extruding inside the print area, so the purge lines in front of the bed do not count
+        inputs.first_layer_started = vars.max_printed_z > 0;
         break;
 
     case StateAnimation::Finished:
@@ -169,8 +182,13 @@ side_strip_status::Inputs SideStripHandler::read_inputs(uint32_t now_ms) {
 
     case StateAnimation::PowerPanic:
     case StateAnimation::PowerUp:
-        inputs.activity = Activity::untinted;
+        inputs.activity = Activity::recovering;
         break;
+    }
+
+    // The cold bed question of a power panic recovery shows the Warning animation
+    if (is_power_panic_recovery(vars.print_state)) {
+        inputs.activity = Activity::recovering;
     }
 
     // Outside a print every dialog runs on its own or waits for the owner, except the preheat menu.

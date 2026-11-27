@@ -3,6 +3,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <initializer_list>
+#include <iterator>
 #include <utility>
 
 using namespace leds;
@@ -21,17 +22,22 @@ bool same(std::optional<ColorRGBW> a, ColorRGBW b) {
 } // namespace
 
 constexpr Status all_statuses[] = {
-    Status::idle,
-    Status::heating,
-    Status::printing,
-    Status::finished,
-    Status::warning,
     Status::error,
-    Status::untinted,
+    Status::owner_present,
+    Status::recovering,
+    Status::waiting,
     Status::busy,
+    Status::print_heating,
+    Status::preheating,
+    Status::printing,
+    Status::finished_warm,
+    Status::finished,
     Status::hot,
-    Status::cooling,
+    Status::idle,
 };
+
+/// Statuses that leave the strip a plain work light
+constexpr Status plain_statuses[] = { Status::owner_present, Status::printing, Status::idle };
 
 TEST_CASE("side_strip_status: mode off never tints") {
     for (const auto status : all_statuses) {
@@ -43,7 +49,7 @@ TEST_CASE("side_strip_status: mode off never tints") {
 }
 
 TEST_CASE("side_strip_status: invalid mode never tints") {
-    CHECK_FALSE(tint(Status::printing, SideStripStatusMode::_cnt, 0).has_value());
+    CHECK_FALSE(tint(Status::error, SideStripStatusMode::_cnt, 0).has_value());
     CHECK_FALSE(tint(Status::error, static_cast<SideStripStatusMode>(2), 0).has_value());
     CHECK_FALSE(tint(Status::error, static_cast<SideStripStatusMode>(200), 0).has_value());
     CHECK_FALSE(look(Status::error, static_cast<SideStripStatusMode>(200)).has_value());
@@ -67,69 +73,13 @@ TEST_CASE("side_strip_status: stored mode") {
     }
 }
 
-TEST_CASE("side_strip_status: status to colour") {
-    const auto mode = SideStripStatusMode::status;
-    CHECK_FALSE(tint(Status::idle, mode, 0).has_value());
-    CHECK_FALSE(tint(Status::untinted, mode, 0).has_value());
-    CHECK(same(tint(Status::heating, mode, 0), ColorRGBW(255, 96, 0)));
-    CHECK(same(tint(Status::printing, mode, 0), ColorRGBW(0, 150, 255)));
-    CHECK(same(tint(Status::finished, mode, 0), ColorRGBW(0, 255, 0)));
-    CHECK(same(tint(Status::warning, mode, 0), ColorRGBW(255, 255, 0)));
-    CHECK(same(tint(Status::error, mode, 0), ColorRGBW(255, 0, 0)));
-}
-
-TEST_CASE("side_strip_status: pulse phase") {
-    const auto mode = SideStripStatusMode::status;
-    const ColorRGBW warning_dark = warning_color.fade(pulse_dark_factor);
-    const ColorRGBW error_dark = error_color.fade(pulse_dark_factor);
-
-    // Warning: 1 s period, bright for the first half
-    CHECK(same(tint(Status::warning, mode, 0), warning_color));
-    CHECK(same(tint(Status::warning, mode, 499), warning_color));
-    CHECK(same(tint(Status::warning, mode, 500), warning_dark));
-    CHECK(same(tint(Status::warning, mode, 999), warning_dark));
-    CHECK(same(tint(Status::warning, mode, 1000), warning_color));
-
-    // Error: 0.5 s period
-    CHECK(same(tint(Status::error, mode, 0), error_color));
-    CHECK(same(tint(Status::error, mode, 249), error_color));
-    CHECK(same(tint(Status::error, mode, 250), error_dark));
-    CHECK(same(tint(Status::error, mode, 500), error_color));
-
-    CHECK(warning_dark.r == 38);
-    CHECK(warning_dark.g == 38);
-    CHECK(warning_dark.b == 0);
-
-    // Heating: 3 s period, 10 % for the second half
-    const ColorRGBW heating_dark = heating_color.fade(slow_pulse_dark_factor);
-    CHECK(same(heating_dark, ColorRGBW(25, 9, 0)));
-    CHECK(same(tint(Status::heating, mode, 0), heating_color));
-    CHECK(same(tint(Status::heating, mode, 1499), heating_color));
-    CHECK(same(tint(Status::heating, mode, 1500), heating_dark));
-    CHECK(same(tint(Status::heating, mode, 2999), heating_dark));
-    CHECK(same(tint(Status::heating, mode, 3000), heating_color));
-
-    // Steady states do not pulse
-    for (const auto status : { Status::printing, Status::finished, Status::hot }) {
-        for (const uint32_t time_ms : { 250u, 750u, 1500u, 2000u }) {
-            CHECK(same(tint(status, mode, 0), *tint(status, mode, time_ms)));
-        }
-    }
-
-    CHECK(pulse_period_ms(Status::heating) == 3000);
-    CHECK(pulse_period_ms(Status::busy) == 3000);
-    CHECK(pulse_period_ms(Status::cooling) == 4000);
-    CHECK(pulse_period_ms(Status::warning) == 1000);
-    CHECK(pulse_period_ms(Status::error) == 500);
-    CHECK(pulse_period_ms(Status::printing) == 0);
-    CHECK(pulse_period_ms(Status::finished) == 0);
-    CHECK(pulse_period_ms(Status::hot) == 0);
-    CHECK(transition_ms(Status::heating) == 500);
-    CHECK(transition_ms(Status::busy) == 500);
-    CHECK(transition_ms(Status::cooling) == 500);
-    CHECK(transition_ms(Status::warning) == 500);
-    CHECK(transition_ms(Status::error) == 250);
-    CHECK(transition_ms(Status::printing) == 500);
+TEST_CASE("side_strip_status: colours") {
+    CHECK(same(red_color, ColorRGBW(255, 0, 0)));
+    CHECK(same(yellow_color, ColorRGBW(255, 255, 0)));
+    CHECK(same(green_color, ColorRGBW(0, 255, 0)));
+    CHECK(same(blue_color, ColorRGBW(0, 150, 255)));
+    CHECK(same(purple_color, ColorRGBW(160, 0, 255)));
+    CHECK(same(orange_color, ColorRGBW(255, 96, 0)));
 }
 
 TEST_CASE("side_strip_status: looks") {
@@ -140,14 +90,15 @@ TEST_CASE("side_strip_status: looks") {
         uint16_t period_ms;
     };
     const Expected expected[] = {
-        { Status::heating, heating_color, ColorRGBW(25, 9, 0), 3000 },
-        { Status::printing, printing_color, printing_color, 0 },
-        { Status::finished, finished_color, finished_color, 0 },
-        { Status::warning, warning_color, ColorRGBW(38, 38, 0), 1000 },
-        { Status::error, error_color, ColorRGBW(38, 0, 0), 500 },
-        { Status::busy, ColorRGBW(160, 0, 255), ColorRGBW(16, 0, 25), 3000 },
-        { Status::hot, heating_color, heating_color, 0 },
-        { Status::cooling, finished_color, heating_color, 4000 },
+        { Status::error, red_color, ColorRGBW(38, 0, 0), 500 },
+        { Status::recovering, orange_color, orange_color, 0 },
+        { Status::waiting, yellow_color, ColorRGBW(38, 38, 0), 1000 },
+        { Status::busy, purple_color, ColorRGBW(16, 0, 25), 3000 },
+        { Status::print_heating, blue_color, blue_color, 0 },
+        { Status::preheating, blue_color, ColorRGBW(0, 15, 25), 3000 },
+        { Status::finished_warm, green_color, ColorRGBW(0, 25, 0), 3000 },
+        { Status::finished, green_color, green_color, 0 },
+        { Status::hot, purple_color, purple_color, 0 },
     };
 
     const auto mode = SideStripStatusMode::status;
@@ -168,18 +119,69 @@ TEST_CASE("side_strip_status: looks") {
             CHECK(same(tint(e.status, mode, half), e.second));
             CHECK(same(tint(e.status, mode, e.period_ms - 1), e.second));
             CHECK(same(tint(e.status, mode, e.period_ms), e.first));
+        } else {
+            for (const uint32_t time_ms : { 250u, 750u, 1500u, 2000u }) {
+                CHECK(same(tint(e.status, mode, time_ms), e.first));
+            }
         }
-    }
 
-    CHECK_FALSE(look(Status::idle, mode).has_value());
-    CHECK_FALSE(look(Status::untinted, mode).has_value());
-
-    // Looks never have a white of their own
-    for (const auto &e : expected) {
-        const auto status_look = look(e.status, SideStripStatusMode::status);
-        REQUIRE(status_look.has_value());
+        // Looks never have a white of their own
         CHECK(status_look->first.w == 0);
         CHECK(status_look->second.w == 0);
+    }
+
+    for (const auto status : plain_statuses) {
+        CAPTURE(static_cast<int>(status));
+        CHECK_FALSE(look(status, mode).has_value());
+        CHECK_FALSE(tint(status, mode, 0).has_value());
+        CHECK(pulse_period_ms(status) == 0);
+    }
+
+    // Every status is in one of the two lists
+    CHECK(std::size(expected) + std::size(plain_statuses) == std::size(all_statuses));
+}
+
+TEST_CASE("side_strip_status: pulse phase") {
+    const auto mode = SideStripStatusMode::status;
+
+    // The fast pulses fade to 15 %, the slow ones to 10 %
+    CHECK(same(yellow_color.fade(pulse_dark_factor), ColorRGBW(38, 38, 0)));
+    CHECK(same(blue_color.fade(slow_pulse_dark_factor), ColorRGBW(0, 15, 25)));
+
+    // Waiting: 1 s period, bright for the first half
+    CHECK(same(tint(Status::waiting, mode, 0), yellow_color));
+    CHECK(same(tint(Status::waiting, mode, 499), yellow_color));
+    CHECK(same(tint(Status::waiting, mode, 500), yellow_color.fade(pulse_dark_factor)));
+    CHECK(same(tint(Status::waiting, mode, 999), yellow_color.fade(pulse_dark_factor)));
+    CHECK(same(tint(Status::waiting, mode, 1000), yellow_color));
+
+    // Error: 0.5 s period
+    CHECK(same(tint(Status::error, mode, 0), red_color));
+    CHECK(same(tint(Status::error, mode, 249), red_color));
+    CHECK(same(tint(Status::error, mode, 250), red_color.fade(pulse_dark_factor)));
+    CHECK(same(tint(Status::error, mode, 500), red_color));
+
+    // Preheating: 3 s period
+    CHECK(same(tint(Status::preheating, mode, 0), blue_color));
+    CHECK(same(tint(Status::preheating, mode, 1499), blue_color));
+    CHECK(same(tint(Status::preheating, mode, 1500), blue_color.fade(slow_pulse_dark_factor)));
+    CHECK(same(tint(Status::preheating, mode, 2999), blue_color.fade(slow_pulse_dark_factor)));
+    CHECK(same(tint(Status::preheating, mode, 3000), blue_color));
+
+    CHECK(pulse_period_ms(Status::error) == 500);
+    CHECK(pulse_period_ms(Status::waiting) == 1000);
+    CHECK(pulse_period_ms(Status::busy) == 3000);
+    CHECK(pulse_period_ms(Status::preheating) == 3000);
+    CHECK(pulse_period_ms(Status::finished_warm) == 3000);
+    for (const auto status : { Status::recovering, Status::print_heating, Status::finished, Status::hot }) {
+        CHECK(pulse_period_ms(status) == 0);
+    }
+
+    CHECK(transition_ms(Status::error) == 250);
+    for (const auto status : all_statuses) {
+        if (status != Status::error) {
+            CHECK(transition_ms(status) == 500);
+        }
     }
 }
 
@@ -197,16 +199,10 @@ TEST_CASE("side_strip_status: apply_tint") {
 }
 
 TEST_CASE("side_strip_status: alerts") {
-    CHECK(is_alert(Status::warning));
-    CHECK(is_alert(Status::error));
-    CHECK_FALSE(is_alert(Status::printing));
-    CHECK_FALSE(is_alert(Status::heating));
-    CHECK_FALSE(is_alert(Status::finished));
-    CHECK_FALSE(is_alert(Status::idle));
-    CHECK_FALSE(is_alert(Status::busy));
-    CHECK_FALSE(is_alert(Status::hot));
-    CHECK_FALSE(is_alert(Status::cooling));
-    CHECK_FALSE(is_alert(Status::untinted));
+    for (const auto status : all_statuses) {
+        CAPTURE(static_cast<int>(status));
+        CHECK(is_alert(status) == (status == Status::waiting || status == Status::error));
+    }
 }
 
 TEST_CASE("side_strip_status: warming up") {
@@ -251,19 +247,21 @@ TEST_CASE("side_strip_status: hysteresis") {
 
 namespace {
 
-constexpr Activity all_activities[] = { Activity::idle, Activity::printing, Activity::finished, Activity::untinted };
+constexpr Activity all_activities[] = { Activity::idle, Activity::printing, Activity::finished, Activity::recovering };
 
 /// The documented priority, highest first
 Status expected_status(const Inputs &in) {
+    const bool printing = in.activity == Activity::printing;
     const std::pair<bool, Status> order[] = {
         { in.error, Status::error },
-        { in.activity == Activity::untinted, Status::untinted },
-        { in.user_present, Status::untinted },
-        { in.waits_for_owner, Status::warning },
+        { in.user_present, Status::owner_present },
+        { in.activity == Activity::recovering, Status::recovering },
+        { in.waits_for_owner, Status::waiting },
         { in.busy, Status::busy },
-        { in.heating, Status::heating },
-        { in.activity == Activity::printing, Status::printing },
-        { in.activity == Activity::finished && in.bed_warm, Status::cooling },
+        { in.heating && printing && !in.first_layer_started, Status::print_heating },
+        { in.heating && !printing, Status::preheating },
+        { printing, Status::printing },
+        { in.activity == Activity::finished && in.bed_warm, Status::finished_warm },
         { in.activity == Activity::finished, Status::finished },
         { in.activity == Activity::idle && in.hot, Status::hot },
     };
@@ -275,21 +273,28 @@ Status expected_status(const Inputs &in) {
     return Status::idle;
 }
 
+Inputs make(Activity activity) {
+    Inputs in;
+    in.activity = activity;
+    return in;
+}
+
 } // namespace
 
 TEST_CASE("side_strip_status: resolve priority") {
     // Every combination of the inputs
     for (const auto activity : all_activities) {
-        for (unsigned flags = 0; flags < (1u << 7); ++flags) {
+        for (unsigned flags = 0; flags < (1u << 8); ++flags) {
             Inputs in;
             in.activity = activity;
             in.error = flags & (1u << 0);
-            in.waits_for_owner = flags & (1u << 1);
-            in.busy = flags & (1u << 2);
-            in.heating = flags & (1u << 3);
-            in.bed_warm = flags & (1u << 4);
-            in.hot = flags & (1u << 5);
-            in.user_present = flags & (1u << 6);
+            in.user_present = flags & (1u << 1);
+            in.waits_for_owner = flags & (1u << 2);
+            in.busy = flags & (1u << 3);
+            in.heating = flags & (1u << 4);
+            in.first_layer_started = flags & (1u << 5);
+            in.bed_warm = flags & (1u << 6);
+            in.hot = flags & (1u << 7);
             CAPTURE(static_cast<int>(activity), flags);
             CHECK(resolve(in) == expected_status(in));
         }
@@ -297,12 +302,6 @@ TEST_CASE("side_strip_status: resolve priority") {
 }
 
 TEST_CASE("side_strip_status: resolve cases") {
-    const auto make = [](Activity activity) {
-        Inputs in;
-        in.activity = activity;
-        return in;
-    };
-
     // Nothing runs
     CHECK(resolve(make(Activity::idle)) == Status::idle);
     CHECK(resolve(Inputs {}) == Status::idle);
@@ -312,30 +311,33 @@ TEST_CASE("side_strip_status: resolve cases") {
     in.hot = true;
     CHECK(resolve(in) == Status::hot);
     in.heating = true;
-    CHECK(resolve(in) == Status::heating);
+    CHECK(resolve(in) == Status::preheating);
 
     // A warm bed matters only after a print
     in = make(Activity::idle);
     in.bed_warm = true;
     CHECK(resolve(in) == Status::idle);
 
-    // Printing ignores the hot bed
+    // Printing ignores the hot bed; heating at the print start, then a prompt
     in = make(Activity::printing);
     in.hot = true;
     in.bed_warm = true;
     CHECK(resolve(in) == Status::printing);
     in.heating = true;
-    CHECK(resolve(in) == Status::heating);
+    CHECK(resolve(in) == Status::print_heating);
     in.waits_for_owner = true;
-    CHECK(resolve(in) == Status::warning);
+    CHECK(resolve(in) == Status::waiting);
 
-    // Finished: cooling while the bed is warm, then finished even with a hot nozzle
+    // Finished: the bed cools down, then finished even with a hot nozzle
     in = make(Activity::finished);
     in.bed_warm = true;
     in.hot = true;
-    CHECK(resolve(in) == Status::cooling);
+    CHECK(resolve(in) == Status::finished_warm);
     in.bed_warm = false;
     CHECK(resolve(in) == Status::finished);
+    // A heater warming up on the end screen
+    in.heating = true;
+    CHECK(resolve(in) == Status::preheating);
 
     // Busy outside a print, a prompt on top of it
     in = make(Activity::idle);
@@ -344,15 +346,17 @@ TEST_CASE("side_strip_status: resolve cases") {
     in.hot = true;
     CHECK(resolve(in) == Status::busy);
     in.waits_for_owner = true;
-    CHECK(resolve(in) == Status::warning);
+    CHECK(resolve(in) == Status::waiting);
 
-    // Power panic recovery shows no tint, an error still does
-    in = make(Activity::untinted);
+    // Power panic recovery is above prompts, the owner and an error are above it
+    in = make(Activity::recovering);
     in.waits_for_owner = true;
     in.busy = true;
     in.heating = true;
     in.hot = true;
-    CHECK(resolve(in) == Status::untinted);
+    CHECK(resolve(in) == Status::recovering);
+    in.user_present = true;
+    CHECK(resolve(in) == Status::owner_present);
     in.error = true;
     CHECK(resolve(in) == Status::error);
 
@@ -374,15 +378,42 @@ TEST_CASE("side_strip_status: resolve cases") {
         in.heating = true;
         in.bed_warm = true;
         in.hot = true;
-        CHECK(resolve(in) == Status::untinted);
+        CHECK(resolve(in) == Status::owner_present);
         CHECK_FALSE(tint(resolve(in), SideStripStatusMode::status, 0).has_value());
     }
+}
+
+TEST_CASE("side_strip_status: first layer") {
+    // A wait for temperature is blue until the first layer begins, then plain white like printing
+    auto in = make(Activity::printing);
+    in.heating = true;
+    CHECK(resolve(in) == Status::print_heating);
+    in.first_layer_started = true;
+    CHECK(resolve(in) == Status::printing);
+    in.heating = false;
+    CHECK(resolve(in) == Status::printing);
+
+    // Only a print has a first layer
+    for (const auto activity : { Activity::idle, Activity::finished }) {
+        in = make(activity);
+        in.heating = true;
+        in.first_layer_started = true;
+        CHECK(resolve(in) == Status::preheating);
+    }
+
+    // A filament change waiting for the nozzle is still a prompt
+    in = make(Activity::printing);
+    in.heating = true;
+    in.waits_for_owner = true;
+    CHECK(resolve(in) == Status::waiting);
+    in.first_layer_started = true;
+    CHECK(resolve(in) == Status::waiting);
 }
 
 TEST_CASE("side_strip_status: white under alerts") {
     CHECK(alert_white == 63);
 
-    for (const auto status : { Status::warning, Status::error }) {
+    for (const auto status : { Status::waiting, Status::error }) {
         CHECK(white_under(status, 255) == alert_white);
         CHECK(white_under(status, 102) == alert_white);
         // Never brighter than without the status colours
@@ -400,9 +431,9 @@ TEST_CASE("side_strip_status: white under alerts") {
     }
 
     // The white under an alert is the same at both pulse phases, so only the RGB driver word changes
-    const ColorRGBW plain(0, 0, 0, white_under(Status::warning, 255));
-    const auto bright = apply_tint(plain, *tint(Status::warning, SideStripStatusMode::status, 0), 255);
-    const auto dark = apply_tint(plain, *tint(Status::warning, SideStripStatusMode::status, 500), 255);
+    const ColorRGBW plain(0, 0, 0, white_under(Status::waiting, 255));
+    const auto bright = apply_tint(plain, *tint(Status::waiting, SideStripStatusMode::status, 0), 255);
+    const auto dark = apply_tint(plain, *tint(Status::waiting, SideStripStatusMode::status, 500), 255);
     CHECK(bright.w == dark.w);
     CHECK_FALSE(same(bright, dark));
 }
