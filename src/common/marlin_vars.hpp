@@ -359,6 +359,8 @@ public:
 #if HAS_MMU2()
     MarlinVariable<uint16_t> mmu2_bowden_length; // MMU's Bowden_Length register, set via M708 [mm]
 #endif
+    MarlinVariable<uint16_t> print_layer_current; ///< 1-based layer reported by M73 L, 0 = not reported
+    MarlinVariable<uint16_t> print_layer_total; ///< layer count reported by M73 K, 0 = not reported
 
     // 1B base types
     MarlinVariable<uint8_t> gqueue; // number of commands in gcode queue

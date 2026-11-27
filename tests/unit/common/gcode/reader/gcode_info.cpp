@@ -154,6 +154,28 @@ TEST_CASE("estimate_layers") {
     CHECK(estimate_layers(0.2f, 18.0f, NAN) == std::nullopt);
     CHECK(estimate_layers(0.2f, INFINITY, 1.0f) == std::nullopt);
     CHECK(estimate_layers(0.0001f, 18.0f, 1.0f) == std::nullopt);
+
+    CHECK_FALSE(estimate_layers(0.2f, 18.0f, 7.4f)->exact);
+}
+
+TEST_CASE("reported_layers") {
+    auto layers = [](uint16_t current, uint16_t total) {
+        const auto result = reported_layers(current, total);
+        REQUIRE(result.has_value());
+        CHECK(result->exact);
+        return std::pair { result->current, result->total };
+    };
+
+    CHECK(layers(1, 240) == std::pair<uint16_t, uint16_t> { 1, 240 });
+    CHECK(layers(37, 240) == std::pair<uint16_t, uint16_t> { 37, 240 });
+    CHECK(layers(240, 240) == std::pair<uint16_t, uint16_t> { 240, 240 });
+    CHECK(layers(65535, 65535) == std::pair<uint16_t, uint16_t> { 65535, 65535 });
+
+    // Not reported (yet), or inconsistent
+    CHECK(reported_layers(0, 0) == std::nullopt);
+    CHECK(reported_layers(0, 240) == std::nullopt);
+    CHECK(reported_layers(37, 0) == std::nullopt);
+    CHECK(reported_layers(241, 240) == std::nullopt);
 }
 
 TEST_CASE("GCodeInfo::is_valid_for_print", "[slow]") {

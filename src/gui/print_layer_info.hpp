@@ -9,7 +9,25 @@
 struct PrintLayerInfo {
     uint16_t current;
     uint16_t total;
+    bool exact; ///< Reported by the G-code, not estimated
 };
+
+/// Layer progress the G-code reported with M73 L K.
+///
+/// @param current 1-based current layer, 0 = not reported
+/// @param total layer count, 0 = not reported
+/// @returns std::nullopt unless both are reported and current <= total
+inline std::optional<PrintLayerInfo> reported_layers(uint16_t current, uint16_t total) {
+    if (current == 0 || total == 0 || current > total) {
+        return std::nullopt;
+    }
+
+    return PrintLayerInfo {
+        .current = current,
+        .total = total,
+        .exact = true,
+    };
+}
 
 /// Estimates the layer progress assuming all layers have the same height.
 ///
@@ -36,11 +54,14 @@ inline std::optional<PrintLayerInfo> estimate_layers(float layer_height, float m
     return PrintLayerInfo {
         .current = static_cast<uint16_t>(current),
         .total = static_cast<uint16_t>(total),
+        .exact = false,
     };
 }
 
-/// Layer estimate of the running print from the G-code metadata
-/// (layer_height, max_layer_z) and the highest printed Z.
+/// Layer progress of the running print: as reported by M73 L K, otherwise
+/// estimated from the G-code metadata (layer_height, max_layer_z) and the
+/// highest printed Z.
 ///
-/// @returns std::nullopt if the metadata is missing or nothing has been printed yet
+/// @returns std::nullopt if nothing is reported and the metadata is missing
+///          or nothing has been printed yet
 std::optional<PrintLayerInfo> print_layer_info();

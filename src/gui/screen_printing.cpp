@@ -687,6 +687,7 @@ void screen_printing_data_t::updateTimes() {
 
     auto time_to_end = marlin_vars().time_to_end.get();
     auto time_to_change = marlin_vars().time_to_pause.get();
+    bool layer_exact = false;
 
     switch (currently_showing) {
 
@@ -714,6 +715,7 @@ void screen_printing_data_t::updateTimes() {
         w_etime_label.SetText(_("Layer"));
         if (const auto layers = print_layer_info()) {
             snprintf(w_etime_value_buffer.data(), w_etime_value_buffer.size(), "%u/%u", static_cast<unsigned>(layers->current), static_cast<unsigned>(layers->total));
+            layer_exact = layers->exact;
         } else {
             // Validity is refreshed only on rotation; the marker alone reads as unknown
             w_etime_value_buffer[0] = '\0';
@@ -726,9 +728,9 @@ void screen_printing_data_t::updateTimes() {
     }
 
     // Add unknown marker
-    // (time since start is always exact, not influenced by the print speed; the layer is always an estimate)
-    if (currently_showing == CurrentlyShowing::layer
-        || (marlin_vars().print_speed != 100 && currently_showing != CurrentlyShowing::time_since_start)) {
+    // (time since start is always exact, not influenced by the print speed; the layer is exact only when the G-code reports it)
+    if ((currently_showing == CurrentlyShowing::layer && !layer_exact)
+        || (marlin_vars().print_speed != 100 && currently_showing != CurrentlyShowing::time_since_start && currently_showing != CurrentlyShowing::layer)) {
         strlcat(w_etime_value_buffer.data(), "?", w_etime_value_buffer.size());
     }
 

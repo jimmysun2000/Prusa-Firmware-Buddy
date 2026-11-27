@@ -3707,6 +3707,8 @@ static void _server_update_vars() {
             return 0;
         }
     }();
+    marlin_vars().print_layer_current = oProgressData.layer_current;
+    marlin_vars().print_layer_total = oProgressData.layer_total;
 
     marlin_vars().media_inserted = usb_host::is_media_inserted();
 

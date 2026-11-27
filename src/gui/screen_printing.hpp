@@ -111,7 +111,7 @@ class screen_printing_data_t : public ScreenPrintingModel {
         end_time, // 'date' of end of print
         time_to_change, // m600 / m601
         time_since_start, // real printing time since start
-        layer, // estimated current / total layer
+        layer, // current / total layer, reported by the G-code or estimated
         _count,
     };
 

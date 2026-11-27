@@ -45,6 +45,9 @@ public:
     ModeSpecificData standard_mode;
     ModeSpecificData stealth_mode;
 
+    uint16_t layer_current = 0; ///< 1-based layer reported by M73 L, 0 = not reported
+    uint16_t layer_total = 0; ///< Layer count reported by M73 K, 0 = not reported
+
     void mInit(void);
 
     ModeSpecificData &mode_specific(bool stealth) {
@@ -65,6 +68,9 @@ struct M73_Params {
 
     ModeSpecificParams standard_mode;
     ModeSpecificParams stealth_mode;
+
+    std::optional<uint16_t> layer_current;
+    std::optional<uint16_t> layer_total;
 
     bool operator==(const M73_Params &) const = default;
 };

@@ -68,6 +68,8 @@ void ClProgressData::mInit(void) {
     };
     mode_specific(standard_mode);
     mode_specific(stealth_mode);
+    layer_current = 0;
+    layer_total = 0;
 }
 
 #if ENABLED(M73_PRUSA)
@@ -83,7 +85,7 @@ void ClProgressData::mInit(void) {
  *
  *#### Usage
  *
- *    M73 [ P | Q | R | S | C | D ]
+ *    M73 [ P | Q | R | S | C | D | L | K ]
  *
  *#### Parameters
  *
@@ -94,6 +96,12 @@ void ClProgressData::mInit(void) {
  *  - `C` - Set time to pause [minutes]
  *  - `D` - Set time to pause in stealth mode [minutes]
  *  - `T` - Set time to pause [minutes] backwards compatibility
+ *  - `L` - Set current layer number (1-based) shown on the print screen; 0 is ignored, values above 65535 are clamped
+ *  - `K` - Set total layer count; 0 is ignored, values above 65535 are clamped
+ *
+ *#### Examples
+ *
+ *    M73 L37 K240 ; Printing layer 37 of 240
  */
 
 void GcodeSuite::M73_PE() {
@@ -119,6 +127,13 @@ void GcodeSuite::M73_PE() {
     }
     if (parser.seen('D')) {
         p.stealth_mode.time_to_pause = parser.value_ulong() * 60;
+    }
+
+    if (parser.seen('L')) {
+        p.layer_current = static_cast<uint16_t>(std::clamp<int32_t>(parser.value_long(), 0, UINT16_MAX));
+    }
+    if (parser.seen('K')) {
+        p.layer_total = static_cast<uint16_t>(std::clamp<int32_t>(parser.value_long(), 0, UINT16_MAX));
     }
 
     M73_PE_no_parser(p);
@@ -149,6 +164,13 @@ void M73_PE_no_parser(const M73_Params &params) {
 
     mode_specific_update(params.standard_mode, oProgressData.standard_mode);
     mode_specific_update(params.stealth_mode, oProgressData.stealth_mode);
+
+    if (auto v = params.layer_current; v && *v > 0) {
+        oProgressData.layer_current = *v;
+    }
+    if (auto v = params.layer_total; v && *v > 0) {
+        oProgressData.layer_total = *v;
+    }
 
     // Print progress report. Do not remove as third party tools might depend on this
     if (params == M73_Params {}) {
