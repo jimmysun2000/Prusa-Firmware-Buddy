@@ -19,14 +19,17 @@ bool same(std::optional<ColorRGBW> a, ColorRGBW b) {
 
 TEST_CASE("side_strip_status: mode off never tints") {
     for (const auto status : { Status::idle, Status::heating, Status::printing, Status::finished, Status::warning, Status::error, Status::untinted }) {
+        CHECK_FALSE(look(status, SideStripStatusMode::off, 50).has_value());
         CHECK_FALSE(tint(status, SideStripStatusMode::off, 50, 0).has_value());
         CHECK_FALSE(tint(status, SideStripStatusMode::off, 50, 700).has_value());
+        CHECK_FALSE(tint(status, SideStripStatusMode::off, 50, 2000).has_value());
     }
 }
 
 TEST_CASE("side_strip_status: invalid mode never tints") {
     CHECK_FALSE(tint(Status::printing, SideStripStatusMode::_cnt, 50, 0).has_value());
     CHECK_FALSE(tint(Status::error, static_cast<SideStripStatusMode>(200), 50, 0).has_value());
+    CHECK_FALSE(look(Status::error, static_cast<SideStripStatusMode>(200), 50).has_value());
 }
 
 TEST_CASE("side_strip_status: status to colour") {
@@ -91,18 +94,80 @@ TEST_CASE("side_strip_status: pulse phase") {
     CHECK(warning_dark.g == 38);
     CHECK(warning_dark.b == 0);
 
+    // Heating: 3 s period, 40 % for the second half
+    const ColorRGBW heating_dark = heating_color.fade(slow_pulse_dark_factor);
+    CHECK(same(heating_dark, ColorRGBW(102, 38, 0)));
+    CHECK(same(tint(Status::heating, mode, 0, 0), heating_color));
+    CHECK(same(tint(Status::heating, mode, 0, 1499), heating_color));
+    CHECK(same(tint(Status::heating, mode, 0, 1500), heating_dark));
+    CHECK(same(tint(Status::heating, mode, 0, 2999), heating_dark));
+    CHECK(same(tint(Status::heating, mode, 0, 3000), heating_color));
+
     // Steady states do not pulse
-    for (const auto status : { Status::heating, Status::printing, Status::finished }) {
-        CHECK(same(tint(status, mode, 0, 0), *tint(status, mode, 0, 250)));
-        CHECK(same(tint(status, mode, 0, 0), *tint(status, mode, 0, 750)));
+    for (const auto status : { Status::printing, Status::finished }) {
+        for (const uint32_t time_ms : { 250u, 750u, 1500u, 2000u }) {
+            CHECK(same(tint(status, mode, 0, 0), *tint(status, mode, 0, time_ms)));
+        }
     }
 
+    CHECK(pulse_period_ms(Status::heating) == 3000);
     CHECK(pulse_period_ms(Status::warning) == 1000);
     CHECK(pulse_period_ms(Status::error) == 500);
     CHECK(pulse_period_ms(Status::printing) == 0);
+    CHECK(pulse_period_ms(Status::finished) == 0);
+    CHECK(transition_ms(Status::heating) == 500);
     CHECK(transition_ms(Status::warning) == 500);
     CHECK(transition_ms(Status::error) == 250);
     CHECK(transition_ms(Status::printing) == 500);
+}
+
+TEST_CASE("side_strip_status: looks") {
+    struct Expected {
+        Status status;
+        ColorRGBW first;
+        ColorRGBW second;
+        uint16_t period_ms;
+    };
+    const Expected expected[] = {
+        { Status::heating, heating_color, ColorRGBW(102, 38, 0), 3000 },
+        { Status::printing, printing_color, printing_color, 0 },
+        { Status::finished, finished_color, finished_color, 0 },
+        { Status::warning, warning_color, ColorRGBW(38, 38, 0), 1000 },
+        { Status::error, error_color, ColorRGBW(38, 0, 0), 500 },
+    };
+
+    for (const auto mode : { SideStripStatusMode::status, SideStripStatusMode::status_and_progress }) {
+        for (const auto &e : expected) {
+            CAPTURE(static_cast<int>(e.status), static_cast<int>(mode));
+            const auto status_look = look(e.status, mode, 0);
+            REQUIRE(status_look.has_value());
+            CHECK(same(status_look->first, e.first));
+            CHECK(same(status_look->second, e.second));
+            CHECK(status_look->period_ms == e.period_ms);
+            CHECK(status_look->period_ms == pulse_period_ms(e.status));
+
+            // tint() shows the first tint for the first half of the period and the second one for the rest
+            const uint32_t half = e.period_ms / 2;
+            CHECK(same(tint(e.status, mode, 0, 0), e.first));
+            if (half > 0) {
+                CHECK(same(tint(e.status, mode, 0, half - 1), e.first));
+                CHECK(same(tint(e.status, mode, 0, half), e.second));
+                CHECK(same(tint(e.status, mode, 0, e.period_ms - 1), e.second));
+                CHECK(same(tint(e.status, mode, 0, e.period_ms), e.first));
+            }
+        }
+
+        CHECK_FALSE(look(Status::idle, mode, 0).has_value());
+        CHECK_FALSE(look(Status::untinted, mode, 0).has_value());
+    }
+
+    // Looks never have a white of their own
+    for (const auto &e : expected) {
+        const auto status_look = look(e.status, SideStripStatusMode::status, 0);
+        REQUIRE(status_look.has_value());
+        CHECK(status_look->first.w == 0);
+        CHECK(status_look->second.w == 0);
+    }
 }
 
 TEST_CASE("side_strip_status: apply_tint") {

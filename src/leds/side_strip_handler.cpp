@@ -141,7 +141,7 @@ void SideStripHandler::update() {
 #if PRINTER_IS_PRUSA_XL()
     // A state change above already used the new tint; this covers a tint change within the same state
     if (tint_changed && (state == SideStripState::active || state == SideStripState::dimmed)) {
-        controller.set(get_color_for_state(state), side_strip_status::transition_ms(printer_status));
+        fade_to(get_color_for_state(state), side_strip_status::transition_ms(printer_status));
     }
 #endif
 
@@ -228,7 +228,13 @@ bool SideStripHandler::update_tint(SideStripStatusMode mode, uint32_t time_ms) {
 
 leds::ColorRGBW SideStripHandler::color() const {
     std::lock_guard lock(mutex);
-    return controller_instance().color();
+    ColorRGBW color = controller_instance().color();
+#if PRINTER_IS_PRUSA_XL()
+    if (held_white.has_value()) {
+        color.w = *held_white;
+    }
+#endif
+    return color;
 }
 
 bool SideStripHandler::is_dimmed() const {
@@ -248,8 +254,21 @@ void SideStripHandler::change_state(SideStripState state) {
         } else {
             duration = 500;
         }
-        controller_instance().set(get_color_for_state(state), duration);
+        fade_to(get_color_for_state(state), duration);
     }
+}
+
+void SideStripHandler::fade_to(ColorRGBW color, uint32_t duration_ms) {
+    auto &controller = controller_instance();
+#if PRINTER_IS_PRUSA_XL()
+    // The controller's blend can round a channel that keeps its value one step down. Holding the
+    // white keeps the second LED driver word, which also carries the enclosure fan, unchanged while
+    // only the tint moves.
+    const uint8_t shown_white = held_white.value_or(controller.color().w);
+    const bool keeps_white = status_mode != SideStripStatusMode::off && shown_white == color.w;
+    held_white = keeps_white ? std::optional<uint8_t>(color.w) : std::nullopt;
+#endif
+    controller.set(color, duration_ms);
 }
 
 ColorRGBW SideStripHandler::get_color_for_state(SideStripState state) {

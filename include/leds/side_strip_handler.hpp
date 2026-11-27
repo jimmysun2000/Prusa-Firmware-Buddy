@@ -82,6 +82,9 @@ private:
 
     void change_state(SideStripState state);
 
+    /// Starts the transition of the strip to @p color
+    void fade_to(ColorRGBW color, uint32_t duration_ms);
+
     ColorRGBW get_color_for_state(SideStripState state);
 
     /// @returns @p plain with the status tint applied (if there is one), scaled to @p level
@@ -123,6 +126,9 @@ private:
     side_strip_status::Status printer_status = side_strip_status::Status::idle;
     uint8_t percent_done = 0;
     std::optional<ColorRGBW> tint;
+
+    /// White shown while a transition changes only the tint
+    std::optional<uint8_t> held_white;
 #endif
 };
 

@@ -27,8 +27,11 @@ inline constexpr ColorRGBW finished_color { 0, 255, 0 };
 inline constexpr ColorRGBW warning_color { 255, 255, 0 };
 inline constexpr ColorRGBW error_color { 255, 0, 0 };
 
-/// Brightness of the dark half of a pulse, relative to the tint
+/// Brightness of the dark half of an alert pulse, relative to the tint
 inline constexpr float pulse_dark_factor = 0.15f;
+
+/// Brightness of the dark half of a slow pulse, relative to the tint
+inline constexpr float slow_pulse_dark_factor = 0.4f;
 
 /// A heater counts as warming up while it is more than this below its target
 inline constexpr float warm_up_margin = 3.0f;
@@ -36,6 +39,8 @@ inline constexpr float warm_up_margin = 3.0f;
 /// @returns period of the pulsing states, 0 for the steady ones
 constexpr uint32_t pulse_period_ms(Status status) {
     switch (status) {
+    case Status::heating:
+        return 3000;
     case Status::warning:
         return 1000;
     case Status::error:
@@ -44,6 +49,14 @@ constexpr uint32_t pulse_period_ms(Status status) {
         return 0;
     }
 }
+
+/// Two tints shown in turn, each for half of the period
+struct Look {
+    ColorRGBW first;
+    ColorRGBW second;
+    /// 0 shows only the first tint
+    uint16_t period_ms;
+};
 
 /// @returns whether the status keeps the full tint while the strip is dimmed
 constexpr bool is_alert(Status status) {
@@ -64,6 +77,10 @@ constexpr uint32_t transition_ms(Status status) {
 
 /// @returns printing tint for the progress: azure at 0 %, green at 100 %, in 5 % steps
 ColorRGBW progress_color(uint8_t percent_done);
+
+/// @returns how the status shows, std::nullopt when the strip shows no tint.
+/// @p percent_done is used only while printing in status_and_progress mode.
+std::optional<Look> look(Status status, SideStripStatusMode mode, uint8_t percent_done);
 
 /// @returns RGB tint for the status at time_ms, std::nullopt when the strip shows no tint.
 /// @p percent_done is used only while printing in status_and_progress mode.
