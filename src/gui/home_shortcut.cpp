@@ -35,7 +35,7 @@ namespace {
         case Kind::motors_off:
             return N_("Motors Off");
         case Kind::wipe_nozzle:
-            return N_("Wipe Nozzle");
+            return N_("Wipe Now");
         case Kind::macro:
             break;
         }

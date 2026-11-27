@@ -195,6 +195,7 @@ static_assert(five_column_layout.left_offset() == 8 && five_column_layout.texts_
 static_assert(2 * five_column_layout.texts_left_offset() + five_column_layout.text_width == 2 * five_column_layout.left_offset() + GuiDefaults::ButtonIconSize,
     "each label is centred under its icon");
 static_assert(four_column_layout.label_length() >= home_shortcut::home_label_length);
+static_assert(five_column_layout.label_length() >= home_shortcut::home_label_length);
 
 constexpr size_t stock_columns = 3;
 constexpr size_t button_rows = 2;

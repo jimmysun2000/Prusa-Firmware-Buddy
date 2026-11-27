@@ -66,8 +66,8 @@ constexpr const Action &find(uint8_t id) {
     return actions[index_of(id)];
 }
 
-/// Characters the home screen label fits: 99 px at 9 px per character
-inline constexpr size_t home_label_length = 11;
+/// Characters a home screen label fits in every layout; no fixed label is longer
+inline constexpr size_t home_label_length = 10;
 
 /// Size of the parameter buffer a label needs
 inline constexpr size_t label_buffer_size = user_macro::label_buffer_size;
