@@ -44,6 +44,11 @@
     #include <gui/screen/screen_cancel_objects.hpp>
 #endif
 
+#include <option/has_dwarf.h>
+#if HAS_DWARF()
+    #include <gui/menu_item/specific/menu_items_spool_join.hpp>
+#endif
+
 /*****************************************************************************/
 // parent alias
 using ScreenMenuTune__ = ScreenMenu<EFooter::On, MI_RETURN,
@@ -51,6 +56,9 @@ using ScreenMenuTune__ = ScreenMenu<EFooter::On, MI_RETURN,
     MI_LIVE_ADJUST_Z, // position without loadcell
 #endif
     MI_M600,
+#if HAS_DWARF()
+    MI_SPOOL_JOIN,
+#endif
 #if HAS_WASTEBIN_FILL_TRACKING()
     MI_WASTEBIN,
 #endif

@@ -17,3 +17,7 @@ endif()
 if(HAS_SWITCHABLE_AUTO_RETRACT)
   target_sources(firmware PRIVATE menu_items_auto_retract.cpp)
 endif()
+
+if(HAS_DWARF)
+  target_sources(firmware PRIVATE menu_items_spool_join.cpp)
+endif()
