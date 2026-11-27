@@ -291,7 +291,9 @@ ScreenMenuNozzleWiper::ScreenMenuNozzleWiper()
         save_end();
     };
     Item<MI_GO_TO_WAITING_POINT>().callback = [this] {
-        go_to_waiting_point();
+        if (confirm_bed_clear()) {
+            go_to_waiting_point();
+        }
     };
     Item<MI_TEST_WIPE>().callback = [] {
         if (confirm_bed_clear()) {
