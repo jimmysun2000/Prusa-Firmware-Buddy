@@ -79,6 +79,10 @@
     #include <config_store/config_store_export.hpp>
 #endif
 
+#if PRINTER_IS_PRUSA_XL()
+    #include <gui/screen/screen_restore_settings.hpp>
+#endif
+
 #if HAS_INDX()
     #include <puppies/INDX.hpp>
 #endif
@@ -943,6 +947,19 @@ void MI_EXPORT_SETTINGS::click(IWindowMenu & /*window_menu*/) {
     } else {
         MsgBoxError(_("Failed to write the settings backup. Check the USB drive and try again."), Responses_Ok);
     }
+}
+#endif
+
+#if PRINTER_IS_PRUSA_XL()
+/**********************************************************************************************/
+// MI_RESTORE_SETTINGS
+
+MI_RESTORE_SETTINGS::MI_RESTORE_SETTINGS()
+    : IWindowMenuItem(_(label), nullptr, is_enabled_t::yes, is_hidden_t::no, expands_t::yes) {
+}
+
+void MI_RESTORE_SETTINGS::click(IWindowMenu & /*window_menu*/) {
+    screen_restore_settings::open();
 }
 #endif
 

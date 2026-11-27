@@ -14,6 +14,7 @@ using ScreenMenuSystemBase = BasicScreenMenu<
     MI_LOAD_SETTINGS,
 #if PRINTER_IS_PRUSA_XL()
     MI_EXPORT_SETTINGS,
+    MI_RESTORE_SETTINGS,
 #endif
 #if HAS_E2EE_SUPPORT()
     MI_E2EE,

@@ -559,6 +559,18 @@ public:
 };
 #endif
 
+#if PRINTER_IS_PRUSA_XL()
+/// Restores settings from a backup on the USB drive, after a preview of what changes
+class MI_RESTORE_SETTINGS : public IWindowMenuItem {
+    constexpr static const char *const label = N_("Restore Settings from USB");
+
+public:
+    MI_RESTORE_SETTINGS();
+
+    virtual void click(IWindowMenu &) override;
+};
+#endif
+
 #if HAS_LEDS()
 class MI_LEDS_ENABLE : public WI_ICON_SWITCH_OFF_ON_t {
     static constexpr const char *const label = N_("RGB Status Bar");
