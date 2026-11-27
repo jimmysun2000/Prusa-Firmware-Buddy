@@ -7,6 +7,7 @@
     #include <leds/status_leds_handler.hpp>
     #include <common/marlin_vars.hpp>
     #include <feature/print_status_message/print_status_message_mgr.hpp>
+    #include <option/has_chamber_api.h>
     #include <tool_index.hpp>
 #endif
 
@@ -53,6 +54,10 @@ namespace {
             const auto type = print_status_message().current_message().message.type;
             const bool waiting_for_heat = type == PrintStatusMessage::waiting_for_hotend_temp
                 || type == PrintStatusMessage::waiting_for_bed_temp
+    #if HAS_CHAMBER_API()
+                // Enclosure soak and M191
+                || type == PrintStatusMessage::waiting_for_chamber_temp
+    #endif
                 || type == PrintStatusMessage::absorbing_heat;
             return waiting_for_heat ? Status::heating : Status::printing;
         }
