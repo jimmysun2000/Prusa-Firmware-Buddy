@@ -34,21 +34,47 @@ protected:
     void click(IWindowMenu &) override;
 };
 
+/// Target temperature of the next tuning run; not stored
+class MI_HOTEND_PID_TUNE_TEMP : public NumericInputConfigHolder, public WiSpin {
+public:
+    MI_HOTEND_PID_TUNE_TEMP();
+};
+
+/// Print fan speed of the next tuning run [%]; not stored
+class MI_HOTEND_PID_TUNE_FAN : public WiSpin {
+public:
+    MI_HOTEND_PID_TUNE_FAN();
+};
+
+/// Starts the tuning run of the tool with the target temperature and fan speed set above
+class MI_HOTEND_PID_TUNE : public MI_TOOLHEAD_SPECIFIC_BASE<IWindowMenuItem> {
+public:
+    MI_HOTEND_PID_TUNE(Toolhead toolhead = default_toolhead);
+    void update() final {}
+
+protected:
+    void click(IWindowMenu &) override;
+};
+
 using ScreenToolheadDetailHotendPid_ = ScreenMenu<EFooter::Off,
     MI_RETURN,
     WithConstructorArgs<MI_HOTEND_PID_GAIN, MI_HOTEND_PID_GAIN::Gain::kp>,
     WithConstructorArgs<MI_HOTEND_PID_GAIN, MI_HOTEND_PID_GAIN::Gain::ki>,
     WithConstructorArgs<MI_HOTEND_PID_GAIN, MI_HOTEND_PID_GAIN::Gain::kd>,
-    MI_HOTEND_PID_RESTORE_DEFAULTS>;
+    MI_HOTEND_PID_RESTORE_DEFAULTS,
+    MI_HOTEND_PID_TUNE_TEMP,
+    MI_HOTEND_PID_TUNE_FAN,
+    MI_HOTEND_PID_TUNE>;
 
-/// Hotend PID gains of one tool; they can be changed only while no print is active
+/// Hotend PID gains of one tool; they can be changed and tuned only while no print is active
 class ScreenToolheadDetailHotendPid : public ScreenToolheadDetailHotendPid_ {
 public:
     ScreenToolheadDetailHotendPid(Toolhead toolhead = default_toolhead);
 
-    /// Sent as the CHILD_CLICK parameter by items that changed the stored gains; not 0, which is nullptr
+    /// Sent as the CHILD_CLICK parameter by the items of this screen; not 0, which is nullptr
     enum class Event : uintptr_t {
         gains_changed = 1,
+        start_tuning,
     };
 
 protected:
@@ -56,6 +82,7 @@ protected:
 
 private:
     void update_editable();
+    void start_tuning();
 
     bool editable_ = false;
 };

@@ -32,3 +32,7 @@ endif()
 if(${PRINTER} STREQUAL "XL")
   target_sources(firmware PRIVATE selftest_frame_dock.cpp selftest_frame_tool_offsets.cpp)
 endif()
+
+if(HAS_TOOLCHANGER AND NOT HAS_INDX)
+  target_sources(firmware PRIVATE selftest_frame_hotend_pid.cpp)
+endif()

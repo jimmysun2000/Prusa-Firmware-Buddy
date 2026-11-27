@@ -1,12 +1,16 @@
 #include "screen_toolhead_settings_hotend_pid.hpp"
 
 #include <bit>
+#include <cmath>
 #include <utility>
 
 #include <ScreenFactory.hpp>
 #include <ScreenHandler.hpp>
 #include <config_store/store_instance.hpp>
 #include <marlin_client.hpp>
+#include <numeric_input_config_common.hpp>
+#include <printer_selftest.hpp>
+#include <selftest/selftest_data.hpp>
 #include <window_msgbox.hpp>
 
 using namespace screen_toolhead_settings;
@@ -105,6 +109,23 @@ void MI_HOTEND_PID_RESTORE_DEFAULTS::click(IWindowMenu &) {
     Screens::Access()->WindowEvent(GUI_event_t::CHILD_CLICK, std::bit_cast<void *>(ScreenToolheadDetailHotendPid::Event::gains_changed));
 }
 
+// * MI_HOTEND_PID_TUNE_TEMP
+MI_HOTEND_PID_TUNE_TEMP::MI_HOTEND_PID_TUNE_TEMP()
+    : NumericInputConfigHolder { numeric_input_config::filament_nozzle_temperature(AllTools {}) }
+    , WiSpin(215, NumericInputConfigHolder::owned_config, _("Tuning Temperature")) {}
+
+// * MI_HOTEND_PID_TUNE_FAN
+MI_HOTEND_PID_TUNE_FAN::MI_HOTEND_PID_TUNE_FAN()
+    : WiSpin(0, numeric_input_config::percent_with_off, _("Tuning Print Fan")) {}
+
+// * MI_HOTEND_PID_TUNE
+MI_HOTEND_PID_TUNE::MI_HOTEND_PID_TUNE(Toolhead toolhead)
+    : MI_TOOLHEAD_SPECIFIC_BASE(toolhead, _("Run PID Tuning")) {}
+
+void MI_HOTEND_PID_TUNE::click(IWindowMenu &) {
+    Screens::Access()->WindowEvent(GUI_event_t::CHILD_CLICK, std::bit_cast<void *>(ScreenToolheadDetailHotendPid::Event::start_tuning));
+}
+
 // * ScreenToolheadDetailHotendPid
 ScreenToolheadDetailHotendPid::ScreenToolheadDetailHotendPid(Toolhead toolhead)
     : ScreenMenu(_("HOTEND PID")) //
@@ -119,6 +140,24 @@ void ScreenToolheadDetailHotendPid::update_editable() {
     Item<WithConstructorArgs<MI_HOTEND_PID_GAIN, Gain::ki>>().set_enabled(editable_);
     Item<WithConstructorArgs<MI_HOTEND_PID_GAIN, Gain::kd>>().set_enabled(editable_);
     Item<MI_HOTEND_PID_RESTORE_DEFAULTS>().set_enabled(editable_);
+    Item<MI_HOTEND_PID_TUNE_TEMP>().set_enabled(editable_);
+    Item<MI_HOTEND_PID_TUNE_FAN>().set_enabled(editable_);
+    Item<MI_HOTEND_PID_TUNE>().set_enabled(editable_);
+}
+
+void ScreenToolheadDetailHotendPid::start_tuning() {
+    const Toolhead selected = Item<MI_HOTEND_PID_TUNE>().toolhead();
+    const auto *tool = std::get_if<PhysicalToolIndex>(&selected);
+    if (!tool || marlin_client::is_printing()) {
+        return;
+    }
+
+    const selftest::HotendPidTuningData request {
+        .tool = *tool,
+        .target_temp = static_cast<int16_t>(Item<MI_HOTEND_PID_TUNE_TEMP>().value()),
+        .print_fan_pwm = static_cast<uint8_t>(std::lround(Item<MI_HOTEND_PID_TUNE_FAN>().value() * 255 / 100)),
+    };
+    marlin_client::test_start_with_data(stmHotendPid, request);
 }
 
 void ScreenToolheadDetailHotendPid::windowEvent(window_t *sender, GUI_event_t event, void *param) {
@@ -132,6 +171,11 @@ void ScreenToolheadDetailHotendPid::windowEvent(window_t *sender, GUI_event_t ev
         Item<WithConstructorArgs<MI_HOTEND_PID_GAIN, Gain::kp>>().update();
         Item<WithConstructorArgs<MI_HOTEND_PID_GAIN, Gain::ki>>().update();
         Item<WithConstructorArgs<MI_HOTEND_PID_GAIN, Gain::kd>>().update();
+        return;
+    }
+
+    if (event == GUI_event_t::CHILD_CLICK && std::bit_cast<Event>(param) == Event::start_tuning) {
+        start_tuning();
         return;
     }
 

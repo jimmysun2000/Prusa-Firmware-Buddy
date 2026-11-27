@@ -21,6 +21,12 @@
 #include "selftest_frame_tool_offsets.hpp"
 #include "selftest_invalid_state.hpp"
 
+#include <option/has_indx.h>
+#include <option/has_toolchanger.h>
+#if HAS_TOOLCHANGER() && !HAS_INDX()
+    #include "selftest_frame_hotend_pid.hpp"
+#endif
+
 ScreenSelftest::fnc ScreenSelftest::Get(SelftestParts part) {
     switch (part) {
     case SelftestParts::Axis:
@@ -56,7 +62,7 @@ ScreenSelftest::fnc ScreenSelftest::Get(SelftestParts part) {
 
 #if HAS_TOOLCHANGER() && !HAS_INDX()
     case SelftestParts::HotendPid:
-        break;
+        return creator<SelftestFrameHotendPid>;
 #endif
 
     case SelftestParts::_none:
