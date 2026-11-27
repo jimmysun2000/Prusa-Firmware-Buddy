@@ -9,5 +9,5 @@ endif()
 
 if(PRINTER STREQUAL "XL")
   target_sources(firmware PRIVATE config_store_export.cpp config_store_export_format.cpp)
-  target_sources(firmware PRIVATE config_store_backup_items.cpp)
+  target_sources(firmware PRIVATE config_store_backup_items.cpp config_store_import_format.cpp)
 endif()

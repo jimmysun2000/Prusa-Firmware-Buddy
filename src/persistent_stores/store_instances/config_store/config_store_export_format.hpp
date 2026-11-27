@@ -2,6 +2,7 @@
 /// Line format of the settings backup file, without any access to the store or the file system.
 #pragma once
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
@@ -18,6 +19,15 @@ inline constexpr size_t hex_bytes_per_line = 48;
 
 /// Item names are cut to this length
 inline constexpr size_t max_name_length = 60;
+
+/// Longest key: the id, a byte offset below 10000, the name and an index
+inline constexpr size_t max_key_length = 4 + 5 + 1 + max_name_length + 5;
+
+/// Text of a key, zero-terminated
+using KeyText = std::array<char, max_key_length + 1>;
+
+/// Text of a float value, zero-terminated
+using FloatText = std::array<char, 32>;
 
 /// Receives the finished lines, without the line terminator
 class LineSink {
@@ -36,6 +46,15 @@ struct Key {
     /// Element index for items stored as an array under one name
     std::optional<uint8_t> index = std::nullopt;
 };
+
+/// Formats the key as it stands before " = " on the line with @p byte_offset: "<id>[+<byte offset>] <name>[<index>]".
+/// The name is sanitized and cut like on the line.
+/// @returns the key, held in @p text
+std::string_view format_key(KeyText &text, const Key &key, size_t byte_offset = 0);
+
+/// Formats @p value as written after "f32:", with 9 significant digits
+/// @returns the text, held in @p text
+std::string_view format_float(FloatText &text, float value);
 
 /// Writes "bool:0" or "bool:1"
 void write_bool(LineSink &sink, const Key &key, bool value);

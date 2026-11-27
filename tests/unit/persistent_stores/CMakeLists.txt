@@ -57,3 +57,19 @@ target_include_directories(
   config_store_export_format_tests PUBLIC ${CMAKE_SOURCE_DIR}/src/persistent_stores/store_instances
   )
 add_catch_test(config_store_export_format_tests)
+
+add_executable(
+  config_store_import_format_tests
+  ${CMAKE_CURRENT_SOURCE_DIR}/config_store_import_format_tests.cpp
+  ${CMAKE_SOURCE_DIR}/src/persistent_stores/store_instances/config_store/config_store_export_format.cpp
+  ${CMAKE_SOURCE_DIR}/src/persistent_stores/store_instances/config_store/config_store_import_format.cpp
+  ${CMAKE_SOURCE_DIR}/lib/inih/ini.c
+  ../mock/crc32_sw.cpp
+  )
+target_include_directories(
+  config_store_import_format_tests
+  PUBLIC ${CMAKE_SOURCE_DIR}/src/persistent_stores/store_instances ${CMAKE_SOURCE_DIR}/src
+         ${CMAKE_SOURCE_DIR}/src/common ${CMAKE_SOURCE_DIR}/lib/inih
+  )
+target_link_libraries(config_store_import_format_tests byte_utils)
+add_catch_test(config_store_import_format_tests)

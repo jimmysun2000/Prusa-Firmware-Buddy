@@ -46,16 +46,16 @@ namespace {
         size_t length_ = 0;
     };
 
-    /// inih splits on '=', starts comments with '#' and sections with '['
+    /// inih splits on the first '=' or ':', starts comments with '#' and sections with '['
     constexpr bool is_name_char(char c) {
-        return c >= ' ' && c <= '~' && c != '=' && c != '#' && c != ';' && c != '[' && c != ']';
+        return c >= ' ' && c <= '~' && c != '=' && c != ':' && c != '#' && c != ';' && c != '[' && c != ']';
     }
 
     constexpr bool is_plain_string_char(char c) {
         return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '.' || c == '_' || c == '-';
     }
 
-    void start_line(Line &line, const Key &key, size_t byte_offset = 0) {
+    void append_key(Line &line, const Key &key, size_t byte_offset) {
         line.append_printf("%04" PRIX16, key.id);
         if (byte_offset > 0) {
             line.append_printf("+%u", static_cast<unsigned>(byte_offset));
@@ -68,7 +68,10 @@ namespace {
         if (key.index.has_value()) {
             line.append_printf("[%u]", static_cast<unsigned>(*key.index));
         }
+    }
 
+    void start_line(Line &line, const Key &key, size_t byte_offset = 0) {
+        append_key(line, key, byte_offset);
         line.append(" = ");
     }
 
@@ -77,6 +80,20 @@ namespace {
     }
 
 } // namespace
+
+std::string_view format_key(KeyText &text, const Key &key, size_t byte_offset) {
+    Line line;
+    append_key(line, key, byte_offset);
+    const auto key_text = line.view().substr(0, max_key_length);
+    std::ranges::copy(key_text, text.begin());
+    text[key_text.size()] = '\0';
+    return { text.data(), key_text.size() };
+}
+
+std::string_view format_float(FloatText &text, float value) {
+    const int written = snprintf(text.data(), text.size(), "%.9g", static_cast<double>(value));
+    return { text.data(), static_cast<size_t>(std::clamp<int>(written, 0, text.size() - 1)) };
+}
 
 void write_bool(LineSink &sink, const Key &key, bool value) {
     Line line;
@@ -102,7 +119,9 @@ void write_signed(LineSink &sink, const Key &key, int32_t value, size_t size) {
 void write_float(LineSink &sink, const Key &key, float value) {
     Line line;
     start_line(line, key);
-    line.append_printf("f32:%.9g", static_cast<double>(value));
+    line.append("f32:");
+    FloatText text;
+    line.append(format_float(text, value));
     sink.write_line(line.view());
 }
 
