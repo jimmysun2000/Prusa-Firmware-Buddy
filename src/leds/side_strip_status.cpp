@@ -1,16 +1,9 @@
 #include <leds/side_strip_status.hpp>
 
-#include <algorithm>
-
 namespace leds::side_strip_status {
 
-ColorRGBW progress_color(uint8_t percent_done) {
-    const uint8_t step = std::min<uint8_t>(percent_done, 100) / 5 * 5;
-    return printing_color.blend(finished_color, static_cast<float>(step) / 100.0f);
-}
-
-std::optional<Look> look(Status status, SideStripStatusMode mode, uint8_t percent_done) {
-    if (mode != SideStripStatusMode::status && mode != SideStripStatusMode::status_and_progress) {
+std::optional<Look> look(Status status, SideStripStatusMode mode) {
+    if (mode != SideStripStatusMode::status) {
         return std::nullopt;
     }
 
@@ -28,7 +21,7 @@ std::optional<Look> look(Status status, SideStripStatusMode mode, uint8_t percen
     case Status::heating:
         return pulse(heating_color, slow_pulse_dark_factor);
     case Status::printing:
-        return steady((mode == SideStripStatusMode::status_and_progress) ? progress_color(percent_done) : printing_color);
+        return steady(printing_color);
     case Status::finished:
         return steady(finished_color);
     case Status::warning:
@@ -75,8 +68,8 @@ Status resolve(const Inputs &inputs) {
     return Status::untinted;
 }
 
-std::optional<ColorRGBW> tint(Status status, SideStripStatusMode mode, uint8_t percent_done, uint32_t time_ms) {
-    const auto status_look = look(status, mode, percent_done);
+std::optional<ColorRGBW> tint(Status status, SideStripStatusMode mode, uint32_t time_ms) {
+    const auto status_look = look(status, mode);
     if (!status_look.has_value()) {
         return std::nullopt;
     }

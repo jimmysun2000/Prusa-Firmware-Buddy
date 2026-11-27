@@ -653,7 +653,7 @@ public:
 };
 
     #if PRINTER_IS_PRUSA_XL()
-/// Status colours of the side strip: Off / State / State+Progress
+/// Status colours of the side strip: Off / State
 class MI_SIDE_LEDS_STATUS_MODE : public MenuItemSwitch {
     static constexpr const char *const label = N_("RGB Side Strip Status");
 

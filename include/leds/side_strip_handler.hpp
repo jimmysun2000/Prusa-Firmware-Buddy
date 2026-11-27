@@ -134,7 +134,6 @@ private:
 
     side_strip_status::Inputs status_inputs;
     side_strip_status::Status printer_status = side_strip_status::Status::idle;
-    uint8_t percent_done = 0;
     std::optional<ColorRGBW> tint;
 
     /// White shown while a transition changes only the tint

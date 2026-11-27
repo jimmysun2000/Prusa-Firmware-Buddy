@@ -1077,7 +1077,6 @@ void MI_SIDE_LEDS_DIMMING_ENABLE::OnChange([[maybe_unused]] size_t old_index) {
 static constexpr EnumArray<leds::SideStripStatusMode, const char *, leds::SideStripStatusMode::_cnt> side_strip_status_mode_values {
     { leds::SideStripStatusMode::off, N_("Off") },
     { leds::SideStripStatusMode::status, N_("State") },
-    { leds::SideStripStatusMode::status_and_progress, N_("State+Progress") },
 };
 
 MI_SIDE_LEDS_STATUS_MODE::MI_SIDE_LEDS_STATUS_MODE()

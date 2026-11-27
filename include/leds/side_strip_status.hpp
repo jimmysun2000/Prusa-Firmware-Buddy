@@ -155,16 +155,11 @@ constexpr uint32_t transition_ms(Status status) {
     return (period > 0 && period / 2 < 500) ? period / 2 : 500;
 }
 
-/// @returns printing tint for the progress: azure at 0 %, green at 100 %, in 5 % steps
-ColorRGBW progress_color(uint8_t percent_done);
+/// @returns how the status shows, std::nullopt when the strip shows no tint
+std::optional<Look> look(Status status, SideStripStatusMode mode);
 
-/// @returns how the status shows, std::nullopt when the strip shows no tint.
-/// @p percent_done is used only while printing in status_and_progress mode.
-std::optional<Look> look(Status status, SideStripStatusMode mode, uint8_t percent_done);
-
-/// @returns RGB tint for the status at time_ms, std::nullopt when the strip shows no tint.
-/// @p percent_done is used only while printing in status_and_progress mode.
-std::optional<ColorRGBW> tint(Status status, SideStripStatusMode mode, uint8_t percent_done, uint32_t time_ms);
+/// @returns RGB tint for the status at time_ms, std::nullopt when the strip shows no tint
+std::optional<ColorRGBW> tint(Status status, SideStripStatusMode mode, uint32_t time_ms);
 
 /// @returns colour with the RGB channels from @p tint scaled to @p level (0-255) and the white channel from @p plain
 ColorRGBW apply_tint(ColorRGBW plain, ColorRGBW tint, uint8_t level);

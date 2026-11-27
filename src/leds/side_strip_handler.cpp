@@ -226,13 +226,9 @@ void SideStripHandler::update() {
     // Read before taking the mutex, reading the printer status takes other locks
     const auto mode = status_mode.load();
     std::optional<side_strip_status::Inputs> new_inputs;
-    uint8_t new_percent_done = 0;
     if (const uint32_t now = ticks_ms(); mode != SideStripStatusMode::off && ticks_diff(now, status_read_ms) >= static_cast<int32_t>(status_read_interval_ms)) {
         status_read_ms = now;
         new_inputs = read_inputs(now);
-        if (new_inputs->activity == side_strip_status::Activity::printing) {
-            new_percent_done = marlin_vars().sd_percent_done;
-        }
     }
 #endif
 
@@ -242,7 +238,6 @@ void SideStripHandler::update() {
 #if PRINTER_IS_PRUSA_XL()
     if (new_inputs.has_value()) {
         status_inputs = *new_inputs;
-        percent_done = new_percent_done;
     }
     const bool user_present = active_timestamp_ms != 0 && time_ms - active_timestamp_ms < active_timeout_ms;
     const bool tint_changed = update_tint(mode, time_ms, user_present);
@@ -279,8 +274,7 @@ void SideStripHandler::load_config() {
     max_brightness = config_store().side_leds_max_brightness.get();
     dimming_enabled = config_store().side_leds_dimming_enabled.get();
 #if PRINTER_IS_PRUSA_XL()
-    const auto mode = config_store().side_leds_status_mode.get();
-    status_mode = (std::to_underlying(mode) < std::to_underlying(SideStripStatusMode::_cnt)) ? mode : SideStripStatusMode::off;
+    status_mode = side_strip_status_mode_from_stored(config_store().side_leds_status_mode.get());
 #endif
     // Set state to off to force a change of state that will transition to the new brightness
     state = SideStripState::off;
@@ -345,7 +339,7 @@ bool SideStripHandler::update_tint(SideStripStatusMode mode, uint32_t time_ms, b
     side_strip_status::Inputs inputs = status_inputs;
     inputs.user_present = user_present;
     printer_status = side_strip_status::resolve(inputs);
-    const auto new_tint = side_strip_status::tint(printer_status, mode, percent_done, time_ms);
+    const auto new_tint = side_strip_status::tint(printer_status, mode, time_ms);
     if (new_tint == tint) {
         return false;
     }
