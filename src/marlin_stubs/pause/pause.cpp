@@ -120,7 +120,7 @@ using namespace buddy;
 
 static void report_progress(Pause &pause, ProgressPercent progress) {
     if (auto mode = pause.get_mode()) {
-        const auto data = fsm::serialize_data(FSMLoadUnloadData { .mode = *mode, .progress = progress });
+        const auto data = fsm::serialize_data(FSMLoadUnloadData { .mode = *mode, .progress = progress, .purge = pause.get_purge_lengths() });
         marlin_server::fsm_change(pause.getPhase(), data);
     }
 }
@@ -141,6 +141,45 @@ public:
 private:
     Pause &pause_;
     float min_, max_;
+};
+
+namespace {
+
+/// Purge length as shown on the screen
+uint16_t purge_whole_mm(float length) {
+    return static_cast<uint16_t>(std::lround(std::clamp<float>(length, 0, PurgeLengths::max_total)));
+}
+
+} // namespace
+
+/// During its lifetime, sets the purge lengths reported by the notifiers above from how far E got since its start.
+/// To be created right before the E move of the purge, with the planner idle.
+/// Has to subscribe after the PauseFsmNotifier of the move, newer subscribers run first.
+/// Reads the stepper position: marlin_vars are refreshed only every 100 ms, and current_position
+/// can be ahead of the steppers after a quick stop.
+class PurgeLengthsNotifier : public Subscriber<> {
+
+public:
+    PurgeLengthsNotifier(Pause &pause, float total)
+        : Subscriber<>(marlin_server::idle_publisher, [this] { update(); })
+        , pause_(pause)
+        , start_e_(stepper_e())
+        , total_(purge_whole_mm(total)) {
+        update();
+    }
+
+private:
+    static float stepper_e() {
+        return planner.get_axis_position_mm(E_AXIS_N(active_extruder));
+    }
+
+    void update() {
+        pause_.purge_lengths = PurgeLengths { .purged = purge_whole_mm(stepper_e() - start_e_), .total = total_ }.encode();
+    }
+
+    Pause &pause_;
+    float start_e_;
+    uint16_t total_;
 };
 
 /// Same as PauseFSMNotifier, but ties the progress to elapsed time instead of marlin variable
@@ -209,7 +248,7 @@ void PausePrivatePhase::setPhase(PhasesLoadUnload ph) {
     if (load_unload_mode) {
         // Do not call progress_mapper.update_progress() here. We want to completely skip states that do nothing and remap the remaining progress
         // If we update progress here, the phase would be included in the progress mapping
-        marlin_server::fsm_change(phase, fsm::serialize_data(FSMLoadUnloadData { .mode = *load_unload_mode, .progress = progress_mapper.current_progress() }));
+        marlin_server::fsm_change(phase, fsm::serialize_data(FSMLoadUnloadData { .mode = *load_unload_mode, .progress = progress_mapper.current_progress(), .purge = purge_lengths }));
     }
 }
 
@@ -420,6 +459,12 @@ bool Pause::ensureSafeTemperatureNotifyProgress() {
 #endif
 
     PauseFsmNotifier N(*this, current_position.e, current_position.e + length, marlin_vars().native_pos[MARLIN_VAR_INDEX_E]);
+
+    // Counts from here, after the deretract
+    std::optional<PurgeLengthsNotifier> purge_lengths_notifier;
+    if (shows_purge_lengths && length > 0) {
+        purge_lengths_notifier.emplace(*this, length);
+    }
 
     mapi::extruder_move(length, fr_mm_s);
 
@@ -960,8 +1005,19 @@ feedRate_t purge_feedrate() {
 } // namespace
 
 bool Pause::standard_purge_sequence() {
-    const auto purge_result = do_e_move_notify_progress_hotextrude(
-        settings.purge_length(), purge_feedrate(), load_stop_conditions());
+    const float purge_length = settings.purge_length();
+    const auto purge_result = [&] {
+        AutoRestore show_purge_lengths(shows_purge_lengths, true);
+        return do_e_move_notify_progress_hotextrude(purge_length, purge_feedrate(), load_stop_conditions());
+    }();
+
+    // The last update while moving can be a little short of the end
+    if (purge_result == StopConditions::Accomplished) {
+        const uint16_t total = purge_whole_mm(purge_length);
+        purge_lengths = PurgeLengths { .purged = total, .total = total }.encode();
+        report_progress(*this, progress_mapper.current_progress());
+    }
+    purge_lengths = PurgeLengths::no_purge;
 
     if (purge_result == StopConditions::SideFilamentSensorRunout) {
         set(LoadState::runout_during_load);

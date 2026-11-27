@@ -182,3 +182,7 @@ target_include_directories(
          ${CMAKE_SOURCE_DIR}/src/lang ${CMAKE_SOURCE_DIR}/src/module/utils/buddy_utils
   )
 add_catch_test(encoded_filament_tests)
+
+add_executable(purge_lengths_tests ${CMAKE_CURRENT_SOURCE_DIR}/purge_lengths_tests.cpp)
+target_include_directories(purge_lengths_tests PUBLIC ${CMAKE_SOURCE_DIR}/src/common)
+add_catch_test(purge_lengths_tests)

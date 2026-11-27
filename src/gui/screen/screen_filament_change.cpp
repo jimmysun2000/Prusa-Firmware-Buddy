@@ -313,6 +313,48 @@ private:
     bool first_update_done = false;
 };
 
+#if PRINTER_IS_PRUSA_XL()
+/// Progress of a purge, with the length purged so far out of the total, for example "12 / 27 mm"
+class FramePurging : public FrameProgress {
+public:
+    FramePurging(window_t *parent, Phase phase, const char *label_text)
+        : FrameProgress(parent, phase, label_text)
+        , lengths(parent, get_purge_lengths_rect(parent->GetRect()), is_multiline::no, is_closed_on_click_t::no, string_view_utf8::MakeRAM(lengths_text.data())) {
+        lengths.set_font(Font::normal);
+        lengths.SetAlignment(Align_t::Center());
+        lengths.set_visible(false);
+    }
+
+    void update(fsm::PhaseData fsm_data) {
+        FrameProgress::update(fsm_data);
+
+        // Once the purge move is over, its last lengths stay up until the phase changes
+        const PurgeLengths::Code code = fsm::deserialize_data<FSMLoadUnloadData>(fsm_data).purge;
+        const auto purge = PurgeLengths::decode(code);
+        if (!purge || code == shown_code) {
+            return;
+        }
+        shown_code = code;
+
+        snprintf(lengths_text.data(), lengths_text.size(), "%u / %u mm", unsigned(purge->purged), unsigned(purge->total));
+        lengths.set_visible(true);
+        // The text stays in the same buffer, so SetText would not redraw it
+        lengths.Invalidate();
+    }
+
+private:
+    /// Second line of the label
+    static Rect16 get_purge_lengths_rect(Rect16 parent_rect) {
+        const Rect16 label_rect = get_label_rect(parent_rect);
+        return Rect16(label_rect.Left(), label_rect.Top() + height(Font::special) + 2 * LABEL_TEXT_PAD, label_rect.Width(), height(Font::normal));
+    }
+
+    std::array<char, sizeof("360 / 360 mm")> lengths_text {};
+    window_text_t lengths;
+    PurgeLengths::Code shown_code = PurgeLengths::no_purge;
+};
+#endif
+
 class FrameNotice : public FrameBase {
 public:
     FrameNotice(window_t *parent, Phase phase)
@@ -471,8 +513,13 @@ using Frames = FrameDefinitionList<ScreenFilamentChange::FrameStorage,
     FrameDefinition<Phase::LoadWaitingTemp_stoppable, FrameProgress, txt_wait_temp>,
     FrameDefinition<Phase::LoadWaitingTemp_unstoppable, FrameProgress, txt_wait_temp>,
 #endif
+#if PRINTER_IS_PRUSA_XL()
+    FrameDefinition<Phase::Purging_stoppable, FramePurging, txt_purging>,
+    FrameDefinition<Phase::Purging_unstoppable, FramePurging, txt_purging>,
+#else
     FrameDefinition<Phase::Purging_stoppable, FrameProgress, txt_purging>,
     FrameDefinition<Phase::Purging_unstoppable, FrameProgress, txt_purging>,
+#endif
     FrameDefinition<Phase::AwaitingFilament_stoppable, WithBeepAlertSound<FrameProgress>, txt_make_sure_inserted>,
     FrameDefinition<Phase::AwaitingFilament_unstoppable, WithBeepAlertSound<FrameProgress>, txt_make_sure_inserted>,
     FrameDefinition<Phase::IsColor, WithBeepAlertSound<FrameProgress>, txt_is_color>,

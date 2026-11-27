@@ -26,6 +26,7 @@
 #include <option/has_toolchanger.h>
 
 #include <utils/progress_mapper.hpp>
+#include <purge_lengths.hpp>
 
 // @brief With Z unhomed, ensure that it is at least amount_mm above bed.
 void unhomed_z_lift(float amount_mm);
@@ -33,6 +34,7 @@ void unhomed_z_lift(float amount_mm);
 class PausePrivatePhase {
     friend class PauseFsmNotifier;
     friend class PauseFsmDurationNotifier;
+    friend class PurgeLengthsNotifier;
 
 public:
     /**
@@ -100,6 +102,9 @@ protected:
     LoadState state { LoadState::unload_start };
     ProgressMapper<LoadState> progress_mapper;
 
+    /// Lengths of the running purge reported with the progress, see PurgeLengths
+    PurgeLengths::Code purge_lengths = PurgeLengths::no_purge;
+
     PausePrivatePhase();
     void setPhase(PhasesLoadUnload ph);
 
@@ -130,6 +135,7 @@ public:
     void set_mode(LoadUnloadMode mode) { load_unload_mode = mode; }
     void clr_mode() { load_unload_mode = std::nullopt; }
     std::optional<LoadUnloadMode> get_mode() const { return load_unload_mode; }
+    PurgeLengths::Code get_purge_lengths() const { return purge_lengths; }
 };
 
 // used by load / unload / change filament
@@ -148,6 +154,9 @@ class Pause : public PausePrivatePhase {
 
     /// Whether a purge already finished during the current load/unload operation
     bool first_purge_done = false;
+
+    /// Whether the forward E moves report their lengths as a purge (purge_lengths)
+    bool shows_purge_lengths = false;
 
 #if HAS_NOZZLE_CLEANER()
     uint8_t failed_purge_attempts = 0;
