@@ -1,9 +1,12 @@
 #pragma once
 
 #include <cstdint>
+#include <utility>
 
 #include "screen_toolhead_settings_common.hpp"
 #include <hotend_pid_gains.hpp>
+#include <hotend_pid_session.hpp>
+#include <meta_utils.hpp>
 
 namespace screen_toolhead_settings {
 
@@ -34,19 +37,34 @@ protected:
     void click(IWindowMenu &) override;
 };
 
-/// Target temperature of the next tuning run; not stored
+/// Whether the next tuning session of all tools tunes this tool; not stored, on when the screen opens
+class MI_HOTEND_PID_TUNE_TOOL : public MenuItemToggleSwitch {
+public:
+    MI_HOTEND_PID_TUNE_TOOL(uint8_t raw_tool);
+
+    PhysicalToolIndex tool() const { return tool_; }
+
+protected:
+    void toggled(Tristate) override {}
+
+private:
+    const PhysicalToolIndex tool_;
+    PhysicalToolIndex::DisplayNameParams label_params_;
+};
+
+/// Target temperature of the next tuning session, the same for all its tools; not stored
 class MI_HOTEND_PID_TUNE_TEMP : public NumericInputConfigHolder, public WiSpin {
 public:
     MI_HOTEND_PID_TUNE_TEMP();
 };
 
-/// Print fan speed of the next tuning run [%]; not stored
+/// Print fan speed of the next tuning session [%], the same for all its tools; not stored
 class MI_HOTEND_PID_TUNE_FAN : public WiSpin {
 public:
     MI_HOTEND_PID_TUNE_FAN();
 };
 
-/// Starts the tuning run of the tool with the target temperature and fan speed set above
+/// Starts the tuning session with the tools, target temperature and fan speed set above
 class MI_HOTEND_PID_TUNE : public MI_TOOLHEAD_SPECIFIC_BASE<IWindowMenuItem> {
 public:
     MI_HOTEND_PID_TUNE(Toolhead toolhead = default_toolhead);
@@ -56,17 +74,27 @@ protected:
     void click(IWindowMenu &) override;
 };
 
-using ScreenToolheadDetailHotendPid_ = ScreenMenu<EFooter::Off,
-    MI_RETURN,
-    WithConstructorArgs<MI_HOTEND_PID_GAIN, MI_HOTEND_PID_GAIN::Gain::kp>,
-    WithConstructorArgs<MI_HOTEND_PID_GAIN, MI_HOTEND_PID_GAIN::Gain::ki>,
-    WithConstructorArgs<MI_HOTEND_PID_GAIN, MI_HOTEND_PID_GAIN::Gain::kd>,
-    MI_HOTEND_PID_RESTORE_DEFAULTS,
-    MI_HOTEND_PID_TUNE_TEMP,
-    MI_HOTEND_PID_TUNE_FAN,
-    MI_HOTEND_PID_TUNE>;
+template <typename>
+struct ScreenToolheadDetailHotendPidMenu;
 
-/// Hotend PID gains of one tool; they can be changed and tuned only while no print is active
+template <size_t... raw_tool>
+struct ScreenToolheadDetailHotendPidMenu<std::index_sequence<raw_tool...>> {
+    using Type = ScreenMenu<EFooter::Off,
+        MI_RETURN,
+        WithConstructorArgs<MI_HOTEND_PID_GAIN, MI_HOTEND_PID_GAIN::Gain::kp>,
+        WithConstructorArgs<MI_HOTEND_PID_GAIN, MI_HOTEND_PID_GAIN::Gain::ki>,
+        WithConstructorArgs<MI_HOTEND_PID_GAIN, MI_HOTEND_PID_GAIN::Gain::kd>,
+        MI_HOTEND_PID_RESTORE_DEFAULTS,
+        WithConstructorArgs<MI_HOTEND_PID_TUNE_TOOL, static_cast<uint8_t>(raw_tool)>...,
+        MI_HOTEND_PID_TUNE_TEMP,
+        MI_HOTEND_PID_TUNE_FAN,
+        MI_HOTEND_PID_TUNE>;
+};
+
+using ScreenToolheadDetailHotendPid_ = ScreenToolheadDetailHotendPidMenu<std::make_index_sequence<PhysicalToolIndex::count>>::Type;
+
+/// Hotend PID gains of one tool, or the tuning of several tools for all_toolheads. Gains can be
+/// changed and tuned only while no print is active.
 class ScreenToolheadDetailHotendPid : public ScreenToolheadDetailHotendPid_ {
 public:
     ScreenToolheadDetailHotendPid(Toolhead toolhead = default_toolhead);
@@ -84,6 +112,10 @@ private:
     void update_editable();
     void start_tuning();
 
+    /// @returns the tools the next tuning session would tune
+    hotend_pid::ToolSet chosen_tools();
+
+    const Toolhead toolhead_;
     bool editable_ = false;
 };
 

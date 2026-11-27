@@ -327,9 +327,6 @@ ScreenToolheadDetail::ScreenToolheadDetail(Toolhead toolhead)
         container.Item<MI_DOCK>().set_is_hidden();
         container.Item<MI_NOZZLE_OFFSET>().set_is_hidden();
 #endif
-#if HAS_TOOLCHANGER() && !HAS_INDX()
-        container.Item<MI_HOTEND_PID>().set_is_hidden();
-#endif
     }
 
     // On XL, the first toolhead is the reference with XYZ offsets of 0,

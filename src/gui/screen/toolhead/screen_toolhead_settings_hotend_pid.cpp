@@ -109,6 +109,14 @@ void MI_HOTEND_PID_RESTORE_DEFAULTS::click(IWindowMenu &) {
     Screens::Access()->WindowEvent(GUI_event_t::CHILD_CLICK, std::bit_cast<void *>(ScreenToolheadDetailHotendPid::Event::gains_changed));
 }
 
+// * MI_HOTEND_PID_TUNE_TOOL
+MI_HOTEND_PID_TUNE_TOOL::MI_HOTEND_PID_TUNE_TOOL(uint8_t raw_tool)
+    : MenuItemToggleSwitch(true, {})
+    , tool_(PhysicalToolIndex::from_raw(raw_tool)) //
+{
+    SetLabel(tool_.display_name(label_params_));
+}
+
 // * MI_HOTEND_PID_TUNE_TEMP
 MI_HOTEND_PID_TUNE_TEMP::MI_HOTEND_PID_TUNE_TEMP()
     : NumericInputConfigHolder { numeric_input_config::filament_nozzle_temperature(AllTools {}) }
@@ -128,10 +136,44 @@ void MI_HOTEND_PID_TUNE::click(IWindowMenu &) {
 
 // * ScreenToolheadDetailHotendPid
 ScreenToolheadDetailHotendPid::ScreenToolheadDetailHotendPid(Toolhead toolhead)
-    : ScreenMenu(_("HOTEND PID")) //
+    : ScreenMenu(_("HOTEND PID"))
+    , toolhead_(toolhead) //
 {
-    menu_set_toolhead(container, toolhead);
+    const bool all_tools = toolhead == all_toolheads;
+    if (all_tools) {
+        // Gains are per tool, so their items are hidden here and stay on the first tool
+        Item<MI_HOTEND_PID_TUNE>().set_toolhead(toolhead);
+    } else {
+        menu_set_toolhead(container, toolhead);
+    }
+
+    Item<WithConstructorArgs<MI_HOTEND_PID_GAIN, Gain::kp>>().set_is_hidden(all_tools);
+    Item<WithConstructorArgs<MI_HOTEND_PID_GAIN, Gain::ki>>().set_is_hidden(all_tools);
+    Item<WithConstructorArgs<MI_HOTEND_PID_GAIN, Gain::kd>>().set_is_hidden(all_tools);
+    Item<MI_HOTEND_PID_RESTORE_DEFAULTS>().set_is_hidden(all_tools);
+    stdext::visit_tuple(container.menu_items, [all_tools]<typename T>(T &item) {
+        if constexpr (std::is_base_of_v<MI_HOTEND_PID_TUNE_TOOL, T>) {
+            item.set_is_hidden(!all_tools || !item.tool().is_enabled());
+        }
+    });
+
     update_editable();
+}
+
+hotend_pid::ToolSet ScreenToolheadDetailHotendPid::chosen_tools() {
+    if (const auto *tool = std::get_if<PhysicalToolIndex>(&toolhead_)) {
+        return static_cast<hotend_pid::ToolSet>(1u << tool->to_raw());
+    }
+
+    hotend_pid::ToolSet tools = 0;
+    stdext::visit_tuple(container.menu_items, [&tools]<typename T>(T &item) {
+        if constexpr (std::is_base_of_v<MI_HOTEND_PID_TUNE_TOOL, T>) {
+            if (item.value() == true && item.tool().is_enabled()) {
+                tools |= static_cast<hotend_pid::ToolSet>(1u << item.tool().to_raw());
+            }
+        }
+    });
+    return tools;
 }
 
 void ScreenToolheadDetailHotendPid::update_editable() {
@@ -140,20 +182,24 @@ void ScreenToolheadDetailHotendPid::update_editable() {
     Item<WithConstructorArgs<MI_HOTEND_PID_GAIN, Gain::ki>>().set_enabled(editable_);
     Item<WithConstructorArgs<MI_HOTEND_PID_GAIN, Gain::kd>>().set_enabled(editable_);
     Item<MI_HOTEND_PID_RESTORE_DEFAULTS>().set_enabled(editable_);
+    stdext::visit_tuple(container.menu_items, [this]<typename T>(T &item) {
+        if constexpr (std::is_base_of_v<MI_HOTEND_PID_TUNE_TOOL, T>) {
+            item.set_enabled(editable_);
+        }
+    });
     Item<MI_HOTEND_PID_TUNE_TEMP>().set_enabled(editable_);
     Item<MI_HOTEND_PID_TUNE_FAN>().set_enabled(editable_);
-    Item<MI_HOTEND_PID_TUNE>().set_enabled(editable_);
+    Item<MI_HOTEND_PID_TUNE>().set_enabled(editable_ && chosen_tools() != 0);
 }
 
 void ScreenToolheadDetailHotendPid::start_tuning() {
-    const Toolhead selected = Item<MI_HOTEND_PID_TUNE>().toolhead();
-    const auto *tool = std::get_if<PhysicalToolIndex>(&selected);
-    if (!tool || marlin_client::is_printing()) {
+    const hotend_pid::ToolSet tools = chosen_tools();
+    if (tools == 0 || marlin_client::is_printing()) {
         return;
     }
 
     const selftest::HotendPidTuningData request {
-        .tool_mask = static_cast<hotend_pid::ToolSet>(1u << tool->to_raw()),
+        .tool_mask = tools,
         .target_temp = static_cast<int16_t>(Item<MI_HOTEND_PID_TUNE_TEMP>().value()),
         .print_fan_pwm = static_cast<uint8_t>(std::lround(Item<MI_HOTEND_PID_TUNE_FAN>().value() * 255 / 100)),
     };
@@ -165,6 +211,8 @@ void ScreenToolheadDetailHotendPid::windowEvent(window_t *sender, GUI_event_t ev
         if (const bool editable = !marlin_client::is_printing(); editable != editable_) {
             update_editable();
         }
+        // A tool row may have been switched
+        Item<MI_HOTEND_PID_TUNE>().set_enabled(editable_ && chosen_tools() != 0);
     }
 
     if (event == GUI_event_t::CHILD_CLICK && std::bit_cast<Event>(param) == Event::gains_changed) {
