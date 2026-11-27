@@ -15,15 +15,28 @@ namespace {
 constexpr Info xl_info { .nx = 36, .ny = 36, .border = 1, .major_step = 3, .min_x = 0, .min_y = 0, .max_x = 350, .max_y = 350 };
 
 float mesh[36][36];
+bool probed_marks[36][36];
 
 float mesh_z(uint8_t ix, uint8_t iy) {
     return mesh[ix][iy];
+}
+
+bool mesh_probed(uint8_t ix, uint8_t iy) {
+    return probed_marks[ix][iy];
 }
 
 void fill_mesh(float value) {
     for (auto &column : mesh) {
         for (auto &point : column) {
             point = value;
+        }
+    }
+}
+
+void clear_probed_marks() {
+    for (auto &column : probed_marks) {
+        for (auto &mark : column) {
+            mark = false;
         }
     }
 }
@@ -76,6 +89,34 @@ TEST_CASE("bed_mesh_view::compute_revision") {
     CHECK(compute_revision(xl_info, mesh_z) != a);
 
     CHECK(compute_revision(xl_info, mesh_z) == compute_revision(xl_info, mesh_z));
+
+    // A probed mark changes the view without changing any value
+    clear_probed_marks();
+    const uint32_t unmarked = compute_revision(xl_info, mesh_z, mesh_probed);
+    probed_marks[4][4] = true;
+    const uint32_t marked = compute_revision(xl_info, mesh_z, mesh_probed);
+    CHECK(marked != unmarked);
+    probed_marks[4][4] = false;
+    probed_marks[1][1] = true;
+    CHECK(compute_revision(xl_info, mesh_z, mesh_probed) != marked);
+    CHECK(compute_revision(xl_info, mesh_z, mesh_probed) == compute_revision(xl_info, mesh_z, mesh_probed));
+}
+
+TEST_CASE("bed_mesh_view::count_probed") {
+    clear_probed_marks();
+    CHECK(count_probed(xl_info, mesh_probed) == 0);
+
+    probed_marks[0][0] = true;
+    probed_marks[35][35] = true;
+    probed_marks[1][34] = true;
+    CHECK(count_probed(xl_info, mesh_probed) == 3);
+
+    for (auto &column : probed_marks) {
+        for (auto &mark : column) {
+            mark = true;
+        }
+    }
+    CHECK(count_probed(xl_info, mesh_probed) == 36 * 36);
 }
 
 TEST_CASE("bed_mesh_view::compute_stats") {

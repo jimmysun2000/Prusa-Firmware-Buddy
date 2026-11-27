@@ -40,6 +40,15 @@ json::JsonResult MeshRenderer::renderState(size_t resume_point, json::JsonOutput
                 }
                 JSON_ARR_END;
             }
+        JSON_ARR_END JSON_COMMA;
+        JSON_FIELD_ARR("probed");
+            for (state.y = 0; state.y < info.ny; state.y++) {
+                JSON_CUSTOM("%s[", state.y > 0 ? "," : "");
+                for (state.x = 0; state.x < info.nx; state.x++) {
+                    JSON_CUSTOM("%s%d", state.x > 0 ? "," : "", bed_mesh_view::probed(state.x, state.y) ? 1 : 0);
+                }
+                JSON_ARR_END;
+            }
         JSON_ARR_END;
     JSON_OBJ_END;
     JSON_END;

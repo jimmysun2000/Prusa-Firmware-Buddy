@@ -26,6 +26,8 @@
 #include "../../../module/motion.h"
 #include "../../../feature/print_area.h"
 
+#include <atomic>
+
 #define UBL_VERSION "1.01"
 #define UBL_OK false
 #define UBL_ERR true
@@ -107,6 +109,25 @@ class unified_bed_leveling {
     static int8_t storage_slot;
 
     static bed_mesh_t z_values;
+
+    /// Points measured by the probe since the mesh was last cleared, bit y * GRID_MAX_POINTS_X + x.
+    /// For display only, nothing in Marlin reads it. Written by the Marlin thread only, read without a lock.
+    static std::atomic<uint32_t> probed_bits[(GRID_MAX_POINTS + 31) / 32];
+
+    static void mark_probed(const uint8_t x, const uint8_t y) {
+      const uint16_t bit = y * (GRID_MAX_POINTS_X) + x;
+      std::atomic<uint32_t> &word = probed_bits[bit / 32];
+      word.store(word.load() | (uint32_t(1) << (bit % 32)));
+    }
+
+    static bool is_probed(const uint8_t x, const uint8_t y) {
+      const uint16_t bit = y * (GRID_MAX_POINTS_X) + x;
+      return probed_bits[bit / 32].load() & (uint32_t(1) << (bit % 32));
+    }
+
+    static void clear_probed() {
+      for (auto &word : probed_bits) word.store(0);
+    }
 
     static volatile int encoder_diff; // Volatile because it's changed at interrupt time.
 

@@ -12,6 +12,7 @@
 #include <i18n.h>
 #include <sound.hpp>
 #include <timing.h>
+#include <utils/string_builder.hpp>
 
 #include <array>
 #include <cmath>
@@ -35,8 +36,10 @@ constexpr int16_t legend_caption_top = 124;
 constexpr Rect16 legend_bar_rect(panel_left, 144, 192, 14);
 constexpr int16_t legend_labels_top = 160;
 constexpr Rect16 status_rect(panel_left, 196, panel_width, 3 * line_height);
+constexpr Rect16 probed_rect(panel_left, 250, panel_width, line_height);
 
 constexpr Color no_data_color = COLOR_DARK_GRAY;
+constexpr uint16_t probed_dot_size = 3;
 
 constexpr uint32_t update_period_ms = 1000;
 constexpr uint32_t auto_close_ms = 10000;
@@ -73,6 +76,7 @@ void draw_grid(const bed_mesh_view::Info &info, const bed_mesh_view::Stats &stat
         }
         return palette[bed_mesh_view::color_step(v - stats.mean, stats.full_scale)];
     };
+    const int16_t dot_offset = (cell - probed_dot_size) / 2;
 
     for (uint8_t iy = 0; iy < info.ny; iy++) {
         // The front of the bed (y index 0) is at the bottom
@@ -89,10 +93,19 @@ void draw_grid(const bed_mesh_view::Info &info, const bed_mesh_view::Stats &stat
                 run_color = color;
             }
         }
+
+        // A dot tells a measured point from one the leveling filled in
+        if (has_data) {
+            for (uint8_t ix = 0; ix < info.nx; ix++) {
+                if (bed_mesh_view::probed(ix, iy)) {
+                    display::fill_rect(Rect16(grid_rect.Left() + ix * cell + dot_offset, top + dot_offset, probed_dot_size, probed_dot_size), COLOR_BLACK);
+                }
+            }
+        }
     }
 }
 
-void draw_panel(const bed_mesh_view::Stats &stats, WindowBedMesh::Status status) {
+void draw_panel(const bed_mesh_view::Stats &stats, WindowBedMesh::Status status, uint16_t probed_count) {
     using Status = WindowBedMesh::Status;
     const bool has_stats = stats.count > 0 && status != Status::no_mesh;
 
@@ -140,6 +153,17 @@ void draw_panel(const bed_mesh_view::Stats &stats, WindowBedMesh::Status status)
     if (status_text) {
         render_text_align(status_rect, _(status_text), font, COLOR_BLACK, COLOR_WHITE, {}, text_flags(Align_t::LeftTop(), is_multiline::yes));
     }
+
+    std::array<char, 32> probed_buffer;
+    StringBuilder sb(probed_buffer);
+    sb.append_string_view(_("Probed points"));
+    if (probed_count > 0) {
+        sb.append_printf(": %u", static_cast<unsigned>(probed_count));
+    } else {
+        // Also after a power panic resume, which keeps the mesh but not which points were measured
+        sb.append_string(": -");
+    }
+    draw_text(probed_rect, string_view_utf8::MakeRAM(probed_buffer.data()), Align_t::LeftCenter());
 }
 
 struct PopupTracker {
@@ -195,7 +219,7 @@ void WindowBedMesh::unconditionalDraw() {
 
     draw_grid(info, stats, status_ != Status::no_mesh);
     draw_text(front_label_rect, _("FRONT"), Align_t::Center(), COLOR_GRAY);
-    draw_panel(stats, status_);
+    draw_panel(stats, status_, bed_mesh_view::count_probed(info, bed_mesh_view::probed));
 }
 
 ScreenBedMesh::ScreenBedMesh(bool auto_opened)

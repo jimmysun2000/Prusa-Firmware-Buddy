@@ -815,6 +815,7 @@
         return;
       }
       z_values[x][y] = measured_z;
+      mark_probed(x, y);
 
       const auto prev_measured_z = g29_min_max_measured_z.value_or(MeasuredZ{measured_z, measured_z});
       g29_min_max_measured_z = { std::min(prev_measured_z.min, measured_z), std::max(prev_measured_z.max, measured_z) };

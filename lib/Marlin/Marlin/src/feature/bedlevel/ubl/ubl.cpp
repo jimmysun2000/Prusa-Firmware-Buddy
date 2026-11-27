@@ -66,6 +66,8 @@
 
   float unified_bed_leveling::z_values[GRID_MAX_POINTS_X][GRID_MAX_POINTS_Y];
 
+  std::atomic<uint32_t> unified_bed_leveling::probed_bits[(GRID_MAX_POINTS + 31) / 32];
+
   #if HAS_LCD_MENU
     // #error dead code found by automatic analyses (see BFW-5461)
     bool unified_bed_leveling::lcd_map_control = false;
@@ -81,6 +83,7 @@
     const bool was_enabled = planner.leveling_active;
     set_bed_leveling_enabled(false);
     storage_slot = -1;
+    clear_probed();
     ZERO(z_values);
     #if ENABLED(EXTENSIBLE_UI)
       for (uint8_t x = 0; x < GRID_MAX_POINTS_X; x++)
@@ -96,6 +99,7 @@
   }
 
   void unified_bed_leveling::set_all_mesh_points_to_value(const float value) {
+    clear_probed();
     for (uint8_t x = 0; x < GRID_MAX_POINTS_X; x++) {
       for (uint8_t y = 0; y < GRID_MAX_POINTS_Y; y++) {
         z_values[x][y] = value;

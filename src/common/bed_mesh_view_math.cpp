@@ -57,12 +57,27 @@ State compute_state(const Info &info, ZGetter z) {
     return all_zero ? State::none : State::complete;
 }
 
-uint32_t compute_revision(const Info &info, ZGetter z) {
+uint16_t count_probed(const Info &info, ProbedGetter probed) {
+    uint16_t count = 0;
+    for (uint8_t ix = 0; ix < info.nx; ix++) {
+        for (uint8_t iy = 0; iy < info.ny; iy++) {
+            if (probed(ix, iy)) {
+                count++;
+            }
+        }
+    }
+    return count;
+}
+
+uint32_t compute_revision(const Info &info, ZGetter z, ProbedGetter probed) {
     // FNV-1a over the 32-bit words; a plain XOR would not notice e.g. all points turning from 0 to NaN
     uint32_t hash = 2166136261u;
     for (uint8_t ix = 0; ix < info.nx; ix++) {
         for (uint8_t iy = 0; iy < info.ny; iy++) {
             hash = (hash ^ std::bit_cast<uint32_t>(z(ix, iy))) * 16777619u;
+            if (probed) {
+                hash = (hash ^ static_cast<uint32_t>(probed(ix, iy))) * 16777619u;
+            }
         }
     }
     return hash;

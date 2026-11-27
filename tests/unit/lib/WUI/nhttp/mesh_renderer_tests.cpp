@@ -13,15 +13,18 @@ using nhttp::handler::MeshRenderer;
 
 namespace {
 
-// Small fake mesh in place of the UBL one: 4 x 3 points, point x, y holds (x + 10 * y) / 1000 mm
+// Small fake mesh in place of the UBL one: 4 x 3 points, point x, y holds (x + 10 * y) / 1000 mm,
+// points 1, 1 and 3, 0 are probed
 constexpr uint8_t nx = 4;
 constexpr uint8_t ny = 3;
 float mesh[nx][ny];
+bool probed_marks[nx][ny];
 
 void fill_mesh() {
     for (uint8_t x = 0; x < nx; x++) {
         for (uint8_t y = 0; y < ny; y++) {
             mesh[x][y] = (x + 10 * y) * 0.001f;
+            probed_marks[x][y] = (x == 1 && y == 1) || (x == 3 && y == 0);
         }
     }
 }
@@ -47,7 +50,8 @@ constexpr std::string_view expected_complete = "{\"grid\":{\"x\":4,\"y\":3},"
                                                "\"max\":{\"x\":100.000,\"y\":200.250},"
                                                "\"major\":{\"border\":1,\"step\":3},"
                                                "\"state\":\"complete\","
-                                               "\"z\":[[0.000,0.001,0.002,0.003],[0.010,0.011,0.012,0.013],[0.020,0.021,0.022,0.023]]}";
+                                               "\"z\":[[0.000,0.001,0.002,0.003],[0.010,0.011,0.012,0.013],[0.020,0.021,0.022,0.023]],"
+                                               "\"probed\":[[0,0,0,1],[0,1,0,0],[0,0,0,0]]}";
 
 } // namespace
 
@@ -61,12 +65,16 @@ float z(uint8_t ix, uint8_t iy) {
     return (ix < nx && iy < ny) ? mesh[ix][iy] : NAN;
 }
 
+bool probed(uint8_t ix, uint8_t iy) {
+    return ix < nx && iy < ny && probed_marks[ix][iy];
+}
+
 State state() {
     return compute_state(info(), z);
 }
 
 uint32_t revision() {
-    return compute_revision(info(), z);
+    return compute_revision(info(), z, probed);
 }
 
 } // namespace bed_mesh_view
@@ -114,16 +122,38 @@ TEST_CASE("Mesh JSON - point turns NaN between chunks") {
         }
     }
     REQUIRE(result == JsonResult::Complete);
-    CHECK(response.find("[0.020,0.021,0.022,null]]}") != std::string::npos);
+    CHECK(response.find("[0.020,0.021,0.022,null]],") != std::string::npos);
+}
+
+TEST_CASE("Mesh JSON - probed mark changes between chunks") {
+    fill_mesh();
+    MeshRenderer renderer;
+    std::string response;
+    bool changed = false;
+    auto result = JsonResult::Incomplete;
+    while (result == JsonResult::Incomplete) {
+        uint8_t buffer[24];
+        const auto [result_partial, written] = renderer.render(buffer, sizeof(buffer));
+        response.append(reinterpret_cast<const char *>(buffer), written);
+        result = result_partial;
+        if (!changed && response.find("\"probed\":[") != std::string::npos) {
+            probed_marks[2][2] = true;
+            changed = true;
+        }
+    }
+    REQUIRE(result == JsonResult::Complete);
+    CHECK(response.find("\"probed\":[[0,0,0,1],[0,1,0,0],[0,0,1,0]]}") != std::string::npos);
 }
 
 TEST_CASE("Mesh JSON - no mesh") {
-    for (auto &column : mesh) {
-        for (auto &point : column) {
-            point = 0;
+    for (uint8_t x = 0; x < nx; x++) {
+        for (uint8_t y = 0; y < ny; y++) {
+            mesh[x][y] = 0;
+            probed_marks[x][y] = false;
         }
     }
     const std::string out = render(4096);
     CHECK(out.find("\"state\":\"none\"") != std::string::npos);
     CHECK(out.find("[0.000,0.000,0.000,0.000]") != std::string::npos);
+    CHECK(out.find("\"probed\":[[0,0,0,0],[0,0,0,0],[0,0,0,0]]}") != std::string::npos);
 }

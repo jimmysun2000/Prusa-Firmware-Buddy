@@ -3,6 +3,8 @@
 
 #include <Marlin/src/feature/bedlevel/bedlevel.h>
 
+#include <cmath>
+
 static_assert(ENABLED(AUTO_BED_LEVELING_UBL));
 static_assert(GRID_MAX_POINTS_X <= UINT8_MAX && GRID_MAX_POINTS_Y <= UINT8_MAX);
 
@@ -29,12 +31,20 @@ float z(uint8_t ix, uint8_t iy) {
     return unified_bed_leveling::z_values[ix][iy];
 }
 
+bool probed(uint8_t ix, uint8_t iy) {
+    if (ix >= GRID_MAX_POINTS_X || iy >= GRID_MAX_POINTS_Y) {
+        return false;
+    }
+    // A probed point can be invalidated on its own later
+    return unified_bed_leveling::is_probed(ix, iy) && std::isfinite(z(ix, iy));
+}
+
 State state() {
     return compute_state(info(), z);
 }
 
 uint32_t revision() {
-    return compute_revision(info(), z);
+    return compute_revision(info(), z, probed);
 }
 
 } // namespace bed_mesh_view

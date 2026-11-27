@@ -16,11 +16,12 @@ public:
 /// Renders the bed leveling mesh:
 ///
 /// {"grid":{"x":36,"y":36},"min":{"x":..,"y":..},"max":{"x":..,"y":..},"major":{"border":1,"step":3},
-///  "state":"none|partial|complete","z":[[row y=0, x=0..], [row y=1], ...]}
+///  "state":"none|partial|complete","z":[[row y=0, x=0..], [row y=1], ...],"probed":[[0|1, ...], ...]}
 ///
 /// min/max are the positions of the first/last grid point [mm]; z values are [mm] with 3 decimals,
-/// null for points without a value. The mesh is read live, a response sent during probing can mix
-/// old and new points.
+/// null for points without a value. probed is in the same order as z: 1 for a point that holds a
+/// value measured by the probe, 0 for the others; all 0 when that is not known (e.g. after a power
+/// panic resume). The mesh is read live, a response sent during probing can mix old and new points.
 class MeshRenderer final : public json::JsonRenderer<MeshState> {
 public:
     MeshRenderer()

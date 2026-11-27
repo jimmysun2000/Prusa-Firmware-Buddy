@@ -44,6 +44,9 @@ enum class State : uint8_t {
 /// Reads a mesh point; NaN means not measured.
 using ZGetter = float (*)(uint8_t ix, uint8_t iy);
 
+/// Reads whether a mesh point holds a value measured by the probe.
+using ProbedGetter = bool (*)(uint8_t ix, uint8_t iy);
+
 // Live mesh access (implemented on top of the UBL mesh).
 //
 // The mesh is read directly, without a lock. While the printer is probing, a reader can see a mix
@@ -54,9 +57,13 @@ Info info();
 /// @returns height of the point [mm], NaN if not measured. @p ix grows to the right, @p iy to the back.
 float z(uint8_t ix, uint8_t iy);
 
+/// @returns whether the probe measured the point since the mesh was last cleared and the point still holds a value.
+/// False for every point when this is not known, e.g. after a power panic resume.
+bool probed(uint8_t ix, uint8_t iy);
+
 State state();
 
-/// @returns a value that changes whenever any mesh point changes (with high probability)
+/// @returns a value that changes whenever any mesh point or its probed mark changes (with high probability)
 uint32_t revision();
 
 // Pure helpers
@@ -89,8 +96,11 @@ Stats compute_stats(const Info &info, ZGetter z);
 
 State compute_state(const Info &info, ZGetter z);
 
-/// Hash of the raw bits of all points, position dependent
-uint32_t compute_revision(const Info &info, ZGetter z);
+/// @returns number of points for which @p probed holds
+uint16_t count_probed(const Info &info, ProbedGetter probed);
+
+/// Hash of the raw bits of all points and, if @p probed is given, of their probed marks; position dependent
+uint32_t compute_revision(const Info &info, ZGetter z, ProbedGetter probed = nullptr);
 
 /// @returns colour step for a deviation from the mean, 0 (lowest, blue) to color_steps - 1 (highest, red).
 /// Deviations beyond @p full_scale are clamped. The two middle steps are the palest.
