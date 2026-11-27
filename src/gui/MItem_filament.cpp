@@ -59,6 +59,12 @@ bool confirmed(const char *question) {
         return false;
     }
 
+    // A print can start remotely while the list or the question is shown
+    if (!marlin_client::is_idle()) {
+        MsgBoxWarning(_("Printer is busy. Please try repeating the action later."), Responses_Ok);
+        return false;
+    }
+
     marlin_client::gcode("G27 P0 Z5"); // Lift Z if not high enough
     marlin_client::gcode_printf("T%d S1 L0 D0", tool->to_raw());
     window_dlg_wait_t::wait_for_gcodes_to_finish();
