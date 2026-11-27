@@ -7,7 +7,11 @@
 #include "ScreenHandler.hpp"
 #include <window_msgbox.hpp>
 #include <option/has_toolchanger.h>
+#include <option/has_auto_retract.h>
+#include <option/has_switchable_auto_retract.h>
+#include <printers.h>
 #include <window_dlg_wait.hpp>
+#include "MItem_tools.hpp"
 
 #if HAS_TOOLCHANGER()
     #include "module/prusa/toolchanger.h"
@@ -147,6 +151,25 @@ MI_UNLOAD_ALL::MI_UNLOAD_ALL()
 
 void MI_UNLOAD_ALL::click(IWindowMenu &) {
     Screens::Access()->Open(ScreenFactory::ScreenWithArg<ScreenChangeAllFilaments>(ScreenChangeAllFilaments::SetupUnloadAll {}));
+}
+#endif
+
+#if HAS_AUTO_RETRACT() && HAS_TOOLCHANGER() && PRINTER_IS_PRUSA_XL()
+/*****************************************************************************/
+// MI_RETRACT_ALL
+MI_RETRACT_ALL::MI_RETRACT_ALL()
+    : IWindowMenuItem(_(label), nullptr, static_cast<is_enabled_t>(any_tool_has_filament()), prusa_toolchanger.is_toolchanger_enabled() ? is_hidden_t::no : is_hidden_t::yes) {
+    #if HAS_SWITCHABLE_AUTO_RETRACT()
+    if (!config_store().auto_retract_enabled.get()) {
+        set_enabled(false);
+    }
+    #endif
+}
+
+void MI_RETRACT_ALL::click(IWindowMenu &) {
+    if (MsgBoxQuestion(_(question), Responses_YesNo) == Response::Yes) {
+        gui_try_gcode_with_msg("M1705 A");
+    }
 }
 #endif
 

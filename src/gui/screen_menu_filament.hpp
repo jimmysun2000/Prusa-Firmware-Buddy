@@ -10,6 +10,8 @@
 #include "MItem_tools.hpp"
 #include <option/has_toolchanger.h>
 #include <option/has_wastebin_fill_tracking.h>
+#include <option/has_auto_retract.h>
+#include <printers.h>
 #include <gui/screen/filament/screen_filaments_loaded.hpp>
 
 using ScreenMenuFilament__ = ScreenMenu<GuiDefaults::MenuFooter,
@@ -24,6 +26,9 @@ using ScreenMenuFilament__ = ScreenMenu<GuiDefaults::MenuFooter,
     MI_LOAD,
 #if HAS_TOOLCHANGER()
     MI_UNLOAD_ALL,
+#endif
+#if HAS_AUTO_RETRACT() && HAS_TOOLCHANGER() && PRINTER_IS_PRUSA_XL()
+    MI_RETRACT_ALL,
 #endif
     MI_UNLOAD,
 #if HAS_TOOLCHANGER()

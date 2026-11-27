@@ -60,6 +60,18 @@ protected:
     virtual void click(IWindowMenu &) override;
 };
 
+/// Runs the auto retract on every loaded tool (M1705 A)
+class MI_RETRACT_ALL : public IWindowMenuItem {
+    constexpr static const char *const label = N_("Retract All");
+    constexpr static const char *const question = N_("Retract the filament from the nozzle of every loaded tool? The tools heat up together and end parked. Tools already retracted or with flexible filament are skipped.");
+
+public:
+    MI_RETRACT_ALL();
+
+protected:
+    virtual void click(IWindowMenu &) override;
+};
+
 class MI_PURGE : public IWindowMenuItem {
     constexpr static const char *const label = N_("Purge Filament");
 
