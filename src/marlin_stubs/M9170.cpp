@@ -15,6 +15,7 @@
 #include <tool_index.hpp>
 #include <utils/publisher.hpp>
 
+#include <limits>
 #include <optional>
 
 namespace {
@@ -70,6 +71,9 @@ bool heat_up(int16_t bed_temperature, PhysicalToolIndex tool) {
  * has to cool down and is off if it has to heat up; it has its previous value
  * again before homing.
  *
+ * With S above 0, all bed tiles are enabled before the heating and stay
+ * enabled afterwards, as they are when idle after a print.
+ *
  * Every way out sets the bed target and the target of the measuring nozzle to
  * 0; the other nozzles are left alone. A click on the wait screen ends the run
  * while waiting for the temperatures and ends the probing after the current
@@ -114,6 +118,11 @@ void PrusaGcodeSuite::M9170() {
         thermalManager.setTargetBed(0);
         thermalManager.setTargetHotend(0, measuring_tool.to_raw());
     };
+
+    // The whole bed is measured, so the whole bed is heated, whatever print area was set last
+    if (*bed_temperature > 0) {
+        thermalManager.setEnabledBedletMask(std::numeric_limits<uint16_t>::max());
+    }
 
     if (!heat_up(*bed_temperature, *tool)) {
         return;
