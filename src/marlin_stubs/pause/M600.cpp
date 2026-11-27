@@ -63,6 +63,7 @@ static_assert(HAS_PAUSE());
 #endif
 
 #include <option/has_nozzle_cleaner.h>
+#include <option/has_tool_crash_recovery.h>
 #include <option/has_toolchanger.h>
 #if HAS_TOOLCHANGER()
     #include <Marlin/src/module/prusa/toolchanger.h>
@@ -115,6 +116,8 @@ static void M600_manual(const GCodeParser2 &);
  *  It needs to be noted that M600's S"filament" parameter is currently not actually setting the target temperature for the desired filament type.
  *  In fact M600 never sets a target temperature for filament change (only when picking and inactive toolhead on a printer with toolchanger).
  *  Temperature that is currently set will be used for both unloading and loading.
+ *
+ *  On the XL, when `T` is not the picked tool and picking it fails, the filament change stops and the tool crash recovery takes over.
  */
 
 void GcodeSuite::M600() {
@@ -233,7 +236,20 @@ void M600_execute(mapi::ParkingPosition park_position, VirtualToolIndex target_t
             .original_extruder = VirtualToolIndex::currently_selected(),
         };
 
-        tool_change(target_tool, tool_return_t::no_return, tool_change_lift_t::mbl_only_lift, true);
+        [[maybe_unused]] const bool target_picked = tool_change(target_tool, tool_return_t::no_return, tool_change_lift_t::mbl_only_lift, true);
+    #if PRINTER_IS_PRUSA_XL()
+        if (!target_picked) {
+        #if HAS_TOOL_CRASH_RECOVERY()
+            // The recovery picks the tool of the last tool change; that must be the printing tool, not the target.
+            auto return_data = prusa_toolchanger.return_data();
+            return_data.tool = to_physical_tool_index<NoTool>(tool_change_data->original_extruder);
+            prusa_toolchanger.set_return_data(return_data);
+        #endif
+            // Leave the head where the failed change left it, the recovery deals with it from there.
+            log_error(PRUSA_GCODE, "M600 failed to change to the target tool");
+            return;
+        }
+    #endif
 
         resume_point = logical_resume.asNative(); // Convert original resume point to the new native coordinates
         resume_point.set(prusa_toolchanger.get_tool_dock_position(physical_target_tool)); // Sets only x, y coordinates
