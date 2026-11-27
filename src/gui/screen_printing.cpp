@@ -24,6 +24,7 @@
 #include <option/has_indx.h>
 #include <option/has_tool_crash_recovery.h>
 #include <option/has_tool_mapping.h>
+#include <option/xl_enclosure_support.h>
 #include <bsod/bsod.h>
 #include <utils/string_builder.hpp>
 #include <gui/event/knob_event.hpp>
@@ -74,9 +75,16 @@ static bool is_waiting_for_connect_set_ready() {
 }
 
 /// \returns whether a skippable operation runs after the print has finished (the bed cool-down)
-static bool is_skippable_after_print(printing_state_t state) {
+static bool is_skippable_after_print([[maybe_unused]] printing_state_t state) {
+#if XL_ENCLOSURE_SUPPORT()
     const State print_state = marlin_vars().print_state;
-    return state == printing_state_t::SKIPPABLE_OPERATION && (print_state == State::Finished || print_state == State::Exit);
+    return state == printing_state_t::SKIPPABLE_OPERATION
+        && (print_state == State::Finished || print_state == State::Exit)
+        // Leaves the screen as it was while the bed cool-down cannot run
+        && config_store().xl_enclosure_bed_heating.get();
+#else
+    return false;
+#endif
 }
 
 void screen_printing_data_t::tuneAction() {
