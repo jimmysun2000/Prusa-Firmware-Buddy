@@ -92,6 +92,12 @@ void LEDManager::init() {
     set_lcd_brightness(100);
     get_status_leds().update();
 #if HAS_SIDE_LED_DRIVER()
+    #if PRINTER_IS_PRUSA_XL()
+    // Except the side strip RGB, which shows the start-up until the first update(). The second
+    // driver word, with the white and the enclosure fan, stays off.
+    const ColorRGBW startup = SideStripHandler::instance().startup_color();
+    get_side_leds().set(ColorRGBW(startup.g, startup.r, startup.b).data, 0);
+    #endif
     get_side_leds().update();
 #endif
 }

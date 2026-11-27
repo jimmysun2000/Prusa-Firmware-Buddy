@@ -203,6 +203,18 @@ TEST_CASE("side_strip_status: apply_tint") {
     CHECK(same(apply_tint(ColorRGBW(0, 0, 0, 102), ColorRGBW(255, 150, 1), 102), ColorRGBW(102, 60, 0, 102)));
 }
 
+TEST_CASE("side_strip_status: start-up colour") {
+    // The recovery orange at the strip brightness, without white
+    CHECK(same(startup_color(SideStripStatusMode::status, 255), ColorRGBW(255, 96, 0, 0)));
+    CHECK(same(startup_color(SideStripStatusMode::status, 102), ColorRGBW(102, 38, 0, 0)));
+    CHECK(same(startup_color(SideStripStatusMode::status, 0), ColorRGBW(0, 0, 0, 0)));
+    CHECK(same(startup_color(SideStripStatusMode::status, 255), apply_tint(ColorRGBW(), *tint(Status::recovering, SideStripStatusMode::status, 0), 255)));
+
+    // Black with the status colours off
+    CHECK(same(startup_color(SideStripStatusMode::off, 255), ColorRGBW(0, 0, 0, 0)));
+    CHECK(same(startup_color(static_cast<SideStripStatusMode>(200), 255), ColorRGBW(0, 0, 0, 0)));
+}
+
 TEST_CASE("side_strip_status: shows colour") {
     for (const auto status : all_statuses) {
         CAPTURE(static_cast<int>(status));
@@ -481,5 +493,58 @@ TEST_CASE("side_strip_status: white under colours") {
         const auto dark = apply_tint(plain, *tint(status, SideStripStatusMode::status, pulse_period_ms(status) / 2), 255);
         CHECK(bright.w == dark.w);
         CHECK_FALSE(same(bright, dark));
+    }
+}
+
+namespace {
+
+Inputs inputs_of(Activity activity, std::initializer_list<bool Inputs::*> flags) {
+    Inputs in;
+    in.activity = activity;
+    for (const auto flag : flags) {
+        in.*flag = true;
+    }
+    return in;
+}
+
+struct Scenario {
+    const char *name;
+    Inputs inputs;
+    Status status;
+};
+
+/// The owner's scenarios, with the inputs the printer reports in them
+const Scenario scenarios[] = {
+    { "1 error during a print", inputs_of(Activity::printing, { &Inputs::error, &Inputs::user_present, &Inputs::warning_dialog }), Status::error },
+    { "1 error on an idle printer", inputs_of(Activity::idle, { &Inputs::error }), Status::error },
+    { "2 knob or touch screen used lately", inputs_of(Activity::printing, { &Inputs::user_present, &Inputs::heating }), Status::owner_present },
+    { "3 power panic recovery", inputs_of(Activity::recovering, { &Inputs::busy, &Inputs::heating, &Inputs::hot }), Status::recovering },
+    { "3 cold bed question after a power cut", inputs_of(Activity::recovering, { &Inputs::warning_dialog, &Inputs::waits_for_owner }), Status::recovering },
+    // The Warning animation leaves the activity idle
+    { "4 warning dialog over a print", inputs_of(Activity::idle, { &Inputs::warning_dialog, &Inputs::waits_for_owner, &Inputs::hot }), Status::warning_dialog },
+    { "4 warning dialog on an idle printer", inputs_of(Activity::idle, { &Inputs::warning_dialog }), Status::warning_dialog },
+    { "5 prompt outside a print", inputs_of(Activity::idle, { &Inputs::busy, &Inputs::waits_for_owner, &Inputs::hot }), Status::waiting },
+    { "5 filament change or crash recovery in a print", inputs_of(Activity::idle, { &Inputs::waits_for_owner, &Inputs::hot }), Status::waiting },
+    { "6 paused print", inputs_of(Activity::idle, { &Inputs::waits_for_owner, &Inputs::hot }), Status::waiting },
+    { "7 working on its own outside a print", inputs_of(Activity::idle, { &Inputs::busy, &Inputs::heating, &Inputs::hot }), Status::busy },
+    { "8 print start heating", inputs_of(Activity::printing, { &Inputs::heating }), Status::print_heating },
+    { "9 heating outside a print", inputs_of(Activity::idle, { &Inputs::heating }), Status::preheating },
+    { "10 printing", inputs_of(Activity::printing, { &Inputs::first_layer_started, &Inputs::hot, &Inputs::bed_warm }), Status::printing },
+    { "10 wait for a nozzle after the first layer", inputs_of(Activity::printing, { &Inputs::heating, &Inputs::first_layer_started, &Inputs::hot }), Status::printing },
+    { "11 print stopped", inputs_of(Activity::stopped, { &Inputs::hot, &Inputs::bed_warm }), Status::stopped },
+    { "11 print stopped, a heater warms to a new target", inputs_of(Activity::stopped, { &Inputs::heating, &Inputs::hot }), Status::preheating },
+    { "12 print finished, bed warm", inputs_of(Activity::finished, { &Inputs::bed_warm, &Inputs::hot }), Status::finished_warm },
+    { "13 print finished, bed cool", inputs_of(Activity::finished, { &Inputs::hot }), Status::finished },
+    { "13 print finished, a heater warms to a new target", inputs_of(Activity::finished, { &Inputs::heating }), Status::preheating },
+    { "14 idle, hot", inputs_of(Activity::idle, { &Inputs::hot }), Status::hot },
+    { "15 idle, cold", inputs_of(Activity::idle, {}), Status::idle },
+};
+
+} // namespace
+
+TEST_CASE("side_strip_status: scenarios") {
+    for (const auto &scenario : scenarios) {
+        CAPTURE(scenario.name);
+        CHECK(resolve(scenario.inputs) == scenario.status);
     }
 }

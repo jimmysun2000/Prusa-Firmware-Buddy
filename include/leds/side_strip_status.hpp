@@ -201,4 +201,8 @@ std::optional<ColorRGBW> tint(Status status, SideStripStatusMode mode, uint32_t 
 /// @returns colour with the RGB channels from @p tint scaled to @p level (0-255) and the white channel from @p plain
 ColorRGBW apply_tint(ColorRGBW plain, ColorRGBW tint, uint8_t level);
 
+/// @returns colour to show while the printer starts: the power panic recovery look scaled to
+/// @p level (0-255) without white, black when @p mode shows no status colours
+ColorRGBW startup_color(SideStripStatusMode mode, uint8_t level);
+
 } // namespace leds::side_strip_status

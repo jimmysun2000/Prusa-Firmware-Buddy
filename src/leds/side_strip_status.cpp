@@ -108,4 +108,9 @@ ColorRGBW apply_tint(ColorRGBW plain, ColorRGBW tint, uint8_t level) {
     return ColorRGBW(scale(tint.r), scale(tint.g), scale(tint.b), plain.w);
 }
 
+ColorRGBW startup_color(SideStripStatusMode mode, uint8_t level) {
+    const auto startup_tint = tint(Status::recovering, mode, 0);
+    return startup_tint.has_value() ? apply_tint(ColorRGBW(), *startup_tint, level) : ColorRGBW();
+}
+
 } // namespace leds::side_strip_status

@@ -69,6 +69,10 @@ public:
     /// Status colours in the RGB channels. SideStripStatusMode::off leaves the strip as without this setting.
     SideStripStatusMode get_status_mode() const;
     void set_status_mode(SideStripStatusMode value);
+
+    /// @returns colour to show while the printer starts, before update() runs: the look of a power
+    /// panic recovery at the strip brightness, black with the status colours off. The white is 0.
+    ColorRGBW startup_color() const;
 #endif
 
     leds::ColorRGBW color() const;

@@ -369,6 +369,11 @@ void SideStripHandler::set_status_mode(SideStripStatusMode value) {
     status_mode = value;
 }
 
+ColorRGBW SideStripHandler::startup_color() const {
+    std::lock_guard lock(mutex);
+    return side_strip_status::startup_color(status_mode, max_brightness);
+}
+
 bool SideStripHandler::update_tint(SideStripStatusMode mode, uint32_t time_ms, bool user_present) {
     side_strip_status::Inputs inputs = status_inputs;
     inputs.user_present = user_present;
