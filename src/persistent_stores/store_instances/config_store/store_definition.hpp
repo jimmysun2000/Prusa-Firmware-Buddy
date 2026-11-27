@@ -1139,6 +1139,11 @@ struct CurrentStore
     StoreItemArray<HotendPIDGains, defaults::hotend_pid_gains, ItemFlag::calibrations | ItemFlag::common_misconfigurations, journal::hash("Hotend PID Gains Per Tool"), 16, PhysicalToolIndex::count> hotend_pid_gains;
 #endif
 
+#if PRINTER_IS_PRUSA_XL()
+    /// Filament speed of the purges of filament load and change [0.1 mm/s], clamped to purge_speed_min..max when used
+    StoreItem<uint8_t, purge_speed_default, ItemFlag::features, journal::hash("Filament Purge Speed")> purge_speed;
+#endif
+
 private:
     void perform_config_migrations();
 };

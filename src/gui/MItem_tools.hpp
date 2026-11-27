@@ -469,6 +469,17 @@ protected:
 };
 
 #if PRINTER_IS_PRUSA_XL()
+/// Filament speed of the purges of filament load and change
+class MI_PURGE_SPEED : public WiSpin {
+    static constexpr const char *const label = N_("Purge Speed (mm/s)");
+
+public:
+    MI_PURGE_SPEED();
+
+protected:
+    void OnClick() override;
+};
+
 /// Nozzle temperature of the Cleaning Filament routine
 class MI_CLEANING_TEMPERATURE : private NumericInputConfigHolder, public WiSpin {
     static constexpr const char *const label = N_("Cleaning Filament Temperature");

@@ -945,9 +945,23 @@ void Pause::purge_process([[maybe_unused]] Response response) {
     handle_filament_removal(LoadState::filament_push_ask);
 }
 
+namespace {
+
+/// Filament feedrate of the purges of a load or change [mm/s], halved for flexible filament
+feedRate_t purge_feedrate() {
+#if PRINTER_IS_PRUSA_XL()
+    const uint8_t setting = std::clamp(config_store().purge_speed.get(), config_store_ns::purge_speed_min, config_store_ns::purge_speed_max);
+    return adjust_feedrate_for_filament(setting / 10.f, filament::get_type_to_load());
+#else
+    return standard_feedrates::extruder(standard_feedrates::Extruder::advanced_pause_purge, filament::get_type_to_load());
+#endif
+}
+
+} // namespace
+
 bool Pause::standard_purge_sequence() {
     const auto purge_result = do_e_move_notify_progress_hotextrude(
-        settings.purge_length(), standard_feedrates::extruder(standard_feedrates::Extruder::advanced_pause_purge, filament::get_type_to_load()), load_stop_conditions());
+        settings.purge_length(), purge_feedrate(), load_stop_conditions());
 
     if (purge_result == StopConditions::SideFilamentSensorRunout) {
         set(LoadState::runout_during_load);

@@ -811,6 +811,21 @@ void MI_PURGE_LENGTH::OnClick() {
 }
 
 #if PRINTER_IS_PRUSA_XL()
+// Stored in 0.1 mm/s
+static constexpr NumericInputConfig purge_speed_spin_config {
+    .min_value = config_store_ns::purge_speed_min / 10.f,
+    .max_value = config_store_ns::purge_speed_max / 10.f,
+    .step = 0.1f,
+    .max_decimal_places = 1,
+};
+
+MI_PURGE_SPEED::MI_PURGE_SPEED()
+    : WiSpin(std::clamp(config_store().purge_speed.get(), config_store_ns::purge_speed_min, config_store_ns::purge_speed_max) / 10.f, purge_speed_spin_config, _(label)) {}
+
+void MI_PURGE_SPEED::OnClick() {
+    config_store().purge_speed.set(static_cast<uint8_t>(std::lround(value() * 10)));
+}
+
 // Not tool-specific, so the range of any installed hotend (AllTools)
 MI_CLEANING_TEMPERATURE::MI_CLEANING_TEMPERATURE()
     : NumericInputConfigHolder { numeric_input_config::filament_nozzle_temperature(AllTools {}) }
