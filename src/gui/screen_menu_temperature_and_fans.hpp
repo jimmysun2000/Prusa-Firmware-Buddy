@@ -48,4 +48,7 @@ using ScreenMenuTemperatureAndFansBase = ScreenMenu<EFooter::On,
 class ScreenMenuTemperatureAndFans : public ScreenMenuTemperatureAndFansBase {
 public:
     ScreenMenuTemperatureAndFans();
+
+    /// What the Cooldown row does: the nozzle targets of all tools and the bed target to 0, the print fan off
+    static void cooldown();
 };

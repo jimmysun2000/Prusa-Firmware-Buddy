@@ -889,6 +889,10 @@ MI_COLD_PULL::MI_COLD_PULL()
 }
 
 void MI_COLD_PULL::click([[maybe_unused]] IWindowMenu &window_menu) {
+    run();
+}
+
+void MI_COLD_PULL::run() {
     marlin_client::gcode("M1702");
 }
 #endif
@@ -949,6 +953,10 @@ MI_EXPORT_SETTINGS::MI_EXPORT_SETTINGS()
 }
 
 void MI_EXPORT_SETTINGS::click(IWindowMenu & /*window_menu*/) {
+    run();
+}
+
+void MI_EXPORT_SETTINGS::run() {
     config_store_export::FileName file_name {};
     bool saved = false;
     window_dlg_wait_t::wait_until(_("Saving settings backup..."), [&] {

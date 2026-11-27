@@ -527,6 +527,9 @@ class MI_COLD_PULL : public IWindowMenuItem {
 public:
     MI_COLD_PULL();
 
+    /// Starts the Cold Pull wizard (M1702); its first page asks to continue or stop
+    static void run();
+
 protected:
     virtual void click(IWindowMenu &window_menu) override;
 };
@@ -567,6 +570,9 @@ public:
     MI_EXPORT_SETTINGS();
 
     virtual void click(IWindowMenu &) override;
+
+    /// Writes the backup, then shows its file name or that it failed
+    static void run();
 };
 #endif
 
