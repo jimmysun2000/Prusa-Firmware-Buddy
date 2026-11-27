@@ -1008,7 +1008,7 @@ bool Pause::standard_purge_sequence() {
     const float purge_length = settings.purge_length();
     const auto purge_result = [&] {
         AutoRestore show_purge_lengths(shows_purge_lengths, true);
-        return do_e_move_notify_progress_hotextrude(purge_length, purge_feedrate(), load_stop_conditions());
+        return do_e_move_notify_progress_hotextrude(purge_length, purge_feedrate(), load_stop_conditions() | StopConditions::UserSkip);
     }();
 
     // The last update while moving can be a little short of the end
@@ -1026,6 +1026,12 @@ bool Pause::standard_purge_sequence() {
     // If the user stopped the purge, we need to stop the extruder move
     if (purge_result == StopConditions::UserStopped) {
         planner.quick_stop_and_resume();
+    }
+    // The quick stop leaves the planned E at the end of the dropped move. The progress of the
+    // moves that follow is measured on the steppers, so E is set to where the extruder stopped
+    // (not while draining, the steppers may still be stopping then).
+    if (purge_result == StopConditions::UserSkip && !planner.draining()) {
+        sync_e_position_to(planner.get_axis_position_mm(E_AXIS_N(active_extruder)));
     }
     // Skip retraction if Failed
     if (purge_result != StopConditions::Failed) {
@@ -1813,7 +1819,7 @@ bool Pause::parkMoveXGreaterThanY(const xyz_pos_t &pos0, const xyz_pos_t &pos1) 
 
 [[nodiscard]] Pause::StopConditions Pause::wait_for_motion_finish_stoppable(StopConditions check_for /* = MotionStoppableConditions::UserStopped */) {
     while (planner.processing()) {
-        if (check4(check_for, StopConditions::UserStopped | StopConditions::UserRetry)) {
+        if (check4(check_for, StopConditions::UserStopped | StopConditions::UserRetry | StopConditions::UserSkip)) {
             const Response response = getResponse();
             if (check4(check_for, StopConditions::UserStopped) && check_user_stop(response)) {
                 return StopConditions::UserStopped;
@@ -1821,6 +1827,10 @@ bool Pause::parkMoveXGreaterThanY(const xyz_pos_t &pos0, const xyz_pos_t &pos1) 
             if (check4(check_for, StopConditions::UserRetry) && check_user_retry(response)) {
                 planner.quick_stop_and_resume();
                 return StopConditions::UserRetry;
+            }
+            if (check4(check_for, StopConditions::UserSkip) && response == Response::Skip) {
+                planner.quick_stop_and_resume();
+                return StopConditions::UserSkip;
             }
         }
         if (check4(check_for, StopConditions::SideFilamentSensorRunout) && FSensors_instance().no_filament_surely(LogicalFilamentSensor::side)) {

@@ -374,6 +374,7 @@ private:
         SideFilamentSensorRunout = 1 << 1, ///< filament runout happened
         Failed = 1 << 2, ///< some failure, currently only used in \ref do_e_move_notify_progress_hotextrude
         UserRetry = 1 << 3, ///< user asked to release the filament and insert it again, see \ref check_user_retry
+        UserSkip = 1 << 4, ///< user pressed Skip to cut the move short; the rest of the move is dropped and the routine goes on
         All = UserStopped | SideFilamentSensorRunout
     };
 

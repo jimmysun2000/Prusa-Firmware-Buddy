@@ -45,8 +45,14 @@ constinit const EnumArray<PhasesLoadUnload, PhaseResponses, CountPhases<PhasesLo
         { PhasesLoadUnload::LoadingToGears_stoppable, { Response::Stop } },
         { PhasesLoadUnload::LoadingToGears_unstoppable, {} },
 #endif
+#if PRINTER_IS_PRUSA_XL()
+        // Skip ends the purge early and the load carries on, so it is offered in a print-time change too
+        { PhasesLoadUnload::Purging_stoppable, { Response::Skip } },
+        { PhasesLoadUnload::Purging_unstoppable, { Response::Skip } },
+#else
         { PhasesLoadUnload::Purging_stoppable, { Response::Stop } },
         { PhasesLoadUnload::Purging_unstoppable, {} },
+#endif
         { PhasesLoadUnload::AwaitingFilament_stoppable, { Response::Stop } },
         { PhasesLoadUnload::AwaitingFilament_unstoppable, {} },
         { PhasesLoadUnload::IsColor, { Response::Yes, Response::Purge_more, Response::Retry } },
