@@ -21,6 +21,7 @@ static_assert(user_macro::max_line_length == std::tuple_size_v<GcodeBuffer::Cont
 
 static_assert(std::is_same_v<decltype(config_store().macro_names)::value_type, user_macro::Name>);
 static_assert(decltype(config_store().macro_names)::item_count == user_macro::count);
+static_assert(decltype(config_store().macro_icons)::item_count == user_macro::count);
 
 // The select menu and its popup format the labels into 16-byte parameter buffers
 static_assert(user_macro::label_buffer_size <= 16);
@@ -66,6 +67,40 @@ Name name(uint8_t n) {
 
 void set_name(uint8_t n, const Name &name) {
     config_store().macro_names.set(n - 1, trimmed(sanitized(name)));
+}
+
+Icon icon(uint8_t n) {
+    return icons[icon_index_of(config_store().macro_icons.get(n - 1))];
+}
+
+void set_icon(uint8_t n, Icon icon) {
+    config_store().macro_icons.set(n - 1, static_cast<uint8_t>(icon));
+}
+
+const char *icon_label(Icon icon) {
+    switch (icon) {
+    case Icon::play:
+        return N_("Play");
+    case Icon::home:
+        return N_("Home");
+    case Icon::stop:
+        return N_("Stop");
+    case Icon::pause:
+        return N_("Pause");
+    case Icon::check:
+        return N_("Check");
+    case Icon::cross:
+        return N_("Cross");
+    case Icon::repeat:
+        return N_("Repeat");
+    case Icon::back:
+        return N_("Back");
+    case Icon::branch:
+        return N_("Branch");
+    case Icon::spools:
+        return N_("Spools");
+    }
+    return N_("Play");
 }
 
 string_view_utf8 label(uint8_t n, StringViewUtf8ParamBase &params, size_t max_length) {

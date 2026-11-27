@@ -3,6 +3,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
+#include <set>
 #include <string>
 
 using namespace user_macro;
@@ -79,6 +80,45 @@ TEST_CASE("user_macro::sanitized") {
         Name name = name_of("ab");
         name[5] = '\x01';
         CHECK(sanitized(name)[5] == '\x01');
+    }
+}
+
+TEST_CASE("user_macro::icons") {
+    SECTION("stored values keep their meaning") {
+        CHECK(static_cast<uint8_t>(Icon::play) == 0);
+        CHECK(static_cast<uint8_t>(Icon::home) == 1);
+        CHECK(static_cast<uint8_t>(Icon::stop) == 2);
+        CHECK(static_cast<uint8_t>(Icon::pause) == 3);
+        CHECK(static_cast<uint8_t>(Icon::check) == 4);
+        CHECK(static_cast<uint8_t>(Icon::cross) == 5);
+        CHECK(static_cast<uint8_t>(Icon::repeat) == 6);
+        CHECK(static_cast<uint8_t>(Icon::back) == 7);
+        CHECK(static_cast<uint8_t>(Icon::branch) == 8);
+        CHECK(static_cast<uint8_t>(Icon::spools) == 9);
+    }
+
+    SECTION("each icon is offered once") {
+        std::set<uint8_t> values;
+        for (const Icon icon : icons) {
+            CHECK(values.insert(static_cast<uint8_t>(icon)).second);
+        }
+        CHECK(values.size() == 10);
+    }
+
+    SECTION("the store default 0 is Play") {
+        CHECK(icons[icon_index_of(0)] == Icon::play);
+    }
+
+    SECTION("an unknown id is Play") {
+        for (unsigned id = 10; id <= 255; ++id) {
+            CHECK(icons[icon_index_of(static_cast<uint8_t>(id))] == Icon::play);
+        }
+    }
+
+    SECTION("icon_index_of finds each icon") {
+        for (size_t i = 0; i < icons.size(); ++i) {
+            CHECK(icon_index_of(static_cast<uint8_t>(icons[i])) == i);
+        }
     }
 }
 

@@ -95,6 +95,52 @@ Name name(uint8_t n);
 /// Stores @p name for macro @p n, trimmed; an empty name brings back the default label
 void set_name(uint8_t n, const Name &name);
 
+/// Home screen icon of a macro. The values are stored: never change or reuse one.
+enum class Icon : uint8_t {
+    play = 0,
+    home = 1,
+    stop = 2,
+    pause = 3,
+    check = 4,
+    cross = 5,
+    repeat = 6,
+    back = 7,
+    branch = 8,
+    spools = 9,
+};
+
+/// In the order of the selection menu
+inline constexpr std::array icons {
+    Icon::play,
+    Icon::home,
+    Icon::stop,
+    Icon::pause,
+    Icon::check,
+    Icon::cross,
+    Icon::repeat,
+    Icon::back,
+    Icon::branch,
+    Icon::spools,
+};
+static_assert(icons[0] == Icon::play);
+
+/// @returns the index in icons of the stored icon @p id; that of Play, the default, for an unknown id
+constexpr size_t icon_index_of(uint8_t id) {
+    for (size_t i = 0; i < icons.size(); ++i) {
+        if (static_cast<uint8_t>(icons[i]) == id) {
+            return i;
+        }
+    }
+    return 0;
+}
+
+Icon icon(uint8_t n);
+
+void set_icon(uint8_t n, Icon icon);
+
+/// @returns the name of @p icon in the selection menu, untranslated
+const char *icon_label(Icon icon);
+
 /// @returns the name of macro @p n cut to @p max_length characters, or "Macro <n>" if it has none, formatted into @p params.
 /// The name is shown as it is, whatever characters it has.
 /// @param params needs label_buffer_size bytes

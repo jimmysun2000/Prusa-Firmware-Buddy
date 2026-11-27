@@ -1153,6 +1153,8 @@ struct CurrentStore
 #if PRINTER_IS_PRUSA_XL()
     /// Owner-set name of each macro; empty for the default label, see user_macro
     StoreItemArray<std::array<char, 16>, std::array<std::array<char, 16>, 8> {}, ItemFlag::user_interface, journal::hash("Macro Name"), 16, 8> macro_names;
+    /// Home screen icon of each macro, see user_macro::Icon
+    StoreItemArray<uint8_t, uint8_t { 0 }, ItemFlag::user_interface, journal::hash("Macro Icon"), 16, 8> macro_icons;
 #endif
 
 private:

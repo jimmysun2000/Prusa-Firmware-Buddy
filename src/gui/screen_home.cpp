@@ -161,16 +161,49 @@ constexpr Rect16 shortcut_layout_text_rect(size_t col, size_t row) {
 }
 
 constexpr WindowMultiIconButton::Pngs shortcut_icon_home GEN_ICON_NAMES(home);
-// The XL packs no disabled variant of this one; the shortcuts are never shadowed
+// The XL packs no disabled variant of mapping and back; the shortcuts are never shadowed
 constexpr WindowMultiIconButton::Pngs shortcut_icon_mapping { img::mapping_80x80, img::mapping_80x80_focused, img::mapping_80x80 };
+constexpr WindowMultiIconButton::Pngs shortcut_icon_back { img::back_80x80, img::back_80x80_focused, img::back_80x80 };
 constexpr WindowMultiIconButton::Pngs shortcut_icon_calibrate GEN_ICON_NAMES(calibrate);
 constexpr WindowMultiIconButton::Pngs shortcut_icon_stop GEN_ICON_NAMES(stop);
 constexpr WindowMultiIconButton::Pngs shortcut_icon_preheat GEN_ICON_NAMES(preheat);
 constexpr WindowMultiIconButton::Pngs shortcut_icon_resume GEN_ICON_NAMES(resume);
+constexpr WindowMultiIconButton::Pngs shortcut_icon_pause GEN_ICON_NAMES(pause);
+constexpr WindowMultiIconButton::Pngs shortcut_icon_set_ready GEN_ICON_NAMES(set_ready);
+constexpr WindowMultiIconButton::Pngs shortcut_icon_disconnect GEN_ICON_NAMES(disconnect);
+constexpr WindowMultiIconButton::Pngs shortcut_icon_reprint GEN_ICON_NAMES(reprint);
+constexpr WindowMultiIconButton::Pngs shortcut_icon_spools GEN_ICON_NAMES(spools);
 
-const WindowMultiIconButton::Pngs &shortcut_icon(home_shortcut::Kind kind) {
+const WindowMultiIconButton::Pngs &macro_icon(user_macro::Icon icon) {
+    using Icon = user_macro::Icon;
+    switch (icon) {
+    case Icon::play:
+        return shortcut_icon_resume;
+    case Icon::home:
+        return shortcut_icon_home;
+    case Icon::stop:
+        return shortcut_icon_stop;
+    case Icon::pause:
+        return shortcut_icon_pause;
+    case Icon::check:
+        return shortcut_icon_set_ready;
+    case Icon::cross:
+        return shortcut_icon_disconnect;
+    case Icon::repeat:
+        return shortcut_icon_reprint;
+    case Icon::back:
+        return shortcut_icon_back;
+    case Icon::branch:
+        return shortcut_icon_mapping;
+    case Icon::spools:
+        return shortcut_icon_spools;
+    }
+    return shortcut_icon_resume;
+}
+
+const WindowMultiIconButton::Pngs &shortcut_icon(const home_shortcut::Action &action) {
     using Kind = home_shortcut::Kind;
-    switch (kind) {
+    switch (action.kind) {
     case Kind::none:
     case Kind::auto_home:
         return shortcut_icon_home;
@@ -183,7 +216,7 @@ const WindowMultiIconButton::Pngs &shortcut_icon(home_shortcut::Kind kind) {
     case Kind::wipe_nozzle:
         return shortcut_icon_preheat;
     case Kind::macro:
-        return shortcut_icon_resume;
+        return macro_icon(user_macro::icon(action.macro));
     }
     return shortcut_icon_home;
 }
@@ -433,7 +466,7 @@ void screen_home_data_t::setup_shortcuts() {
         }
 
         button.SetRect(shortcut_layout_button_rect(shortcut_layout_columns - 1, slot));
-        button.SetRes(&shortcut_icon(action.kind));
+        button.SetRes(&shortcut_icon(action));
         button.SetAction([id = action.id](window_t &) { home_shortcut::run(id); });
         label.SetRect(shortcut_layout_text_rect(shortcut_layout_columns - 1, slot));
         label.set_font(Font::small);

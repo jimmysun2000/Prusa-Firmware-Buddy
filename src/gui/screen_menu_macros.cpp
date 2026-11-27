@@ -9,6 +9,8 @@
 #include <gui/menu_item/menu_item_select_menu.hpp>
 #include <gui/screen/screen_menu_virtual.hpp>
 
+#include <utils/algorithm_extensions.hpp>
+
 #include <array>
 #include <string_view>
 #include <utility>
@@ -60,6 +62,32 @@ private:
     const uint8_t n_;
 };
 
+class MenuItemMacroIcon final : public MenuItemSelectMenu {
+public:
+    MenuItemMacroIcon(uint8_t n)
+        : MenuItemSelectMenu(_("Icon"))
+        , n_(n) {
+        set_current_item(stdext::index_of(user_macro::icons, user_macro::icon(n_)));
+    }
+
+    int item_count() const final {
+        return user_macro::icons.size();
+    }
+
+    string_view_utf8 build_item_text(int index, [[maybe_unused]] StringViewUtf8ParamBase &params) const final {
+        return _(user_macro::icon_label(user_macro::icons[index]));
+    }
+
+protected:
+    bool on_item_selected(const OnItemSelectedArgs &args) override {
+        user_macro::set_icon(n_, user_macro::icons[args.new_index]);
+        return true;
+    }
+
+private:
+    const uint8_t n_;
+};
+
 class MenuItemMacroFile final : public WiInfo<user_macro::label_buffer_size> {
 public:
     MenuItemMacroFile(uint8_t n)
@@ -70,7 +98,7 @@ public:
     }
 };
 
-constexpr int macro_settings_item_count = 3; // MI_RETURN, Name, File
+constexpr int macro_settings_item_count = 4; // MI_RETURN, Name, Icon, File
 
 void setup_macro_settings_item(WindowMenuVirtual::ItemVariant &variant, int index, uint8_t n) {
     switch (index) {
@@ -79,6 +107,9 @@ void setup_macro_settings_item(WindowMenuVirtual::ItemVariant &variant, int inde
         break;
     case 1:
         variant.emplace<MenuItemMacroName>(n);
+        break;
+    case 2:
+        variant.emplace<MenuItemMacroIcon>(n);
         break;
     default:
         variant.emplace<MenuItemMacroFile>(n);
