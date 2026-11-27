@@ -154,7 +154,7 @@ void run(uint8_t id) {
         return;
 
     case Kind::auto_home:
-        if (confirmed(_("Home all axes?"))) {
+        if (MsgBoxWarning(_("The bed will rise to the nozzle. Remove any print from the bed first. Continue?"), Responses_YesNo, 1) == Response::Yes && still_idle()) {
             MI_AUTO_HOME::run();
         }
         return;
