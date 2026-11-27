@@ -14,6 +14,10 @@
 
 #if HAS_CUSTOM_NOZZLE_WIPER()
     #include <feature/nozzle_cleaner_lite/custom_wiper_geometry.hpp>
+    #include <tool_index.hpp>
+    #include <array>
+    #include <expected>
+    #include <span>
 #endif
 
 class unified_bed_leveling;
@@ -30,21 +34,38 @@ bool is_available();
 /// the nozzle target and print fan.
 bool uses_custom_geometry();
 
-/// Checks \p geometry against the current tool offsets and travel limits.
-/// \returns the first problem found, the picked tool's first
-custom_wiper::Problem validate_custom_geometry(const custom_wiper::Geometry &geometry, float width);
+/// Plans a custom wipe of \p geometry with \p width for the tool picked now,
+/// with the offset applied to it: what a wipe started now would do.
+/// Only that tool counts: another tool that cannot reach is refused when it wipes.
+std::expected<custom_wiper::ToolPlan, custom_wiper::Problem> plan_custom_wipe(const custom_wiper::Geometry &geometry, float width);
 
-/// True when the taught custom wiper geometry fits the current tool offsets and travel limits.
+/// How each enabled tool would wipe, each planned with its stored offset
+struct ReachReport {
+    struct Entry {
+        /// 0-based
+        uint8_t tool = 0;
+        std::expected<custom_wiper::ToolPlan, custom_wiper::Problem> plan;
+    };
+
+    std::array<Entry, PhysicalToolIndex::count> entries;
+    size_t count = 0;
+
+    std::span<const Entry> tools() const { return { entries.data(), count }; }
+};
+
+ReachReport custom_reach_report(const custom_wiper::Geometry &geometry, float width);
+
+/// True when the picked tool can wipe the stored custom wiper geometry, see plan_custom_wipe()
 bool custom_geometry_valid();
 
 /// Machine position where the custom wipe waits for temperature with the
-/// current tool: the staging point at the approach height. nullopt while the
-/// geometry is not valid.
+/// picked tool: the plan's waiting point at the approach height. nullopt while
+/// the picked tool cannot wipe the stored geometry.
 std::optional<xyz_pos_t> custom_waiting_point();
 
 /// Wipes on the custom wiper before the bed-tap nozzle check, if that is
-/// switched on and the geometry is valid, then waits for the restored nozzle
-/// target. Does nothing otherwise.
+/// switched on and the picked tool can wipe it, then waits for the restored
+/// nozzle target. Does nothing otherwise.
 /// \returns false if a wipe was attempted and failed
 bool wipe_before_probing();
 

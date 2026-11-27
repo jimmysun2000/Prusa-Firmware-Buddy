@@ -16,6 +16,7 @@
 
 #include <array>
 #include <cmath>
+#include <optional>
 
 using namespace screen_menu_nozzle_wiper;
 namespace cw = nozzle_cleaner_lite::custom_wiper;
@@ -119,6 +120,8 @@ const char *spot_name(cw::Spot spot) {
         return N_("stroke start");
     case cw::Spot::stroke_end:
         return N_("stroke end");
+    case cw::Spot::stroke:
+        return N_("stroke");
     case cw::Spot::waiting_point:
         return N_("waiting point");
     case cw::Spot::height:
@@ -134,6 +137,8 @@ const char *spot_short_name(cw::Spot spot) {
         return N_("start");
     case cw::Spot::stroke_end:
         return N_("end");
+    case cw::Spot::stroke:
+        return N_("line");
     case cw::Spot::waiting_point:
         return N_("wait");
     case cw::Spot::height:
@@ -158,22 +163,27 @@ const char *fix_direction(const cw::Problem &problem) {
     return problem.beyond_max ? N_("forward") : N_("back");
 }
 
+/// The smallest Wipe Width setting that covers \p min_width, nullopt if there is none
+std::optional<float> width_setting_for(float min_width) {
+    if (!(min_width > 0.0f)) {
+        return std::nullopt;
+    }
+    const float setting = std::ceil((min_width - cw::reach_tolerance) / width_config.step) * width_config.step;
+    if (!(setting <= cw::width_max)) {
+        return std::nullopt;
+    }
+    return setting;
+}
+
 using StatusParams = StringViewUtf8Parameters<32>;
 
-string_view_utf8 status_text(const cw::Geometry &geometry, const cw::Problem &problem, StatusParams &params) {
-    const bool start = geometry.taught & cw::Geometry::taught_start;
-    const bool end = geometry.taught & cw::Geometry::taught_end;
-    if (!start && !end) {
-        return _("Not taught");
-    } else if (!end) {
-        return _("Start only");
-    } else if (!start) {
-        return _("End only");
-    }
-
+/// Fits the 21 characters of the status line
+string_view_utf8 short_problem_text(const cw::Problem &problem, StatusParams &params) {
     switch (problem.fault) {
     case cw::Fault::none:
         return _("Ready");
+    case cw::Fault::no_tool:
+        return _("No tool picked");
     case cw::Fault::not_taught:
         return _("Not taught");
     case cw::Fault::stroke_length:
@@ -192,38 +202,112 @@ string_view_utf8 status_text(const cw::Geometry &geometry, const cw::Problem &pr
     return _("Not taught");
 }
 
-void show_problem(const cw::Problem &problem) {
-    StringViewUtf8Parameters<128> params;
+/// Ready as long as the picked tool can wipe; the tools that cannot are counted
+string_view_utf8 status_text(const cw::Geometry &geometry, float width, StatusParams &params) {
+    const bool start = geometry.taught & cw::Geometry::taught_start;
+    const bool end = geometry.taught & cw::Geometry::taught_end;
+    if (!start && !end) {
+        return _("Not taught");
+    } else if (!end) {
+        return _("Start only");
+    } else if (!start) {
+        return _("End only");
+    }
+
+    if (const cw::Problem problem = cw::check_geometry(geometry, width); !problem.ok()) {
+        return short_problem_text(problem, params);
+    }
+
+    const auto picked = PhysicalToolIndex::currently_selected_opt();
+    const auto report = nozzle_cleaner_lite::custom_reach_report(geometry, width);
+    std::optional<cw::Problem> first_short;
+    unsigned short_count = 0;
+    bool any_ready = false;
+    for (const auto &entry : report.tools()) {
+        if (entry.plan.has_value()) {
+            any_ready = true;
+            continue;
+        }
+        if (picked.has_value() && entry.tool == picked->to_raw()) {
+            return short_problem_text(entry.plan.error(), params);
+        }
+        if (!first_short.has_value()) {
+            first_short = entry.plan.error();
+        }
+        ++short_count;
+    }
+
+    if (!any_ready && first_short.has_value()) {
+        return short_problem_text(*first_short, params);
+    }
+    if (short_count == 0) {
+        return _("Ready");
+    }
+    return (short_count == 1 ? _("Ready, %u tool short") : _("Ready, %u tools short")).formatted(params, short_count);
+}
+
+using ProblemParams = StringViewUtf8Parameters<128>;
+
+string_view_utf8 problem_text(const cw::Problem &problem, ProblemParams &params) {
     switch (problem.fault) {
     case cw::Fault::none:
-        return;
+        return string_view_utf8::MakeNULLSTR();
+    case cw::Fault::no_tool:
+        return _("Pick a tool first.");
     case cw::Fault::not_taught:
-        MsgBoxWarning(_("Save both the start and the end."), Responses_Ok);
-        return;
+        return _("Save both the start and the end.");
     case cw::Fault::stroke_length:
-        MsgBoxWarning(_("The stroke from start to end has to be %.0f to %.0f mm long.").formatted(params, static_cast<double>(cw::stroke_length_min), static_cast<double>(cw::stroke_length_max)), Responses_Ok);
-        return;
+        return _("The stroke from start to end has to be %.0f to %.0f mm long.").formatted(params, static_cast<double>(cw::stroke_length_min), static_cast<double>(cw::stroke_length_max));
     case cw::Fault::width:
-        MsgBoxWarning(_("The wipe width is out of range."), Responses_Ok);
-        return;
+        return _("The wipe width is out of range.");
     case cw::Fault::wipe_z:
-        MsgBoxWarning(_("The wipe height has to be %.1f to %.0f mm above the bed.").formatted(params, static_cast<double>(cw::wipe_z_min), static_cast<double>(cw::wipe_z_max)), Responses_Ok);
-        return;
+        return _("The wipe height has to be %.1f to %.0f mm above the bed.").formatted(params, static_cast<double>(cw::wipe_z_min), static_cast<double>(cw::wipe_z_max));
     case cw::Fault::travel_xy: {
         const Fragment spot { spot_name(problem.spot) };
         const Fragment side { limit_side_name(problem) };
-        const Fragment what { problem.spot == cw::Spot::waiting_point ? N_("the stroke") : N_("that point") };
+        const bool single_point = problem.spot == cw::Spot::stroke_start || problem.spot == cw::Spot::stroke_end;
+        const Fragment what { single_point ? N_("that point") : N_("the stroke") };
         const Fragment direction { fix_direction(problem) };
-        MsgBoxWarning(_("Tool %u cannot reach the %s: %.1f mm beyond the %s limit (%s %.1f). Move %s %.1f mm %s.")
-                          .formatted(params, static_cast<unsigned>(problem.tool + 1), spot.c_str(), static_cast<double>(problem.by), side.c_str(),
-                              axis_name(problem.axis), static_cast<double>(problem.limit), what.c_str(), static_cast<double>(problem.by), direction.c_str()),
-            Responses_Ok);
-        return;
+        const unsigned tool = problem.tool + 1;
+        const double by = problem.by;
+        const double limit = problem.limit;
+        if (const auto width = width_setting_for(problem.min_width)) {
+            return _("Tool %u cannot reach the %s: %.1f mm beyond the %s limit (%s %.1f). Move %s %.1f mm %s or raise Wipe Width to %.1f mm.")
+                .formatted(params, tool, spot.c_str(), by, side.c_str(), axis_name(problem.axis), limit, what.c_str(), by, direction.c_str(), static_cast<double>(*width));
+        }
+        return _("Tool %u cannot reach the %s: %.1f mm beyond the %s limit (%s %.1f). Move %s %.1f mm %s.")
+            .formatted(params, tool, spot.c_str(), by, side.c_str(), axis_name(problem.axis), limit, what.c_str(), by, direction.c_str());
     }
     case cw::Fault::travel_z:
-        MsgBoxWarning(_("Tool %u cannot reach the wipe height: it is %.1f mm below the Z travel.").formatted(params, static_cast<unsigned>(problem.tool + 1), static_cast<double>(problem.by)), Responses_Ok);
+        return _("Tool %u cannot reach the wipe height: it is %.1f mm below the Z travel.").formatted(params, static_cast<unsigned>(problem.tool + 1), static_cast<double>(problem.by));
+    }
+    return string_view_utf8::MakeNULLSTR();
+}
+
+void show_problem(const cw::Problem &problem) {
+    if (problem.ok()) {
         return;
     }
+    ProblemParams params;
+    MsgBoxWarning(problem_text(problem, params), Responses_Ok);
+}
+
+/// \returns why a tool that can wipe \p geometry with \p old_width could not with \p new_width, if one could not
+std::optional<cw::Problem> tool_lost_to_width(const cw::Geometry &geometry, float old_width, float new_width) {
+    uint32_t could_wipe = 0;
+    const auto before = nozzle_cleaner_lite::custom_reach_report(geometry, old_width);
+    for (const auto &entry : before.tools()) {
+        if (entry.plan.has_value()) {
+            could_wipe |= 1u << entry.tool;
+        }
+    }
+    const auto after = nozzle_cleaner_lite::custom_reach_report(geometry, new_width);
+    for (const auto &entry : after.tools()) {
+        if (!entry.plan.has_value() && (could_wipe & (1u << entry.tool))) {
+            return entry.plan.error();
+        }
+    }
+    return std::nullopt;
 }
 
 /// Nozzle tip position, once the moves still running have finished
@@ -286,7 +370,7 @@ void MI_WIPER_STATUS::refresh() {
     auto &store = config_store();
     const cw::Geometry geometry = store.nozzle_wiper_geometry.get();
     StatusParams params;
-    ChangeInformation(status_text(geometry, nozzle_cleaner_lite::validate_custom_geometry(geometry, store.nozzle_wiper_width.get()), params));
+    ChangeInformation(status_text(geometry, store.nozzle_wiper_width.get(), params));
 }
 
 MI_JOG_STEP::MI_JOG_STEP()
@@ -316,12 +400,10 @@ void MI_WIPE_WIDTH::OnClick() {
     auto &store = config_store();
     const cw::Geometry geometry = store.nozzle_wiper_geometry.get();
     const float old_width = store.nozzle_wiper_width.get();
-    if (nozzle_cleaner_lite::validate_custom_geometry(geometry, old_width).ok()) {
-        if (const auto problem = nozzle_cleaner_lite::validate_custom_geometry(geometry, value()); !problem.ok()) {
-            show_problem(problem);
-            set_value(old_width);
-            return;
-        }
+    if (const auto lost = tool_lost_to_width(geometry, old_width, value())) {
+        show_problem(*lost);
+        set_value(old_width);
+        return;
     }
     store.nozzle_wiper_width.set(value());
 }
@@ -555,7 +637,8 @@ void ScreenMenuNozzleWiper::save_start() {
     candidate.taught |= cw::Geometry::taught_start;
 
     if (candidate.is_taught()) {
-        switch (const auto problem = nozzle_cleaner_lite::validate_custom_geometry(candidate, store.nozzle_wiper_width.get()); problem.fault) {
+        const auto plan = nozzle_cleaner_lite::plan_custom_wipe(candidate, store.nozzle_wiper_width.get());
+        switch (const cw::Problem problem = plan.has_value() ? cw::Problem {} : plan.error(); problem.fault) {
         case cw::Fault::none:
             break;
         case cw::Fault::wipe_z:
@@ -598,19 +681,16 @@ void ScreenMenuNozzleWiper::save_end() {
         }
     }
 
-    if (candidate.is_taught()) {
-        if (const auto problem = nozzle_cleaner_lite::validate_custom_geometry(candidate, store.nozzle_wiper_width.get()); !problem.ok()) {
-            show_problem(problem);
-            return;
-        }
-    }
-
     std::array<cw::Point, 2> points { cw::Point { tip.x, tip.y } };
     size_t point_count = 1;
     if (candidate.is_taught()) {
-        if (const auto frame = cw::make_frame({ candidate.start_x, candidate.start_y }, { candidate.end_x, candidate.end_y })) {
-            points[point_count++] = cw::staging_point(*frame);
+        const auto plan = nozzle_cleaner_lite::plan_custom_wipe(candidate, store.nozzle_wiper_width.get());
+        if (!plan.has_value()) {
+            show_problem(plan.error());
+            return;
         }
+        const xyz_pos_t offset = hotend_currently_applied_offset;
+        points[point_count++] = { plan->waiting_point.x + offset.x, plan->waiting_point.y + offset.y };
     }
     if (!confirm_points({ points.data(), point_count })) {
         return;

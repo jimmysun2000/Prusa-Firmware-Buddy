@@ -195,34 +195,39 @@ namespace {
 namespace {
     namespace cw = custom_wiper;
 
+    /// Distance every custom wipe target keeps from the X and Y travel limits, which
+    /// are where homing found the frame. The owner chose 0.2 mm over the 0.4 mm kept
+    /// for Prusa's wiper: a wiper mounted at the front limit is then wiped from 0.2 mm
+    /// behind its taught line, at the price of half the clearance to the frame for
+    /// strokes that run fast, with no detection of lost steps outside a print.
+    constexpr float wipe_travel_margin = 0.2f;
+
+    constexpr cw::TravelLimits wipe_limits {
+        .x_min = X_MIN_POS + wipe_travel_margin,
+        .x_max = X_MAX_POS - wipe_travel_margin,
+        .y_min = Y_MIN_POS + wipe_travel_margin,
+        // Stays out of the tool dock area behind the bed
+        .y_max = Y_BED_SIZE,
+        .z_min = Z_MIN_POS,
+    };
+
     cw::Offset to_offset(const xyz_pos_t &offset) {
         return { offset.x, offset.y, offset.z };
     }
 
-    /// The taught geometry in the machine frame of the tool picked now
-    struct MachineGeometry {
-        cw::Frame frame;
-        cw::Point staging;
-        float wipe_z;
-        float approach_z;
-    };
-
-    std::optional<MachineGeometry> to_machine(const cw::Geometry &geometry) {
-        const cw::Offset offset = to_offset(hotend_currently_applied_offset);
-        const auto frame = cw::make_frame(
-            cw::tip_to_machine({ geometry.start_x, geometry.start_y }, offset),
-            cw::tip_to_machine({ geometry.end_x, geometry.end_y }, offset));
-        if (!frame.has_value()) {
-            return std::nullopt;
-        }
-
-        const float wipe_z = cw::tip_to_machine_z(geometry.wipe_z, offset);
-        return MachineGeometry {
-            .frame = *frame,
-            .staging = cw::staging_point(*frame),
-            .wipe_z = wipe_z,
-            .approach_z = wipe_z + cw::approach_clearance,
+    /// Last guard on a wipe target, which line_to_machine_pos would drive into the frame
+    /// as given. The plan already keeps every target wipe_travel_margin inside.
+    cw::Point clamp_to_travel(cw::Point point) {
+        return {
+            std::clamp(point.x, static_cast<float>(X_MIN_POS), static_cast<float>(X_MAX_POS)),
+            std::clamp(point.y, static_cast<float>(Y_MIN_POS), static_cast<float>(Y_BED_SIZE)),
         };
+    }
+
+    void log_problem(const cw::Problem &problem) {
+        log_error(NozzleCleanerLite, "custom wiper unusable: %s; tool %u, %s, axis %u, %.2f mm beyond %s %.2f, width %.1f would reach",
+            cw::to_string(problem.fault), static_cast<unsigned>(problem.tool + 1), cw::to_string(problem.spot), static_cast<unsigned>(problem.axis),
+            static_cast<double>(problem.by), problem.beyond_max ? "max" : "min", static_cast<double>(problem.limit), static_cast<double>(problem.min_width));
     }
 
     float tallest_tool_offset_z() {
@@ -242,8 +247,13 @@ namespace {
     }
 
     void line_to_frame(const cw::Frame &frame, float along, float across, feedRate_t fr_mm_s) {
-        const cw::Point xy = cw::pad_to_xy(frame, along, across);
+        const cw::Point xy = clamp_to_travel(cw::pad_to_xy(frame, along, across));
         line_to_machine_pos(current_machine_position().with_xy(xy.x, xy.y), fr_mm_s);
+    }
+
+    void move_to_waiting_point(const cw::ToolPlan &plan, feedRate_t fr_mm_s) {
+        const cw::Point xy = clamp_to_travel(plan.waiting_point);
+        move_to_machine_pos_xy(xy.x, xy.y, fr_mm_s);
     }
 
     void rub_stroke(ZigZag &zigzag, const cw::Frame &frame, float along_to, feedRate_t fr_mm_s) {
@@ -315,26 +325,21 @@ namespace {
     /// What a custom wipe works with, checked before anything moves
     struct Prepared {
         PhysicalToolIndex tool;
-        float width;
-        MachineGeometry machine;
+        cw::ToolPlan plan;
     };
 
-    /// Checks that a custom wipe may run and homes if that is needed and allowed.
+    /// Checks that a custom wipe of \p geometry may run and homes if that is needed and allowed.
     /// Nothing else moves.
-    std::optional<Prepared> prepare() {
+    std::optional<Prepared> prepare(const cw::Geometry &geometry, float width) {
         const std::optional<PhysicalToolIndex> tool = PhysicalToolIndex::currently_selected_opt();
         if (!tool) {
             log_error(NozzleCleanerLite, "no tool selected");
             return std::nullopt;
         }
 
-        auto &store = config_store();
-        const cw::Geometry geometry = store.nozzle_wiper_geometry.get();
-        const float width = store.nozzle_wiper_width.get();
-        if (const cw::Problem problem = validate_custom_geometry(geometry, width); !problem.ok()) {
-            log_error(NozzleCleanerLite, "custom wiper unusable: %s; tool %u, %s, axis %u, %.2f mm beyond %s %.2f",
-                cw::to_string(problem.fault), static_cast<unsigned>(problem.tool + 1), cw::to_string(problem.spot), static_cast<unsigned>(problem.axis),
-                static_cast<double>(problem.by), problem.beyond_max ? "max" : "min", static_cast<double>(problem.limit));
+        const auto plan = plan_custom_wipe(geometry, width);
+        if (!plan.has_value()) {
+            log_problem(plan.error());
             return std::nullopt;
         }
 
@@ -360,21 +365,17 @@ namespace {
         crash_s.set_gcode_replay_flags(Crash_s::RECOVER_AXIS_STATE);
     #endif
 
-        const std::optional<MachineGeometry> machine = to_machine(geometry);
-        if (!machine.has_value()) {
-            return std::nullopt;
-        }
-        return Prepared { .tool = *tool, .width = width, .machine = *machine };
+        return Prepared { .tool = *tool, .plan = *plan };
     }
 
     /// Wipes from wherever the nozzle is and leaves the way it came.
     /// Sets the nozzle target to \p restore_target at the end, unless something else changed it meanwhile.
     bool wipe(const Prepared &prepared, bool dry_run, int16_t restore_target, PrintStatusMessageGuard &status) {
-        const cw::Frame &frame = prepared.machine.frame;
-        const cw::Point &staging = prepared.machine.staging;
-        const float wipe_z = prepared.machine.wipe_z;
-        const float approach_z = prepared.machine.approach_z;
-        const Pad pad = cw::make_pad(frame, prepared.width);
+        const cw::ToolPlan &plan = prepared.plan;
+        const cw::Frame &frame = plan.frame;
+        const Pad &pad = plan.pad;
+        const float wipe_z = plan.wipe_z;
+        const float approach_z = wipe_z + cw::approach_clearance;
         const float entry_z = current_machine_position().z;
 
         Hotend &hotend = Hotend::for_tool(prepared.tool);
@@ -394,7 +395,7 @@ namespace {
             if (current_machine_position().z < approach_z) {
                 move_to_machine_pos_z(approach_z, leave_feedrate);
             }
-            move_to_machine_pos_xy(staging.x, staging.y, leave_feedrate);
+            move_to_waiting_point(plan, leave_feedrate);
             if (current_machine_position().z < entry_z) {
                 move_to_machine_pos_z(entry_z, leave_feedrate);
             }
@@ -404,7 +405,7 @@ namespace {
         if (entry_z < approach_z) {
             move_to_machine_pos_z(approach_z, leave_feedrate);
         }
-        move_to_machine_pos_xy(staging.x, staging.y, dive_feedrate);
+        move_to_waiting_point(plan, dive_feedrate);
         if (entry_z > approach_z) {
             move_to_machine_pos_z(approach_z, approach_feedrate);
         }
@@ -484,7 +485,8 @@ namespace {
         PrintStatusMessageGuard status_message;
         status_message.update<PrintStatusMessage::nozzle_cleaner_lite>({});
 
-        const std::optional<Prepared> prepared = prepare();
+        auto &store = config_store();
+        const std::optional<Prepared> prepared = prepare(store.nozzle_wiper_geometry.get(), store.nozzle_wiper_width.get());
         if (!prepared.has_value()) {
             return false;
         }
@@ -564,42 +566,38 @@ bool uses_custom_geometry() {
     return config_store().nozzle_wiper_custom.get();
 }
 
-cw::Problem validate_custom_geometry(const cw::Geometry &geometry, float width) {
-    // The applied offset is what a wipe now moves with; the stored ones are what any later wipe will
-    std::array<cw::ToolOffset, PhysicalToolIndex::count + 1> offsets;
-    size_t offset_count = 0;
-    if (const auto picked = PhysicalToolIndex::currently_selected_opt()) {
-        offsets[offset_count++] = { .tool = picked->to_raw(), .offset = to_offset(hotend_currently_applied_offset) };
+std::expected<cw::ToolPlan, cw::Problem> plan_custom_wipe(const cw::Geometry &geometry, float width) {
+    const auto tool = PhysicalToolIndex::currently_selected_opt();
+    if (!tool.has_value()) {
+        return std::unexpected(cw::Problem { .fault = cw::Fault::no_tool });
     }
-    for (auto tool : PhysicalToolIndex::all().skip_all_disabled()) {
-        offsets[offset_count++] = { .tool = tool.to_raw(), .offset = to_offset(hotend_offset[tool]) };
-    }
+    // The applied offset is what the wipe moves with
+    return cw::plan_for_tool(geometry, width, tool->to_raw(), to_offset(hotend_currently_applied_offset), wipe_limits);
+}
 
-    static constexpr cw::TravelLimits limits {
-        .x_min = X_MIN_POS + travel_limit_margin,
-        .x_max = X_MAX_POS - travel_limit_margin,
-        .y_min = Y_MIN_POS + travel_limit_margin,
-        // Stays out of the tool dock area behind the bed
-        .y_max = Y_BED_SIZE,
-        .z_min = Z_MIN_POS,
-    };
-    return cw::validate(geometry, width, std::span(offsets.data(), offset_count), limits);
+ReachReport custom_reach_report(const cw::Geometry &geometry, float width) {
+    ReachReport report;
+    for (auto tool : PhysicalToolIndex::all().skip_all_disabled()) {
+        report.entries[report.count++] = {
+            .tool = tool.to_raw(),
+            .plan = cw::plan_for_tool(geometry, width, tool.to_raw(), to_offset(hotend_offset[tool]), wipe_limits),
+        };
+    }
+    return report;
 }
 
 bool custom_geometry_valid() {
     auto &store = config_store();
-    return validate_custom_geometry(store.nozzle_wiper_geometry.get(), store.nozzle_wiper_width.get()).ok();
+    return plan_custom_wipe(store.nozzle_wiper_geometry.get(), store.nozzle_wiper_width.get()).has_value();
 }
 
 std::optional<xyz_pos_t> custom_waiting_point() {
-    if (!custom_geometry_valid()) {
+    auto &store = config_store();
+    const auto plan = plan_custom_wipe(store.nozzle_wiper_geometry.get(), store.nozzle_wiper_width.get());
+    if (!plan.has_value()) {
         return std::nullopt;
     }
-    const auto machine = to_machine(config_store().nozzle_wiper_geometry.get());
-    if (!machine.has_value()) {
-        return std::nullopt;
-    }
-    return xyz_pos_t { { { machine->staging.x, machine->staging.y, machine->approach_z } } };
+    return xyz_pos_t { { { plan->waiting_point.x, plan->waiting_point.y, plan->wipe_z + cw::approach_clearance } } };
 }
 
 bool wipe_before_probing() {
@@ -641,22 +639,25 @@ bool deep_clean(uint16_t hold_s) {
         return false;
     }
 
+    auto &store = config_store();
+    const cw::Geometry geometry = store.nozzle_wiper_geometry.get();
+    const float width = store.nozzle_wiper_width.get();
+
     // Checked before prepare() can home
-    const auto soak_reachable = [](const MachineGeometry &machine) {
-        return machine.wipe_z + cw::soak_clearance <= Z_MAX_POS;
+    const auto soak_reachable = [](const cw::ToolPlan &plan) {
+        return plan.wipe_z + cw::soak_clearance <= Z_MAX_POS;
     };
-    if (const auto machine = to_machine(config_store().nozzle_wiper_geometry.get()); machine.has_value() && !soak_reachable(*machine)) {
+    if (const auto plan = plan_custom_wipe(geometry, width); plan.has_value() && !soak_reachable(*plan)) {
         log_error(NozzleCleanerLite, "soak height out of Z travel");
         return false;
     }
 
-    const std::optional<Prepared> prepared = prepare();
-    if (!prepared.has_value() || !soak_reachable(prepared->machine)) {
+    const std::optional<Prepared> prepared = prepare(geometry, width);
+    if (!prepared.has_value() || !soak_reachable(prepared->plan)) {
         return false;
     }
 
-    const cw::Point &staging = prepared->machine.staging;
-    const float soak_z = prepared->machine.wipe_z + cw::soak_clearance;
+    const float soak_z = prepared->plan.wipe_z + cw::soak_clearance;
     const float entry_z = current_machine_position().z;
     hold_s = std::clamp(hold_s, cw::soak_time_min, cw::soak_time_max);
 
@@ -682,7 +683,7 @@ bool deep_clean(uint16_t hold_s) {
     if (entry_z < soak_z) {
         move_to_machine_pos_z(soak_z, leave_feedrate);
     }
-    move_to_machine_pos_xy(staging.x, staging.y, dive_feedrate);
+    move_to_waiting_point(prepared->plan, dive_feedrate);
     if (entry_z > soak_z) {
         move_to_machine_pos_z(soak_z, approach_feedrate);
     }

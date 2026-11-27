@@ -266,6 +266,75 @@ TEST_CASE("ZigZag yields nothing without a stroke") {
     CHECK_FALSE(zigzag.next().has_value());
 }
 
+TEST_CASE("ZigZag over a zero-width pad strokes straight") {
+    constexpr Pad line {
+        .along_near = 0.0f,
+        .along_far = 50.0f,
+        .across_min = 0.2f,
+        .across_max = 0.2f,
+    };
+    for (const float phase : { 0.0f, 0.3f, 0.5f, 0.9f }) {
+        ZigZag zigzag { line, 1.5f, phase };
+        CHECK(zigzag.start().along == 0);
+        CHECK(zigzag.start().across == Approx(0.2f));
+
+        float previous = zigzag.start().along;
+        for (const auto &stroke : run_all_strokes(zigzag, line)) {
+            REQUIRE_FALSE(stroke.empty());
+            const bool ascending = stroke.back().along > previous;
+            for (const auto &waypoint : stroke) {
+                CHECK(waypoint.across == Approx(0.2f));
+                CHECK(waypoint.along >= -0.001f);
+                CHECK(waypoint.along <= 50.001f);
+                // Turns of the drift lie on the line, so they never send the nozzle back
+                CHECK((ascending ? waypoint.along >= previous - 0.001f : waypoint.along <= previous + 0.001f));
+                previous = waypoint.along;
+            }
+        }
+    }
+}
+
+TEST_CASE("ZigZag over a one-sided pad stays on its side") {
+    // Cut at a limit on one side of the taught line, strokes starting from either end
+    constexpr Pad behind {
+        .along_near = 0.0f,
+        .along_far = 50.0f,
+        .across_min = 0.2f,
+        .across_max = 1.5f,
+    };
+    constexpr Pad in_front_from_end {
+        .along_near = 50.0f,
+        .along_far = 0.0f,
+        .across_min = -1.5f,
+        .across_max = -0.2f,
+    };
+    for (const Pad &pad : { behind, in_front_from_end }) {
+        for (const float phase : { 0.0f, 0.13f, 0.5f, 0.77f }) {
+            ZigZag zigzag { pad, 1.5f, phase };
+            CHECK(zigzag.start().along == Approx(pad.along_near));
+            CHECK(zigzag.start().across >= pad.across_min - 0.001f);
+            CHECK(zigzag.start().across <= pad.across_max + 0.001f);
+
+            bool reached_min = false;
+            bool reached_max = false;
+            for (const auto &stroke : run_all_strokes(zigzag, pad)) {
+                REQUIRE_FALSE(stroke.empty());
+                for (const auto &waypoint : stroke) {
+                    CHECK(waypoint.across >= pad.across_min - 0.001f);
+                    CHECK(waypoint.across <= pad.across_max + 0.001f);
+                    CHECK(waypoint.along >= -0.001f);
+                    CHECK(waypoint.along <= 50.001f);
+                    reached_min |= std::abs(waypoint.across - pad.across_min) < 0.001f;
+                    reached_max |= std::abs(waypoint.across - pad.across_max) < 0.001f;
+                }
+            }
+            // The whole of the cut band is used
+            CHECK(reached_min);
+            CHECK(reached_max);
+        }
+    }
+}
+
 TEST_CASE("ZigZag begin_stroke discards an unfinished stroke") {
     ZigZag zigzag { core_one_pad, 4.0f, 0.0f };
 

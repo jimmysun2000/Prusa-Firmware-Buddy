@@ -3,8 +3,8 @@
 #include "cleaner_zigzag.hpp"
 
 #include <cstdint>
+#include <expected>
 #include <optional>
-#include <span>
 
 /// Geometry and limits of a wiper the user mounted and taught themselves,
 /// used instead of Prusa's wiper. Knows nothing about Marlin, so the caller
@@ -93,7 +93,7 @@ inline constexpr float slow_speed = 25.0f;
 inline constexpr uint8_t fast_cycles = 5;
 inline constexpr uint8_t slow_cycles = 2;
 
-/// The routine waits for temperature this far before the stroke start, on the stroke line
+/// The routine waits for temperature this far beside the stroke, on the stroke line
 inline constexpr float stage_distance = 10.0f;
 /// Height above the wipe height at which the nozzle moves onto the wiper
 inline constexpr float approach_clearance = 10.0f;
@@ -117,11 +117,13 @@ inline constexpr uint16_t wait_timeout_s = 300;
 inline constexpr uint16_t soak_time_default = 120;
 inline constexpr uint16_t soak_time_min = 30;
 inline constexpr uint16_t soak_time_max = 600;
-/// Deep clean: the nozzle soaks this far above the wipe height, beside the wiper at the staging point
+/// Deep clean: the nozzle soaks this far above the wipe height, beside the wiper at the waiting point
 inline constexpr float soak_clearance = 100.0f;
 
 enum class Fault : uint8_t {
     none,
+    /// No tool is picked to plan for
+    no_tool,
     not_taught,
     stroke_length,
     width,
@@ -134,6 +136,8 @@ enum class Fault : uint8_t {
 enum class Spot : uint8_t {
     stroke_start,
     stroke_end,
+    /// Both stroke ends, equally far beyond the same limit
+    stroke,
     waiting_point,
     height,
 };
@@ -160,15 +164,36 @@ struct Problem {
     float by = 0;
     /// The limit, as a machine coordinate [mm]
     float limit = 0;
+    /// Smallest wipe width with which the tool would reach, 0 if no width up to width_max would
+    float min_width = 0;
 
     constexpr bool ok() const { return fault == Fault::none; }
 };
 
-/// A tool and its offset
-struct ToolOffset {
-    /// 0-based
-    uint8_t tool = 0;
-    Offset offset {};
+/// How far outside the limits a point may be computed and still count as inside [mm], so
+/// that float rounding of a point taught exactly on a limit does not reject it. Far below
+/// any margin the caller keeps from the real travel limits.
+inline constexpr float reach_tolerance = 0.01f;
+
+/// Everything one tool wipes with, in that tool's machine frame
+struct ToolPlan {
+    /// The taught stroke line
+    Frame frame;
+
+    /// The part of the wipe band the tool reaches. along_near is the end the strokes
+    /// start from and return to: the stroke start, or its end when the waiting point
+    /// had to move past it.
+    Pad pad;
+
+    /// Where the nozzle waits for temperature and retreats to, stage_distance before
+    /// along_near on the stroke line, at the band's across position nearest to that line
+    Point waiting_point;
+
+    /// Machine Z of the taught wipe height
+    float wipe_z = 0;
+
+    /// How far from the taught line the band starts, because the travel limit cuts it off [mm]
+    float line_shift() const;
 };
 
 /// Short English description for the log
@@ -181,11 +206,8 @@ std::optional<Frame> make_frame(Point start, Point end);
 /// Converts frame coordinates to the frame's XY
 Point pad_to_xy(const Frame &frame, float along, float across);
 
-/// Pad for the zigzag: the whole stroke length, \p width centred on the stroke line
-Pad make_pad(const Frame &frame, float width);
-
-/// Where the nozzle waits for temperature and retreats to, stage_distance before the stroke start
-Point staging_point(const Frame &frame);
+/// Pad for the zigzag: the whole stroke length, between \p across_min and \p across_max
+Pad make_pad(const Frame &frame, float across_min, float across_max);
 
 /// Converts a tip-frame point to the machine position that puts the tip there
 Point tip_to_machine(Point tip, const Offset &tool_offset);
@@ -200,10 +222,20 @@ int16_t touch_max_temp(std::optional<int16_t> filament_nozzle_temp);
 /// \param tallest_tool_offset_z highest tool Z offset, standing in for the tool that printed the top
 bool print_clearance_ok(float max_printed_z, float tallest_tool_offset_z, float wipe_z);
 
-/// Checks that the taught geometry can be wiped with every tool in \p tool_offsets:
-/// stroke length and height within limits, and the stroke band of \p width plus
-/// the staging point inside \p limits in the machine frame of each tool.
-/// \returns the first problem found, in the order of \p tool_offsets
-Problem validate(const Geometry &geometry, float width, std::span<const ToolOffset> tool_offsets, const TravelLimits &limits);
+/// Checks what does not depend on the tool: both points taught, and the stroke
+/// length, \p width and wipe height within their ranges.
+Problem check_geometry(const Geometry &geometry, float width);
+
+/// Plans the wipe of \p geometry for the tool with \p tool_offset, inside \p limits.
+///
+/// The band is \p width centred on the taught line, cut where the limits do not let
+/// both stroke ends reach it. A tool that cannot reach the band at all is refused
+/// with a travel_xy Problem. Every point of the plan lies inside \p limits, within
+/// reach_tolerance, and so does every straight move between them, as the limits
+/// are a box. The waiting point moves past the stroke end, and the strokes start
+/// from there, when it does not fit before the start.
+///
+/// \param tool 0-based, only to name the tool in a Problem
+std::expected<ToolPlan, Problem> plan_for_tool(const Geometry &geometry, float width, uint8_t tool, const Offset &tool_offset, const TravelLimits &limits);
 
 } // namespace nozzle_cleaner_lite::custom_wiper
