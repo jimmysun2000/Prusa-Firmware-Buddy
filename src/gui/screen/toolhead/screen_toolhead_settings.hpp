@@ -15,6 +15,11 @@
     #include <MItem_mmu.hpp>
 #endif
 
+#include <option/has_indx.h>
+#if HAS_TOOLCHANGER() && !HAS_INDX()
+    #include "screen_toolhead_settings_hotend_pid.hpp"
+#endif
+
 namespace screen_toolhead_settings {
 
 class MI_NOZZLE_DIAMETER final : public MI_TOOLHEAD_SPECIFIC_SPIN {
@@ -161,6 +166,9 @@ using ScreenToolheadDetail_ = ScreenMenu<EFooter::Off,
     MI_DOCK,
     #if HAS_PRINT_FAN_TYPE()
     MI_PRINT_FAN_TYPE,
+    #endif
+    #if !HAS_INDX()
+    MI_HOTEND_PID,
     #endif
 
 #endif

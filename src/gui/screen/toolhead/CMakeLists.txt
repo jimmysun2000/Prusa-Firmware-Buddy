@@ -8,3 +8,7 @@ if(HAS_TOOLCHANGER)
     firmware PRIVATE screen_toolhead_settings_dock.cpp screen_toolhead_settings_nozzle_offset.cpp
     )
 endif()
+
+if(HAS_TOOLCHANGER AND NOT HAS_INDX)
+  target_sources(firmware PRIVATE screen_toolhead_settings_hotend_pid.cpp)
+endif()
