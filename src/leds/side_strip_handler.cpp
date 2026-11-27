@@ -6,8 +6,13 @@
     #include <config_store/store_instance.hpp>
     #include <leds/status_leds_handler.hpp>
     #include <common/marlin_vars.hpp>
+    #include <client_response.hpp>
     #include <feature/print_status_message/print_status_message_mgr.hpp>
+    #include <fsm/filament_change_phases.hpp>
     #include <option/has_chamber_api.h>
+    #include <option/has_extruder_fsensor.h>
+    #include <option/has_loadcell.h>
+    #include <option/has_side_fsensor.h>
     #include <option/xl_enclosure_support.h>
     #include <state/printer_state.hpp>
     #include <tool_index.hpp>
@@ -70,6 +75,46 @@ namespace {
     #endif
     }
 
+    /// @returns whether the dialog of a busy printer waits for the owner
+    bool waits_for_owner(const fsm::States::Top &top) {
+        const PhaseUnderlyingType phase = top.data.GetPhase();
+
+        if (top.fsm_type == ClientFSM::Load_unload) {
+            // Loading and unloading also offer Stop and Retry, only these phases wait
+            switch (GetEnumFromPhaseIndex<PhasesLoadUnload>(phase)) {
+            case PhasesLoadUnload::IsFilamentUnloaded:
+            case PhasesLoadUnload::FilamentNotInFS:
+            case PhasesLoadUnload::ManualUnload_continuable:
+            case PhasesLoadUnload::ManualUnload_uncontinuable:
+            case PhasesLoadUnload::UserPush_stoppable:
+            case PhasesLoadUnload::UserPush_unstoppable:
+            case PhasesLoadUnload::MakeSureInserted_stoppable:
+            case PhasesLoadUnload::MakeSureInserted_unstoppable:
+            case PhasesLoadUnload::IsFilamentInGear:
+            case PhasesLoadUnload::AwaitingFilament_stoppable:
+            case PhasesLoadUnload::AwaitingFilament_unstoppable:
+            case PhasesLoadUnload::IsColor:
+            case PhasesLoadUnload::IsColorPurge:
+    #if HAS_SIDE_FSENSOR() && HAS_EXTRUDER_FSENSOR()
+            case PhasesLoadUnload::LoadingObstruction_stoppable:
+            case PhasesLoadUnload::LoadingObstruction_unstoppable:
+    #endif
+    #if HAS_LOADCELL() && HAS_EXTRUDER_FSENSOR()
+            case PhasesLoadUnload::FilamentStuck:
+    #endif
+                return true;
+            default:
+                return false;
+            }
+        }
+
+        // A phase that runs on its own offers at most Abort
+        const auto &responses = ClientResponses::get_available_responses(FSMAndPhase(top.fsm_type, phase));
+        return std::ranges::any_of(responses, [](Response response) {
+            return response != Response::_none && response != Response::Abort;
+        });
+    }
+
 } // namespace
 
 side_strip_status::Inputs SideStripHandler::read_inputs(uint32_t now_ms) {
@@ -128,11 +173,16 @@ side_strip_status::Inputs SideStripHandler::read_inputs(uint32_t now_ms) {
         break;
     }
 
-    // Outside a print every dialog runs on its own, except the preheat menu. A serial print also
-    // reports busy, it shows as printing.
+    // Outside a print every dialog runs on its own or waits for the owner, except the preheat menu.
+    // A serial print also reports busy, it shows as printing.
     inputs.busy = device_state == DeviceState::Busy
         && inputs.activity != Activity::printing
         && !(top.has_value() && top->fsm_type == ClientFSM::Preheat);
+
+    inputs.waits_for_owner = inputs.waits_for_owner
+        || device_state == DeviceState::Attention
+        || device_state == DeviceState::Paused
+        || (inputs.busy && top.has_value() && waits_for_owner(*top));
 
     // G-code without a dialog, such as a macro. Short commands, also the printer's own, do not count.
     if (animation == StateAnimation::Idle && !top.has_value() && vars.is_processing) {
