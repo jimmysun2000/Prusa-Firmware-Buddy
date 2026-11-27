@@ -136,10 +136,17 @@ private:
 };
 } // namespace
 
-std::optional<VirtualToolIndex> select_tool_dialog(const SelectToolDialogArgs &args) {
+std::optional<VirtualToolIndex> tool_selected_without_dialog(const SelectToolDialogArgs &args) {
     // No point selecting if there is only one tool enabled
     if (auto t = VirtualToolIndex::single_enabled_tool(); t.has_value() && args.tool_filter(*t)) {
         return *t;
+    }
+    return std::nullopt;
+}
+
+std::optional<VirtualToolIndex> select_tool_dialog(const SelectToolDialogArgs &args) {
+    if (const auto t = tool_selected_without_dialog(args)) {
+        return t;
     }
 
     SelectToolDialog d(args);

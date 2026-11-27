@@ -39,10 +39,20 @@ expands_t multi_tool_expands() {
     return (any_tool_configured() && !PhysicalToolIndex::single_enabled_tool().has_value()) ? expands_t::yes : expands_t::no;
 }
 
+/// Asks @p question Yes/No with No focused; nullptr asks nothing
+bool confirmed(const char *question) {
+    return !question || MsgBoxQuestion(_(question), Responses_YesNo, 1) == Response::Yes;
+}
+
 } // namespace
 
 #if HAS_TOOLCHANGER()
-[[nodiscard]] bool show_tool_selector_dialog(const SelectToolDialogArgs &args) {
+/// @param question asked in place of the tool list where only one tool fits and the list is skipped
+[[nodiscard]] bool show_tool_selector_dialog(const SelectToolDialogArgs &args, const char *question) {
+    if (tool_selected_without_dialog(args).has_value() && !confirmed(question)) {
+        return false;
+    }
+
     const auto tool = select_tool_dialog(args);
 
     if (!tool) {
@@ -76,10 +86,16 @@ MI_LOAD::MI_LOAD()
 }
 
 void MI_LOAD::click(IWindowMenu &) {
+    run();
+}
+
+void MI_LOAD::run(const char *question) {
 #if HAS_TOOLCHANGER()
-    if (!show_tool_selector_dialog({
-            .allow_return = true,
-        })) {
+    if (!show_tool_selector_dialog({ .allow_return = true }, question)) {
+        return;
+    }
+#else
+    if (!confirmed(question)) {
         return;
     }
 #endif
@@ -97,10 +113,16 @@ MI_UNLOAD::MI_UNLOAD()
 }
 
 void MI_UNLOAD::click(IWindowMenu &) {
+    run();
+}
+
+void MI_UNLOAD::run(const char *question) {
 #if HAS_TOOLCHANGER()
-    if (!show_tool_selector_dialog({
-            .allow_return = true,
-        })) {
+    if (!show_tool_selector_dialog({ .allow_return = true }, question)) {
+        return;
+    }
+#else
+    if (!confirmed(question)) {
         return;
     }
 #endif
@@ -114,11 +136,16 @@ MI_CHANGE::MI_CHANGE()
 }
 
 void MI_CHANGE::click(IWindowMenu &) {
+    run();
+}
+
+void MI_CHANGE::run(const char *question) {
 #if HAS_TOOLCHANGER()
-    if (!show_tool_selector_dialog({
-            .allow_return = true,
-            .tool_filter = tool_has_filament,
-        })) {
+    if (!show_tool_selector_dialog({ .allow_return = true, .tool_filter = tool_has_filament }, question)) {
+        return;
+    }
+#else
+    if (!confirmed(question)) {
         return;
     }
 #endif
@@ -132,6 +159,10 @@ MI_CHANGEALL::MI_CHANGEALL()
     : IWindowMenuItem(_(label), nullptr, any_tool_configured() ? is_enabled_t::yes : is_enabled_t::no, prusa_toolchanger.is_toolchanger_enabled() ? is_hidden_t::no : is_hidden_t::yes, expands_t::yes) {}
 
 void MI_CHANGEALL::click(IWindowMenu &) {
+    run();
+}
+
+void MI_CHANGEALL::run() {
     Screens::Access()->Open(ScreenFactory::Screen<ScreenChangeAllFilaments>);
 }
 
@@ -141,6 +172,10 @@ MI_LOAD_ALL::MI_LOAD_ALL()
     : IWindowMenuItem(_(label), nullptr, any_tool_configured() ? is_enabled_t::yes : is_enabled_t::no, prusa_toolchanger.is_toolchanger_enabled() ? is_hidden_t::no : is_hidden_t::yes, expands_t::yes) {}
 
 void MI_LOAD_ALL::click(IWindowMenu &) {
+    run();
+}
+
+void MI_LOAD_ALL::run() {
     Screens::Access()->Open(ScreenFactory::ScreenWithArg<ScreenChangeAllFilaments>(ScreenChangeAllFilaments::SetupLoadAll {}));
 }
 
@@ -150,6 +185,10 @@ MI_UNLOAD_ALL::MI_UNLOAD_ALL()
     : IWindowMenuItem(_(label), nullptr, static_cast<is_enabled_t>(any_tool_has_filament()), prusa_toolchanger.is_toolchanger_enabled() ? is_hidden_t::no : is_hidden_t::yes, expands_t::yes) {}
 
 void MI_UNLOAD_ALL::click(IWindowMenu &) {
+    run();
+}
+
+void MI_UNLOAD_ALL::run() {
     Screens::Access()->Open(ScreenFactory::ScreenWithArg<ScreenChangeAllFilaments>(ScreenChangeAllFilaments::SetupUnloadAll {}));
 }
 #endif
@@ -158,17 +197,25 @@ void MI_UNLOAD_ALL::click(IWindowMenu &) {
 /*****************************************************************************/
 // MI_RETRACT_ALL
 MI_RETRACT_ALL::MI_RETRACT_ALL()
-    : IWindowMenuItem(_(label), nullptr, static_cast<is_enabled_t>(any_tool_has_filament()), prusa_toolchanger.is_toolchanger_enabled() ? is_hidden_t::no : is_hidden_t::yes) {
+    : IWindowMenuItem(_(label), nullptr, static_cast<is_enabled_t>(available()), prusa_toolchanger.is_toolchanger_enabled() ? is_hidden_t::no : is_hidden_t::yes) {
+}
+
+bool MI_RETRACT_ALL::available() {
     #if HAS_SWITCHABLE_AUTO_RETRACT()
     if (!config_store().auto_retract_enabled.get()) {
-        set_enabled(false);
+        return false;
     }
     #endif
+    return any_tool_has_filament();
+}
+
+void MI_RETRACT_ALL::run() {
+    gui_try_gcode_with_msg("M1705 A");
 }
 
 void MI_RETRACT_ALL::click(IWindowMenu &) {
     if (MsgBoxQuestion(_(question), Responses_YesNo) == Response::Yes) {
-        gui_try_gcode_with_msg("M1705 A");
+        run();
     }
 }
 #endif
@@ -180,11 +227,16 @@ MI_PURGE::MI_PURGE()
 }
 
 void MI_PURGE::click(IWindowMenu &) {
+    run();
+}
+
+void MI_PURGE::run(const char *question) {
 #if HAS_TOOLCHANGER()
-    if (!show_tool_selector_dialog({
-            .allow_return = true,
-            .tool_filter = tool_has_filament,
-        })) {
+    if (!show_tool_selector_dialog({ .allow_return = true, .tool_filter = tool_has_filament }, question)) {
+        return;
+    }
+#else
+    if (!confirmed(question)) {
         return;
     }
 #endif
@@ -195,7 +247,8 @@ void MI_PURGE::click(IWindowMenu &) {
 namespace {
 
 /// Runs \p gcode on a tool picked by the user; a tool with filament recorded as loaded is refused
-void run_on_empty_tool(const char *gcode) {
+/// @param question asked in place of the tool list where only one tool fits and the list is skipped
+void run_on_empty_tool(const char *gcode, const char *question) {
     static constexpr const char *txt_refused = N_("This needs a tool without loaded filament. Unload the filament first.");
 
     const auto tool_is_empty = [](VirtualToolIndex tool) { return !tool_has_filament(tool); };
@@ -204,10 +257,7 @@ void run_on_empty_tool(const char *gcode) {
         return;
     }
 
-    if (!show_tool_selector_dialog({
-            .allow_return = true,
-            .tool_filter = tool_is_empty,
-        })) {
+    if (!show_tool_selector_dialog({ .allow_return = true, .tool_filter = tool_is_empty }, question)) {
         return;
     }
 
@@ -228,7 +278,11 @@ MI_SHAPE_TIP::MI_SHAPE_TIP()
 }
 
 void MI_SHAPE_TIP::click(IWindowMenu &) {
-    run_on_empty_tool("M1706");
+    run();
+}
+
+void MI_SHAPE_TIP::run(const char *question) {
+    run_on_empty_tool("M1706", question);
 }
 
 /*****************************************************************************/
@@ -238,7 +292,11 @@ MI_CLEANING_FILAMENT::MI_CLEANING_FILAMENT()
 }
 
 void MI_CLEANING_FILAMENT::click(IWindowMenu &) {
-    run_on_empty_tool("M1706 C");
+    run();
+}
+
+void MI_CLEANING_FILAMENT::run(const char *question) {
+    run_on_empty_tool("M1706 C", question);
 }
 #endif
 

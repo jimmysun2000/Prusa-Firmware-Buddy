@@ -29,6 +29,9 @@ struct SelectToolDialogArgs {
     std::optional<VirtualToolIndex> focused_tool = std::nullopt;
 };
 
+/// @returns the tool select_tool_dialog returns without showing the dialog: the only enabled tool, if the filter lets it through
+std::optional<VirtualToolIndex> tool_selected_without_dialog(const SelectToolDialogArgs &args);
+
 /// Shows a dialog that prompts the user to select a tool
 /// @returns the selected tool or std::nullopt if the user did the return
 std::optional<VirtualToolIndex> select_tool_dialog(const SelectToolDialogArgs &args);
