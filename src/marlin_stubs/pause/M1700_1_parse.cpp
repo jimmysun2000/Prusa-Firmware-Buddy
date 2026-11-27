@@ -290,7 +290,8 @@ void PrusaGcodeSuite::M1600() {
  * not meant to be used during print
  *
  * Shape Filament Tip asks for the filament type and heats the nozzle to its temperature, loads an inserted piece
- * of filament, melts 10 mm of it and ejects it with a proper tip.
+ * of filament, melts as much of it as a load purges by default (doubled for a high-flow nozzle) and ejects it
+ * with a proper tip.
  * Cleaning Filament heats the nozzle to the Cleaning Filament Temperature setting, loads an inserted cleaning
  * filament, purges it by the Purge Length setting until the user confirms and ejects it.
  * Only for a tool without a filament recorded as loaded. The nozzle heater of the tool is off afterwards.

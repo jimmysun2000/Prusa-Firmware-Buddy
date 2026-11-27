@@ -349,8 +349,11 @@ void filament_gcodes::M1600_change_filament(FilamentType filament_to_be_loaded, 
 #if PRINTER_IS_PRUSA_XL()
 namespace {
 
-/// Length of the piece melted by Shape Filament Tip before the tip is formed [mm]
-constexpr float FILAMENT_TIP_SHAPING_MELT_LENGTH = 10;
+/// Length melted by Shape Filament Tip before the tip is formed [mm]: what a load purges by default,
+/// so the filament gets as far into the melt zone as in a load. Not the Purge Length setting.
+float tip_shaping_melt_length(PhysicalToolIndex tool) {
+    return ADVANCED_PAUSE_PURGE_LENGTH * (config_store().get_nozzle_is_high_flow(tool) ? 2 : 1);
+}
 
 } // namespace
 
@@ -401,7 +404,7 @@ void filament_gcodes::M1706_filament_routine(VirtualToolIndex virtual_tool, Paus
     pause::Settings settings;
     settings.SetExtruder(virtual_tool);
     // Cleaning purges by the Purge Length setting
-    settings.SetPurgeLength(is_cleaning ? std::nullopt : std::optional<float>(FILAMENT_TIP_SHAPING_MELT_LENGTH));
+    settings.SetPurgeLength(is_cleaning ? std::nullopt : std::optional<float>(tip_shaping_melt_length(physical_tool)));
     settings.SetRetractLength(0.f);
 
     mapi::ParkingPosition park_position = mapi::get_parking_position(mapi::ParkPosition::load);

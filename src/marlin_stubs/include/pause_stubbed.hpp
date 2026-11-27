@@ -188,7 +188,7 @@ public:
         filament_change,
         filament_stuck,
 
-        /// Shape Filament Tip: loads a piece of filament, melts a little of it and ejects it with a proper tip.
+        /// Shape Filament Tip: loads a piece of filament, purges the default purge length of it and ejects it with a proper tip.
         /// Records no filament as loaded and ignores the side sensor, as the piece need not reach it.
         shape_tip,
 
