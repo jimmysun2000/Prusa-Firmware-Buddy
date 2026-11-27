@@ -117,6 +117,9 @@ void SelftestFrameToolOffsets::change() {
         text_phase.Hide();
         text_detail.Hide();
     }
+
+    // The formatted texts share one parameter buffer, so setting one is not seen as a change of the text
+    text_phase.Invalidate();
 };
 
 void SelftestFrameToolOffsets::show_rejected(const SelftestToolOffsets_t &data) {
