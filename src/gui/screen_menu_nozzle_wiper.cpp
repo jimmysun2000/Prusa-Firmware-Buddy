@@ -1,17 +1,12 @@
 /// @file
 #include "screen_menu_nozzle_wiper.hpp"
+#include "screen_nozzle_wiper_setup.hpp"
 
-#include <feature/nozzle_cleaner_lite/include/nozzle_cleaner_lite.hpp>
 #include <config_store/store_instance.hpp>
 #include <marlin_client.hpp>
-#include <marlin_server.hpp>
 #include <common/marlin_vars.hpp>
-#include <module/motion.h>
-#include <gui/menu_vars.h>
 #include <window_msgbox.hpp>
-#include <window_dlg_wait.hpp>
 #include <filament.hpp>
-#include <utils/string_builder.hpp>
 #include <timing.h>
 
 #include <array>
@@ -23,43 +18,8 @@ namespace cw = nozzle_cleaner_lite::custom_wiper;
 
 namespace {
 
-/// Jogging and saving only with a cold nozzle, so that the wiper is never touched hot while teaching
-constexpr float jog_max_temp = 50.0f;
-
-/// [mm/min]
-constexpr int jog_feedrate_xy = 10 * 60;
-constexpr int jog_feedrate_z = 2 * 60;
-
-constexpr float coarse_step_xy = 1.0f;
-constexpr float coarse_step_z = 0.5f;
-constexpr float fine_step = 0.1f;
-
-/// How long the server has to stay idle before its reported position is final
+/// How long the server has to stay idle before a menu wipe may start
 constexpr int32_t settle_ms = 300;
-
-/// A finished jog stops within 0.01 mm of its target; anything further moved on its own
-constexpr float position_tolerance = 0.05f;
-
-/// Save End warns when the nozzle is this far off the height saved with the start
-constexpr float end_height_tolerance = 1.0f;
-
-/// Saving warns when a point is this close to a front-strip spot that other routines use
-constexpr float strip_warning_distance = 5.0f;
-
-constexpr float exit_lift = 10.0f;
-
-constexpr const char *jog_step_items[] = {
-    N_("Coarse"),
-    N_("Fine"),
-};
-
-const NumericInputConfig width_config {
-    .min_value = 0,
-    .max_value = cw::width_max,
-    .step = 0.5f,
-    .max_decimal_places = 1,
-    .unit = Unit::millimeter,
-};
 
 const NumericInputConfig speed_config {
     .min_value = cw::speed_min,
@@ -73,21 +33,6 @@ const NumericInputConfig soak_time_config {
     .step = 10,
     .unit = Unit::second,
 };
-
-float coarse_step(AxisEnum axis) {
-    return axis == Z_AXIS ? coarse_step_z : coarse_step_xy;
-}
-
-NumericInputConfig jog_config(AxisEnum axis) {
-    const auto range = MenuVars::axis_range(axis);
-    return {
-        .min_value = static_cast<float>(range.first),
-        .max_value = static_cast<float>(range.second),
-        .step = coarse_step(axis),
-        .max_decimal_places = 1,
-        .unit = Unit::millimeter,
-    };
-}
 
 /// Translated text in RAM, to be passed as a %s parameter of a formatted text
 class Fragment {
@@ -163,18 +108,6 @@ const char *fix_direction(const cw::Problem &problem) {
     return problem.beyond_max ? N_("forward") : N_("back");
 }
 
-/// The smallest Wipe Width setting that covers \p min_width, nullopt if there is none
-std::optional<float> width_setting_for(float min_width) {
-    if (!(min_width > 0.0f)) {
-        return std::nullopt;
-    }
-    const float setting = std::ceil((min_width - cw::reach_tolerance) / width_config.step) * width_config.step;
-    if (!(setting <= cw::width_max)) {
-        return std::nullopt;
-    }
-    return setting;
-}
-
 using StatusParams = StringViewUtf8Parameters<32>;
 
 /// Fits the 21 characters of the status line
@@ -246,9 +179,52 @@ string_view_utf8 status_text(const cw::Geometry &geometry, float width, StatusPa
     return (short_count == 1 ? _("Ready, %u tool short") : _("Ready, %u tools short")).formatted(params, short_count);
 }
 
-using ProblemParams = StringViewUtf8Parameters<128>;
+/// \returns why a tool that can wipe \p geometry with \p old_width could not with \p new_width, if one could not.
+/// Not inlined, so that its two reports are off the display task's stack before the message box that follows.
+[[gnu::noinline]] std::optional<cw::Problem> tool_lost_to_width(const cw::Geometry &geometry, float old_width, float new_width) {
+    uint32_t could_wipe = 0;
+    const auto before = nozzle_cleaner_lite::custom_reach_report(geometry, old_width);
+    for (const auto &entry : before.tools()) {
+        if (entry.plan.has_value()) {
+            could_wipe |= 1u << entry.tool;
+        }
+    }
+    const auto after = nozzle_cleaner_lite::custom_reach_report(geometry, new_width);
+    for (const auto &entry : after.tools()) {
+        if (!entry.plan.has_value() && (could_wipe & (1u << entry.tool))) {
+            return entry.plan.error();
+        }
+    }
+    return std::nullopt;
+}
 
-string_view_utf8 problem_text(const cw::Problem &problem, ProblemParams &params) {
+/// The print clearance check knows nothing of a part left on the bed after a restart or Z homing
+bool confirm_bed_clear() {
+    return MsgBoxWarning(_("The bed will rise to the wiper. Remove any print from the bed first. Continue?"), Responses_YesNo, 1) == Response::Yes;
+}
+
+} // namespace
+
+const NumericInputConfig screen_menu_nozzle_wiper::wipe_width_config {
+    .min_value = 0,
+    .max_value = cw::width_max,
+    .step = 0.5f,
+    .max_decimal_places = 1,
+    .unit = Unit::millimeter,
+};
+
+std::optional<float> screen_menu_nozzle_wiper::width_setting_for(float min_width) {
+    if (!(min_width > 0.0f)) {
+        return std::nullopt;
+    }
+    const float setting = std::ceil((min_width - cw::reach_tolerance) / wipe_width_config.step) * wipe_width_config.step;
+    if (!(setting <= cw::width_max)) {
+        return std::nullopt;
+    }
+    return setting;
+}
+
+string_view_utf8 screen_menu_nozzle_wiper::problem_text(const cw::Problem &problem, ProblemParams &params) {
     switch (problem.fault) {
     case cw::Fault::none:
         return string_view_utf8::MakeNULLSTR();
@@ -284,82 +260,13 @@ string_view_utf8 problem_text(const cw::Problem &problem, ProblemParams &params)
     return string_view_utf8::MakeNULLSTR();
 }
 
-void show_problem(const cw::Problem &problem) {
+void screen_menu_nozzle_wiper::show_problem(const cw::Problem &problem) {
     if (problem.ok()) {
         return;
     }
     ProblemParams params;
     MsgBoxWarning(problem_text(problem, params), Responses_Ok);
 }
-
-/// \returns why a tool that can wipe \p geometry with \p old_width could not with \p new_width, if one could not
-std::optional<cw::Problem> tool_lost_to_width(const cw::Geometry &geometry, float old_width, float new_width) {
-    uint32_t could_wipe = 0;
-    const auto before = nozzle_cleaner_lite::custom_reach_report(geometry, old_width);
-    for (const auto &entry : before.tools()) {
-        if (entry.plan.has_value()) {
-            could_wipe |= 1u << entry.tool;
-        }
-    }
-    const auto after = nozzle_cleaner_lite::custom_reach_report(geometry, new_width);
-    for (const auto &entry : after.tools()) {
-        if (!entry.plan.has_value() && (could_wipe & (1u << entry.tool))) {
-            return entry.plan.error();
-        }
-    }
-    return std::nullopt;
-}
-
-/// Nozzle tip position, once the moves still running have finished
-xyz_float_t tip_position() {
-    window_dlg_wait_t::wait_for_gcodes_to_finish();
-    const xyz_pos_t offset = hotend_currently_applied_offset;
-    return { {
-        marlin_vars().native_pos[X_AXIS].get() + offset.x,
-        marlin_vars().native_pos[Y_AXIS].get() + offset.y,
-        marlin_vars().native_pos[Z_AXIS].get() + offset.z,
-    } };
-}
-
-bool near_front_strip(cw::Point p) {
-    const float d = strip_warning_distance;
-    // Bed-tap nozzle check of the start G-code: G29 P9 X0 Y-4 W32 H4
-    const bool taps = p.x >= 0 - d && p.x <= 32 + d && p.y >= -4 - d && p.y <= 0 + d;
-    // Filament change and failed-cleaning park
-    const bool park = std::hypot(p.x - X_NOZZLE_PARK_POINT_M600, p.y - Y_NOZZLE_PARK_POINT_M600) <= d;
-    // Purge and filament load/unload park, at any X
-    const bool purge = std::abs(p.y - Y_AXIS_PURGE_POS) <= d;
-    return taps || park || purge;
-}
-
-/// The print clearance check knows nothing of a part left on the bed after a restart or Z homing
-bool confirm_bed_clear() {
-    return MsgBoxWarning(_("The bed will rise to the wiper. Remove any print from the bed first. Continue?"), Responses_YesNo, 1) == Response::Yes;
-}
-
-/// Asks before saving a point that looks misplaced. \returns whether to save.
-bool confirm_points(std::span<const cw::Point> points) {
-    for (const cw::Point &p : points) {
-        if (p.x >= 0 && p.x <= X_BED_SIZE && p.y >= 0 && p.y <= Y_BED_SIZE) {
-            if (MsgBoxWarning(_("This position is above the print sheet. Is the wiper really there?"), Responses_YesNo, 1) != Response::Yes) {
-                return false;
-            }
-            break;
-        }
-    }
-
-    for (const cw::Point &p : points) {
-        if (near_front_strip(p)) {
-            if (MsgBoxWarning(_("This position is near where the printer purges, checks the nozzle by tapping the bed or parks for a filament change. Make sure the wiper and its mount stay clear of those spots. Save anyway?"), Responses_YesNo, 1) != Response::Yes) {
-                return false;
-            }
-            break;
-        }
-    }
-    return true;
-}
-
-} // namespace
 
 MI_WIPER_STATUS::MI_WIPER_STATUS()
     : WI_INFO_t(_("Wiper Position")) {
@@ -373,27 +280,8 @@ void MI_WIPER_STATUS::refresh() {
     ChangeInformation(status_text(geometry, store.nozzle_wiper_width.get(), params));
 }
 
-MI_JOG_STEP::MI_JOG_STEP()
-    : MenuItemSwitch(_("Jog Step"), jog_step_items, 0) {
-    set_behavior(Behavior::quick_cycle);
-}
-
-MI_JOG_AXIS::MI_JOG_AXIS(AxisEnum axis)
-    : NumericInputConfigHolder { jog_config(axis) }
-    , WiSpin(0, owned_config, _(MenuVars::labels[axis]), nullptr, is_enabled_t::no, is_hidden_t::no)
-    , axis_(axis) {
-}
-
-void MI_JOG_AXIS::set_fine(bool fine) {
-    owned_config.step = fine ? fine_step : coarse_step(axis_);
-}
-
-void MI_JOG_AXIS::set_min(float min) {
-    owned_config.min_value = min;
-}
-
 MI_WIPE_WIDTH::MI_WIPE_WIDTH()
-    : WiSpin(config_store().nozzle_wiper_width.get(), width_config, _("Wipe Width")) {
+    : WiSpin(config_store().nozzle_wiper_width.get(), wipe_width_config, _("Wipe Width")) {
 }
 
 void MI_WIPE_WIDTH::OnClick() {
@@ -444,17 +332,8 @@ ScreenMenuNozzleWiper::ScreenMenuNozzleWiper()
     : ScreenMenuNozzleWiper_(_("NOZZLE WIPER SETUP")) {
     ClrMenuTimeoutClose();
 
-    Item<MI_COOLDOWN>().callback = [] {
-        for (auto tool : PhysicalToolIndex::all()) {
-            marlin_client::set_target_nozzle(0, tool);
-        }
-        marlin_client::set_target_bed(0);
-    };
-    Item<MI_SAVE_START>().callback = [this] {
-        save_start();
-    };
-    Item<MI_SAVE_END>().callback = [this] {
-        save_end();
+    Item<MI_GUIDED_SETUP>().callback = [] {
+        screen_nozzle_wiper_setup::open();
     };
     Item<MI_GO_TO_WAITING_POINT>().callback = [this] {
         if (confirm_bed_clear()) {
@@ -488,27 +367,12 @@ ScreenMenuNozzleWiper::ScreenMenuNozzleWiper()
     loop();
 }
 
-ScreenMenuNozzleWiper::~ScreenMenuNozzleWiper() {
-    // The nozzle may have been left down on the wiper
-    if (lowest_jog_z < entry_z) {
-        marlin_client::gcode_printf("G27 P2 Z%.1f", static_cast<double>(exit_lift));
-    }
-}
-
 void ScreenMenuNozzleWiper::windowEvent(window_t *sender, GUI_event_t event, void *param) {
     if (event == GUI_event_t::LOOP) {
         loop();
     }
 
     ScreenMenu::windowEvent(sender, event, param);
-}
-
-bool ScreenMenuNozzleWiper::jog_allowed() const {
-    const auto tool = PhysicalToolIndex::currently_selected_opt();
-    return tool.has_value()
-        && !marlin_client::is_printing()
-        && marlin_server::all_axes_homed()
-        && marlin_vars().hotend(*tool).temp_nozzle.get() <= jog_max_temp;
 }
 
 void ScreenMenuNozzleWiper::loop() {
@@ -519,183 +383,20 @@ void ScreenMenuNozzleWiper::loop() {
         idle_since_ms = now;
     }
     const bool settled = idle_since_ms.has_value() && ticks_diff(now, *idle_since_ms) >= settle_ms;
-    if (settled) {
-        jogging = false;
-    }
 
-    auto &jog_x = Item<MI_JOG_X>();
-    auto &jog_y = Item<MI_JOG_Y>();
-    auto &jog_z = Item<MI_JOG_Z>();
-    const bool editing = jog_x.is_edited() || jog_y.is_edited() || jog_z.is_edited();
-    if (settled && !editing) {
-        sync_jog_items();
-    }
-
-    const bool can_jog = jog_allowed();
-    const bool fine = Item<MI_JOG_STEP>().fine();
-    for (MI_JOG_AXIS *item : { static_cast<MI_JOG_AXIS *>(&jog_x), static_cast<MI_JOG_AXIS *>(&jog_y), static_cast<MI_JOG_AXIS *>(&jog_z) }) {
-        item->set_fine(fine);
-        if (!item->is_edited()) {
-            // Another G-code (homing, parking, a wipe) is moving the head
-            item->set_enabled(can_jog && !std::isnan(queued_pos.x) && (settled || jogging));
-        }
-    }
-    plan_jog();
-
-    Item<MI_SAVE_START>().set_enabled(can_jog && settled);
-    Item<MI_SAVE_END>().set_enabled(can_jog && settled);
+    const bool idle = settled && !marlin_client::is_printing();
+    Item<MI_GUIDED_SETUP>().set_enabled(idle);
 
     const auto tool = PhysicalToolIndex::currently_selected_opt();
-    const bool can_run = tool.has_value() && settled && !marlin_client::is_printing() && nozzle_cleaner_lite::custom_geometry_valid();
+    const bool can_run = tool.has_value() && idle && nozzle_cleaner_lite::custom_geometry_valid();
     const bool custom_wiper_on = nozzle_cleaner_lite::is_available() && nozzle_cleaner_lite::uses_custom_geometry();
-    const bool cold = tool.has_value() && marlin_vars().hotend(*tool).temp_nozzle.get() <= jog_max_temp;
+    const bool cold = tool.has_value() && marlin_vars().hotend(*tool).temp_nozzle.get() <= cold_nozzle_max_temp;
     Item<MI_GO_TO_WAITING_POINT>().set_enabled(can_run);
     Item<MI_TEST_WIPE>().set_enabled(can_run && custom_wiper_on && cold);
     Item<MI_WIPE_NOW>().set_enabled(can_run && custom_wiper_on);
     Item<MI_DEEP_CLEAN>().set_enabled(can_run && custom_wiper_on);
 
     Item<MI_WIPER_STATUS>().refresh();
-}
-
-void ScreenMenuNozzleWiper::sync_jog_items() {
-    // The jog floor is the wipe height floor, in the machine frame of the tool picked now
-    Item<MI_JOG_Z>().set_min(cw::wipe_z_min - hotend_currently_applied_offset.z);
-
-    const xyz_float_t pos { {
-        marlin_vars().native_pos[X_AXIS].get(),
-        marlin_vars().native_pos[Y_AXIS].get(),
-        marlin_vars().native_pos[Z_AXIS].get(),
-    } };
-    if (std::isnan(entry_z)) {
-        entry_z = pos.z;
-    }
-
-    const bool moved = std::isnan(synced_pos.x)
-        || std::abs(pos.x - synced_pos.x) > position_tolerance
-        || std::abs(pos.y - synced_pos.y) > position_tolerance
-        || std::abs(pos.z - synced_pos.z) > position_tolerance;
-    if (!moved) {
-        return;
-    }
-    synced_pos = pos;
-
-    // The items snap to their step and clamp to their range; take what they show as
-    // already reached, so that syncing never moves the head
-    Item<MI_JOG_X>().set_value(pos.x);
-    Item<MI_JOG_Y>().set_value(pos.y);
-    Item<MI_JOG_Z>().set_value(pos.z);
-    queued_pos = { { Item<MI_JOG_X>().value(), Item<MI_JOG_Y>().value(), Item<MI_JOG_Z>().value() } };
-}
-
-void ScreenMenuNozzleWiper::plan_jog() {
-    if (std::isnan(queued_pos.x)) {
-        return;
-    }
-
-    const xyz_float_t target { { Item<MI_JOG_X>().value(), Item<MI_JOG_Y>().value(), Item<MI_JOG_Z>().value() } };
-    if (target == queued_pos) {
-        return;
-    }
-
-    if (!jog_allowed()) {
-        // Nothing turned while jogging was not allowed may move the head later
-        Item<MI_JOG_X>().set_value(queued_pos.x);
-        Item<MI_JOG_Y>().set_value(queued_pos.y);
-        Item<MI_JOG_Z>().set_value(queued_pos.z);
-        return;
-    }
-
-    const int feedrate = (target.z != queued_pos.z) ? jog_feedrate_z : jog_feedrate_xy;
-    ArrayStringBuilder<MARLIN_MAX_REQUEST> gcode;
-    gcode.append_printf("G123 X%.3f Y%.3f Z%.3f F%d", static_cast<double>(target.x), static_cast<double>(target.y), static_cast<double>(target.z), feedrate);
-    if (marlin_client::gcode_try(gcode.str()) != marlin_client::GcodeTryResult::Submitted) {
-        return;
-    }
-
-    queued_pos = target;
-    jogging = true;
-    if (!(lowest_jog_z <= target.z)) {
-        lowest_jog_z = target.z;
-    }
-}
-
-void ScreenMenuNozzleWiper::save_start() {
-    const xyz_float_t tip = tip_position();
-    if (!jog_allowed()) {
-        return;
-    }
-    if (!(tip.z >= cw::wipe_z_min && tip.z <= cw::wipe_z_max)) {
-        show_problem({ .fault = cw::Fault::wipe_z });
-        return;
-    }
-
-    auto &store = config_store();
-    cw::Geometry candidate = store.nozzle_wiper_geometry.get();
-    candidate.start_x = tip.x;
-    candidate.start_y = tip.y;
-    candidate.wipe_z = tip.z;
-    candidate.taught |= cw::Geometry::taught_start;
-
-    if (candidate.is_taught()) {
-        const auto plan = nozzle_cleaner_lite::plan_custom_wipe(candidate, store.nozzle_wiper_width.get());
-        switch (const cw::Problem problem = plan.has_value() ? cw::Problem {} : plan.error(); problem.fault) {
-        case cw::Fault::none:
-            break;
-        case cw::Fault::wipe_z:
-        case cw::Fault::travel_z:
-            // The height comes from the start alone
-            show_problem(problem);
-            return;
-        default:
-            if (MsgBoxWarning(_("The saved end does not fit this start. Save the start and clear the end?"), Responses_YesNo, 1) != Response::Yes) {
-                return;
-            }
-            candidate.taught = static_cast<uint8_t>(candidate.taught & ~cw::Geometry::taught_end);
-            break;
-        }
-    }
-
-    const cw::Point start { tip.x, tip.y };
-    if (!confirm_points({ &start, 1 })) {
-        return;
-    }
-    store.nozzle_wiper_geometry.set(candidate);
-}
-
-void ScreenMenuNozzleWiper::save_end() {
-    const xyz_float_t tip = tip_position();
-    if (!jog_allowed()) {
-        return;
-    }
-
-    auto &store = config_store();
-    cw::Geometry candidate = store.nozzle_wiper_geometry.get();
-    candidate.end_x = tip.x;
-    candidate.end_y = tip.y;
-    candidate.taught |= cw::Geometry::taught_end;
-
-    if (candidate.taught & cw::Geometry::taught_start) {
-        if (!(std::abs(tip.z - candidate.wipe_z) <= end_height_tolerance)
-            && MsgBoxWarning(_("The nozzle is more than 1 mm off the height saved with the start. Only the start sets the wipe height. Save the end anyway?"), Responses_YesNo, 1) != Response::Yes) {
-            return;
-        }
-    }
-
-    std::array<cw::Point, 2> points { cw::Point { tip.x, tip.y } };
-    size_t point_count = 1;
-    if (candidate.is_taught()) {
-        const auto plan = nozzle_cleaner_lite::plan_custom_wipe(candidate, store.nozzle_wiper_width.get());
-        if (!plan.has_value()) {
-            show_problem(plan.error());
-            return;
-        }
-        const xyz_pos_t offset = hotend_currently_applied_offset;
-        points[point_count++] = { plan->waiting_point.x + offset.x, plan->waiting_point.y + offset.y };
-    }
-    if (!confirm_points({ points.data(), point_count })) {
-        return;
-    }
-    store.nozzle_wiper_geometry.set(candidate);
 }
 
 void ScreenMenuNozzleWiper::go_to_waiting_point() {
