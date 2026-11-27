@@ -1100,6 +1100,8 @@ struct CurrentStore
     StoreItem<bool, true, ItemFlag::features, journal::hash("Nozzle Wiper Guarded Descent")> nozzle_wiper_guarded_descent;
     /// Wipe on the custom wiper before the bed-tap nozzle check of G29 P9
     StoreItem<bool, false, ItemFlag::features, journal::hash("Nozzle Wiper Auto Probing")> nozzle_wiper_auto_probing;
+    /// Deep clean soak time [s]
+    StoreItem<uint16_t, nozzle_cleaner_lite::custom_wiper::soak_time_default, ItemFlag::features, journal::hash("Nozzle Wiper Soak Time")> nozzle_wiper_soak_time;
 #endif
 
 private:

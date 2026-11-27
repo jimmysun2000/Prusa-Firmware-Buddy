@@ -6,6 +6,7 @@
 #include <common/marlin_vars.hpp>
 #include <feature/print_status_message/print_status_message_mgr.hpp>
 #include <feature/print_status_message/print_status_message_formatter_buddy.hpp>
+#include <marlin_stubs/skippable_gcode.hpp>
 #include <utils/string_builder.hpp>
 
 static constexpr EnumArray<PhaseWait, const char *, PhaseWait::_cnt> phase_texts {
@@ -73,6 +74,10 @@ void window_dlg_wait_t::windowEvent(window_t *sender, GUI_event_t event, void *c
             decltype(print_status_message_) new_msg;
             StringBuilder builder { new_msg };
             PrintStatusMessageFormatterBuddy::format(builder, msg.message);
+            if (skippable_gcode().is_running()) {
+                builder.append_char('\n');
+                builder.append_string_view(_("Click to skip"));
+            }
 
             if (strcmp(print_status_message_.data(), new_msg.data())) {
                 print_status_message_ = new_msg;
@@ -81,6 +86,14 @@ void window_dlg_wait_t::windowEvent(window_t *sender, GUI_event_t event, void *c
             }
             break;
         }
+        break;
+
+    case GUI_event_t::CLICK:
+    case GUI_event_t::TOUCH_CLICK:
+        if (skippable_gcode().is_running()) {
+            skippable_gcode().request_skip();
+        }
+        break;
 
     default:
         break;

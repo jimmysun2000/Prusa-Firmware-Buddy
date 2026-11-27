@@ -110,8 +110,15 @@ inline constexpr int16_t heat_up_below_temp = wiper_target_temp - 3;
 inline constexpr int16_t touch_margin = 50;
 /// The touch limit never drops below this, so holding wiper_target_temp is always allowed
 inline constexpr int16_t touch_floor = wiper_target_temp + 3;
-/// Longest wait for the nozzle to reach the touch range [s]
+/// Longest wait for the nozzle to reach the touch range or the soak temperature [s]
 inline constexpr uint16_t wait_timeout_s = 300;
+
+/// Deep clean: how long the nozzle soaks at print temperature [s]
+inline constexpr uint16_t soak_time_default = 120;
+inline constexpr uint16_t soak_time_min = 30;
+inline constexpr uint16_t soak_time_max = 600;
+/// Deep clean: the nozzle soaks this far above the wipe height, beside the wiper at the staging point
+inline constexpr float soak_clearance = 100.0f;
 
 enum class Fault : uint8_t {
     none,

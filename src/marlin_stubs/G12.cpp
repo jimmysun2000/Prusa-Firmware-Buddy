@@ -28,6 +28,11 @@
 #elif HAS_NOZZLE_CLEANER_LITE()
     #include <nozzle_cleaner_lite.hpp>
     #include <tool/hotend/hotend.hpp>
+    #if HAS_CUSTOM_NOZZLE_WIPER()
+        #include <config_store/store_instance.hpp>
+        #include <array>
+        #include <string_view>
+    #endif
 #else
     #error "G12 requires a nozzle cleaner"
 #endif
@@ -46,7 +51,7 @@ LOG_COMPONENT_REF(PRUSA_GCODE);
  *
  * #### Usage
  *
- *     G12 [ R ] [ S ] [ C ] [ D ]
+ *     G12 [ R ] [ S ] [ C ] [ D ] [ H ]
  *
  * #### Parameters
  *
@@ -58,6 +63,10 @@ LOG_COMPONENT_REF(PRUSA_GCODE);
  * - `C` - (nozzle cleaner lite only) Cool down on the touchpoint after cleaning
  *         (default: 1). `C0` leaves as soon as the rub is done.
  * - `D` - (custom nozzle wiper only) Dry run: heater off, slow strokes only
+ * - `H` - (custom nozzle wiper only) Deep clean: soak beside the wiper for
+ *         `H` seconds (30 to 600; `H` alone: the Soak Time setting) at the
+ *         loaded filament's temperature, else the current target, then cool
+ *         down and wipe once. A click on the wait screen ends the soak early.
  *
  * With a custom nozzle wiper, `S` and `C` have no effect: the nozzle is
  * brought to the wiper's own touch range and its target restored afterwards.
@@ -87,6 +96,27 @@ void PrusaGcodeSuite::G12() {
 
 #if HAS_NOZZLE_CLEANER_LITE()
     if (nozzle_cleaner_lite::is_available()) {
+    #if HAS_CUSTOM_NOZZLE_WIPER()
+        if (nozzle_cleaner_lite::uses_custom_geometry() && parser.has_option('H')) {
+            namespace cw = nozzle_cleaner_lite::custom_wiper;
+            std::optional<uint16_t> hold_s = config_store().nozzle_wiper_soak_time.get();
+            std::array<char, 8> buffer;
+            if (const auto value = parser.option<std::string_view>('H', buffer); value.has_value() && !value->empty()) {
+                hold_s = parser.option<uint16_t>('H', cw::soak_time_min, cw::soak_time_max);
+            }
+            if (!hold_s.has_value()) {
+                SERIAL_ERROR_MSG("G12: soak time out of range");
+                return;
+            }
+
+            marlin_server::FSM_Holder fsm_holder(PhaseWait::print_status_message);
+            if (!nozzle_cleaner_lite::deep_clean(*hold_s)) {
+                SERIAL_ERROR_MSG("G12: nozzle deep clean failed");
+            }
+            return;
+        }
+    #endif
+
         const auto &hotend_cfg = Hotend::for_tool(active_extruder).config();
         const nozzle_cleaner_lite::CleanArgs args {
             .cleaning_temp = parser.option<int16_t>('S', hotend_cfg.min_nozzle_temp, hotend_cfg.max_nozzle_temp)

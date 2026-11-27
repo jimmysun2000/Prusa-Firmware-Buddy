@@ -31,6 +31,7 @@
     #include "custom_wiper_geometry.hpp"
     #include <filament.hpp>
     #include <marlin_server.hpp>
+    #include <marlin_stubs/skippable_gcode.hpp>
     #include <option/has_crash_detection.h>
     #if HAS_CRASH_DETECTION()
         #include <feature/prusa/crash_recovery.hpp>
@@ -311,14 +312,20 @@ namespace {
         }
     }
 
-    bool clean_custom(const CleanArgs &args) {
-        PrintStatusMessageGuard status_message;
-        status_message.update<PrintStatusMessage::nozzle_cleaner_lite>({});
+    /// What a custom wipe works with, checked before anything moves
+    struct Prepared {
+        PhysicalToolIndex tool;
+        float width;
+        MachineGeometry machine;
+    };
 
+    /// Checks that a custom wipe may run and homes if that is needed and allowed.
+    /// Nothing else moves.
+    std::optional<Prepared> prepare() {
         const std::optional<PhysicalToolIndex> tool = PhysicalToolIndex::currently_selected_opt();
         if (!tool) {
             log_error(NozzleCleanerLite, "no tool selected");
-            return false;
+            return std::nullopt;
         }
 
         auto &store = config_store();
@@ -326,23 +333,23 @@ namespace {
         const float width = store.nozzle_wiper_width.get();
         if (const cw::Fault fault = validate_custom_geometry(geometry, width); fault != cw::Fault::none) {
             log_error(NozzleCleanerLite, "custom wiper unusable: %s", cw::to_string(fault));
-            return false;
+            return std::nullopt;
         }
 
         if (!cw::print_clearance_ok(planner.max_printed_z, tallest_tool_offset_z(), geometry.wipe_z)) {
             log_error(NozzleCleanerLite, "printed part reaches above the custom wiper");
-            return false;
+            return std::nullopt;
         }
 
         if (!all_axes_homed()) {
             // Homing Z mid-print would lower the nozzle onto the part
             if (marlin_server::is_printing()) {
                 log_error(NozzleCleanerLite, "not homed");
-                return false;
+                return std::nullopt;
             }
             if (!GcodeSuite::G28_no_parser(true, true, true, G28Flags { .only_if_needed = true })) {
                 log_error(NozzleCleanerLite, "homing failed");
-                return false;
+                return std::nullopt;
             }
         }
 
@@ -353,19 +360,24 @@ namespace {
 
         const std::optional<MachineGeometry> machine = to_machine(geometry);
         if (!machine.has_value()) {
-            return false;
+            return std::nullopt;
         }
-        const cw::Frame &frame = machine->frame;
-        const cw::Point &staging = machine->staging;
-        const float wipe_z = machine->wipe_z;
-        const float approach_z = machine->approach_z;
-        const Pad pad = cw::make_pad(frame, width);
+        return Prepared { .tool = *tool, .width = width, .machine = *machine };
+    }
+
+    /// Wipes from wherever the nozzle is and leaves the way it came.
+    /// Sets the nozzle target to \p restore_target at the end, unless something else changed it meanwhile.
+    bool wipe(const Prepared &prepared, bool dry_run, int16_t restore_target, PrintStatusMessageGuard &status) {
+        const cw::Frame &frame = prepared.machine.frame;
+        const cw::Point &staging = prepared.machine.staging;
+        const float wipe_z = prepared.machine.wipe_z;
+        const float approach_z = prepared.machine.approach_z;
+        const Pad pad = cw::make_pad(frame, prepared.width);
         const float entry_z = current_machine_position().z;
 
-        Hotend &hotend = Hotend::for_tool(*tool);
-        const int16_t saved_nozzle_target = hotend.nozzle_target_temp();
+        Hotend &hotend = Hotend::for_tool(prepared.tool);
         ScopeGuard restore_nozzle_target([&] {
-            hotend.set_nozzle_target_temp(saved_nozzle_target);
+            hotend.set_nozzle_target_temp(restore_target);
         });
         const uint8_t saved_fan_speed = thermalManager.get_print_fan_speed();
         ScopeGuard restore_fan_speed([&] {
@@ -398,11 +410,11 @@ namespace {
             return false;
         }
 
-        const int16_t gate_target = args.dry_run ? 0 : cw::wiper_target_temp;
-        const float gate_min_temp = args.dry_run ? std::numeric_limits<float>::lowest() : cw::heat_up_below_temp;
+        const int16_t gate_target = dry_run ? 0 : cw::wiper_target_temp;
+        const float gate_min_temp = dry_run ? std::numeric_limits<float>::lowest() : cw::heat_up_below_temp;
         const int16_t touch_limit = cw::touch_max_temp(loaded_filament_nozzle_temp());
         hotend.set_nozzle_target_temp(gate_target);
-        switch (wait_for_touch_range(*tool, gate_target, gate_min_temp, touch_limit, status_message)) {
+        switch (wait_for_touch_range(prepared.tool, gate_target, gate_min_temp, touch_limit, status)) {
         case WaitResult::reached:
             break;
         case WaitResult::target_changed:
@@ -416,7 +428,7 @@ namespace {
         case WaitResult::aborted:
             return false;
         }
-        status_message.update<PrintStatusMessage::nozzle_cleaner_lite>({});
+        status.update<PrintStatusMessage::nozzle_cleaner_lite>({});
 
         // Start the zigzag somewhere new each run so consecutive cleans do not retrace the same track.
         ZigZag zigzag { pad, crossings_per_stroke, static_cast<float>(ticks_ms() % 1000) / 2000.0f };
@@ -424,7 +436,7 @@ namespace {
         line_to_frame(frame, zigzag_start.along, zigzag_start.across, approach_feedrate);
         planner.synchronize();
 
-        if (store.nozzle_wiper_guarded_descent.get()) {
+        if (config_store().nozzle_wiper_guarded_descent.get()) {
             const std::optional<float> touched_z = guarded_descent(wipe_z);
             if (touched_z.has_value() && *touched_z > wipe_z + cw::guard_allowance) {
                 log_error(NozzleCleanerLite, "obstruction at Z=%.2f, wiper expected at Z=%.2f", static_cast<double>(*touched_z), static_cast<double>(wipe_z));
@@ -445,8 +457,8 @@ namespace {
             planner.apply_settings(s);
         }
 
-        const feedRate_t fast_feedrate = std::clamp(store.nozzle_wiper_speed.get(), cw::speed_min, cw::speed_max);
-        if (!args.dry_run) {
+        const feedRate_t fast_feedrate = std::clamp(config_store().nozzle_wiper_speed.get(), cw::speed_min, cw::speed_max);
+        if (!dry_run) {
             for (uint8_t i = 0; i < cw::fast_cycles; ++i) {
                 rub_stroke(zigzag, frame, pad.along_far, fast_feedrate);
                 rub_stroke(zigzag, frame, pad.along_near, fast_feedrate);
@@ -464,6 +476,84 @@ namespace {
         }
 
         return !planner.draining();
+    }
+
+    bool clean_custom(const CleanArgs &args) {
+        PrintStatusMessageGuard status_message;
+        status_message.update<PrintStatusMessage::nozzle_cleaner_lite>({});
+
+        const std::optional<Prepared> prepared = prepare();
+        if (!prepared.has_value()) {
+            return false;
+        }
+        return wipe(*prepared, args.dry_run, Hotend::for_tool(prepared->tool).nozzle_target_temp(), status_message);
+    }
+
+    /// Waits for the heater to settle on \p target
+    WaitResult wait_for_target(PhysicalToolIndex tool, int16_t target, PrintStatusMessageGuard &status) {
+        Hotend &hotend = Hotend::for_tool(tool);
+        const uint32_t start_ms = ticks_ms();
+
+        while (true) {
+            if (planner.draining()) {
+                return WaitResult::aborted;
+            }
+            if (hotend.nozzle_target_temp() != target) {
+                return WaitResult::target_changed;
+            }
+            if (hotend.is_nozzle_temp_reached()) {
+                return WaitResult::reached;
+            }
+
+            status.update<PrintStatusMessage::waiting_for_hotend_temp>({
+                .progress = { .current = hotend.nozzle_temp().value_or(0), .target = static_cast<float>(target) },
+                .tool = tool.to_raw(),
+            });
+
+            if (ticks_diff(ticks_ms(), start_ms) >= static_cast<int32_t>(cw::wait_timeout_s) * 1000) {
+                return WaitResult::timed_out;
+            }
+            idle(true);
+        }
+    }
+
+    enum class HoldResult : uint8_t {
+        done,
+        aborted,
+        target_changed,
+    };
+
+    /// Keeps the heater on \p target for \p hold_s, counting down. A skip
+    /// request ends the hold early.
+    HoldResult hold(PhysicalToolIndex tool, int16_t target, uint16_t hold_s, PrintStatusMessageGuard &status) {
+        Hotend &hotend = Hotend::for_tool(tool);
+        SkippableGCode::Guard skippable;
+        const uint32_t start_ms = ticks_ms();
+        int32_t shown_s = -1;
+
+        while (true) {
+            const int32_t left_ms = static_cast<int32_t>(hold_s) * 1000 - ticks_diff(ticks_ms(), start_ms);
+            if (left_ms <= 0) {
+                return HoldResult::done;
+            }
+            if (const int32_t left_s = (left_ms + 999) / 1000; left_s != shown_s) {
+                shown_s = left_s;
+                status.update<PrintStatusMessage::dwelling>({ .current = static_cast<float>(left_s), .target = 0 });
+            }
+
+            idle(true);
+
+            if (planner.draining()) {
+                return HoldResult::aborted;
+            }
+            if (hotend.nozzle_target_temp() != target) {
+                return HoldResult::target_changed;
+            }
+            // Not an abort: the cool-down and the wipe still follow
+            if (skippable.is_skip_requested()) {
+                return HoldResult::done;
+            }
+        }
     }
 
 } // namespace
@@ -524,6 +614,127 @@ bool wipe_before_probing() {
         thermalManager.wait_for_hotend(*tool, { .no_wait_for_cooling = false });
     }
     return cleaned;
+}
+
+bool deep_clean(uint16_t hold_s) {
+    if (!is_available() || !uses_custom_geometry()) {
+        return false;
+    }
+
+    PrintStatusMessageGuard status_message;
+    status_message.update<PrintStatusMessage::nozzle_cleaner_lite>({});
+
+    const std::optional<PhysicalToolIndex> tool = PhysicalToolIndex::currently_selected_opt();
+    if (!tool) {
+        log_error(NozzleCleanerLite, "no tool selected");
+        return false;
+    }
+    Hotend &hotend = Hotend::for_tool(*tool);
+    const int16_t saved_nozzle_target = hotend.nozzle_target_temp();
+    const int16_t soak_temp = loaded_filament_nozzle_temp().value_or(saved_nozzle_target);
+    if (soak_temp <= 0) {
+        log_error(NozzleCleanerLite, "no soak temperature: no filament loaded and no nozzle target");
+        return false;
+    }
+
+    // Checked before prepare() can home
+    const auto soak_reachable = [](const MachineGeometry &machine) {
+        return machine.wipe_z + cw::soak_clearance <= Z_MAX_POS;
+    };
+    if (const auto machine = to_machine(config_store().nozzle_wiper_geometry.get()); machine.has_value() && !soak_reachable(*machine)) {
+        log_error(NozzleCleanerLite, "soak height out of Z travel");
+        return false;
+    }
+
+    const std::optional<Prepared> prepared = prepare();
+    if (!prepared.has_value() || !soak_reachable(prepared->machine)) {
+        return false;
+    }
+
+    const cw::Point &staging = prepared->machine.staging;
+    const float soak_z = prepared->machine.wipe_z + cw::soak_clearance;
+    const float entry_z = current_machine_position().z;
+    hold_s = std::clamp(hold_s, cw::soak_time_min, cw::soak_time_max);
+
+    ScopeGuard restore_nozzle_target([&] {
+        hotend.set_nozzle_target_temp(saved_nozzle_target);
+    });
+    const uint8_t saved_fan_speed = thermalManager.get_print_fan_speed();
+    ScopeGuard restore_fan_speed([&] {
+        thermalManager.set_print_fan_speed(saved_fan_speed);
+    });
+
+    // The soak point is beside the wiper and above it, so only Z can be left to restore
+    ScopeGuard retreat([&] {
+        if (planner.draining()) {
+            return;
+        }
+        if (current_machine_position().z < entry_z) {
+            move_to_machine_pos_z(entry_z, leave_feedrate);
+        }
+    });
+
+    // Beside the wiper, with room below the nozzle for a brush
+    if (entry_z < soak_z) {
+        move_to_machine_pos_z(soak_z, leave_feedrate);
+    }
+    move_to_machine_pos_xy(staging.x, staging.y, dive_feedrate);
+    if (entry_z > soak_z) {
+        move_to_machine_pos_z(soak_z, approach_feedrate);
+    }
+    if (planner.draining()) {
+        return false;
+    }
+
+    // A target changed by anyone else (the user, the safety timer) ends the deep clean and is kept
+    hotend.set_nozzle_target_temp(soak_temp);
+    // Read back: the hotend caps the target below its maximum temperature
+    const int16_t soak_target = hotend.nozzle_target_temp();
+    switch (wait_for_target(*tool, soak_target, status_message)) {
+    case WaitResult::reached:
+        break;
+    case WaitResult::target_changed:
+        restore_nozzle_target.disarm();
+        log_error(NozzleCleanerLite, "nozzle target changed while heating for the soak");
+        return false;
+    case WaitResult::timed_out:
+        log_error(NozzleCleanerLite, "nozzle did not reach the soak temperature in time");
+        return false;
+    case WaitResult::aborted:
+        return false;
+    }
+
+    switch (hold(*tool, soak_target, hold_s, status_message)) {
+    case HoldResult::done:
+        break;
+    case HoldResult::target_changed:
+        restore_nozzle_target.disarm();
+        log_error(NozzleCleanerLite, "nozzle target changed during the soak");
+        return false;
+    case HoldResult::aborted:
+        return false;
+    }
+
+    // Cool down before going near the wiper
+    hotend.set_nozzle_target_temp(cw::wiper_target_temp);
+    switch (wait_for_touch_range(*tool, cw::wiper_target_temp, cw::heat_up_below_temp, cw::touch_max_temp(loaded_filament_nozzle_temp()), status_message)) {
+    case WaitResult::reached:
+        break;
+    case WaitResult::target_changed:
+        restore_nozzle_target.disarm();
+        log_error(NozzleCleanerLite, "nozzle target changed while cooling after the soak");
+        return false;
+    case WaitResult::timed_out:
+        log_error(NozzleCleanerLite, "nozzle did not cool to the wiper touch range in time");
+        return false;
+    case WaitResult::aborted:
+        return false;
+    }
+    status_message.update<PrintStatusMessage::nozzle_cleaner_lite>({});
+
+    // The wipe restores the target from here on
+    restore_nozzle_target.disarm();
+    return wipe(*prepared, false, saved_nozzle_target, status_message);
 }
 #endif
 

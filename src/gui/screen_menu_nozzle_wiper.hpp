@@ -49,6 +49,15 @@ using MI_SAVE_END = WithConstructorArgs<WindowMenuCallbackItem, N_("Save End"), 
 using MI_GO_TO_WAITING_POINT = WithConstructorArgs<WindowMenuCallbackItem, N_("Go to Waiting Point"), nullptr>;
 using MI_TEST_WIPE = WithConstructorArgs<WindowMenuCallbackItem, N_("Test Wipe (cold, slow)"), nullptr>;
 using MI_WIPE_NOW = WithConstructorArgs<WindowMenuCallbackItem, N_("Wipe Now"), nullptr>;
+using MI_DEEP_CLEAN = WithConstructorArgs<WindowMenuCallbackItem, N_("Deep Clean"), nullptr>;
+
+class MI_SOAK_TIME : public WiSpin {
+public:
+    MI_SOAK_TIME();
+
+protected:
+    void OnClick() override;
+};
 
 class MI_WIPE_WIDTH : public WiSpin {
 public:
@@ -84,7 +93,8 @@ protected:
 
 using ScreenMenuNozzleWiper_ = ScreenMenu<EFooter::On, MI_RETURN, MI_NOZZLE_CLEANER_LITE, MI_NOZZLE_WIPER_TYPE, MI_WIPER_STATUS,
     MI_PICK_PARK_TOOL, MI_AUTO_HOME, MI_COOLDOWN, MI_JOG_STEP, MI_JOG_X, MI_JOG_Y, MI_JOG_Z, MI_SAVE_START, MI_SAVE_END,
-    MI_GO_TO_WAITING_POINT, MI_TEST_WIPE, MI_WIPE_NOW, MI_WIPE_WIDTH, MI_WIPE_SPEED, MI_GUARDED_DESCENT, MI_WIPE_BEFORE_PROBING>;
+    MI_GO_TO_WAITING_POINT, MI_TEST_WIPE, MI_WIPE_NOW, MI_WIPE_WIDTH, MI_WIPE_SPEED, MI_GUARDED_DESCENT, MI_WIPE_BEFORE_PROBING,
+    MI_SOAK_TIME, MI_DEEP_CLEAN>;
 
 } // namespace screen_menu_nozzle_wiper
 

@@ -46,6 +46,14 @@ std::optional<xyz_pos_t> custom_waiting_point();
 /// target. Does nothing otherwise.
 /// \returns false if a wipe was attempted and failed
 bool wipe_before_probing();
+
+/// Soaks the nozzle beside and well above the custom wiper at the loaded
+/// filament's temperature (else the current target) for \p hold_s, cools it
+/// to the wiper's touch range and wipes once. A skip request ends the soak
+/// early, with the cool-down and the wipe still following. If anything else
+/// changes the nozzle target before the wipe, the deep clean ends without
+/// wiping and keeps that target. Refuses without a temperature to soak at.
+bool deep_clean(uint16_t hold_s);
 #else
 constexpr bool uses_custom_geometry() { return false; }
 #endif

@@ -10,6 +10,7 @@
 #include <gui/menu_vars.h>
 #include <window_msgbox.hpp>
 #include <window_dlg_wait.hpp>
+#include <filament.hpp>
 #include <utils/string_builder.hpp>
 #include <timing.h>
 
@@ -62,6 +63,13 @@ const NumericInputConfig speed_config {
     .min_value = cw::speed_min,
     .max_value = cw::speed_max,
     .step = 5,
+};
+
+const NumericInputConfig soak_time_config {
+    .min_value = cw::soak_time_min,
+    .max_value = cw::soak_time_max,
+    .step = 10,
+    .unit = Unit::second,
 };
 
 float coarse_step(AxisEnum axis) {
@@ -250,6 +258,14 @@ void MI_GUARDED_DESCENT::OnChange([[maybe_unused]] size_t old_index) {
     config_store().nozzle_wiper_guarded_descent.set(value());
 }
 
+MI_SOAK_TIME::MI_SOAK_TIME()
+    : WiSpin(config_store().nozzle_wiper_soak_time.get(), soak_time_config, _("Soak Time")) {
+}
+
+void MI_SOAK_TIME::OnClick() {
+    config_store().nozzle_wiper_soak_time.set(static_cast<uint16_t>(value()));
+}
+
 MI_WIPE_BEFORE_PROBING::MI_WIPE_BEFORE_PROBING()
     : WI_ICON_SWITCH_OFF_ON_t(config_store().nozzle_wiper_auto_probing.get(), _("Wipe Before Probing")) {
 }
@@ -285,6 +301,19 @@ ScreenMenuNozzleWiper::ScreenMenuNozzleWiper()
     Item<MI_WIPE_NOW>().callback = [] {
         if (confirm_bed_clear()) {
             marlin_client::gcode("G12");
+        }
+    };
+    Item<MI_DEEP_CLEAN>().callback = [] {
+        const auto tool = PhysicalToolIndex::currently_selected_opt();
+        if (!tool.has_value()) {
+            return;
+        }
+        if (FilamentType::for_tool(VirtualToolIndex::currently_selected()) == FilamentType::none && marlin_vars().hotend(*tool).target_nozzle.get() <= 0) {
+            MsgBoxWarning(_("The deep clean soaks the nozzle at the loaded filament's temperature. Load a filament or set a nozzle temperature first."), Responses_Ok);
+            return;
+        }
+        if (confirm_bed_clear()) {
+            marlin_client::gcode("G12 H");
         }
     };
 
@@ -355,6 +384,7 @@ void ScreenMenuNozzleWiper::loop() {
     Item<MI_GO_TO_WAITING_POINT>().set_enabled(can_run);
     Item<MI_TEST_WIPE>().set_enabled(can_run && custom_wiper_on && cold);
     Item<MI_WIPE_NOW>().set_enabled(can_run && custom_wiper_on);
+    Item<MI_DEEP_CLEAN>().set_enabled(can_run && custom_wiper_on);
 
     Item<MI_WIPER_STATUS>().refresh();
 }
