@@ -8,7 +8,11 @@
     #include <common/marlin_vars.hpp>
     #include <feature/print_status_message/print_status_message_mgr.hpp>
     #include <option/has_chamber_api.h>
+    #include <option/xl_enclosure_support.h>
+    #include <state/printer_state.hpp>
     #include <tool_index.hpp>
+
+    #include <algorithm>
 #endif
 
 namespace leds {
@@ -35,45 +39,115 @@ namespace {
         return false;
     }
 
-    /// Takes the locks of the status LEDs and status messages
-    side_strip_status::Status read_printer_status() {
-        using side_strip_status::Status;
+    /// @returns the temperature of the hottest of the bed and the nozzles
+    float hottest_heater() {
+        auto &vars = marlin_vars();
+        float hottest = vars.temp_bed;
+        for (auto tool : PhysicalToolIndex::all().skip_all_disabled()) {
+            hottest = std::max<float>(hottest, vars.hotend(tool).temp_nozzle);
+        }
+        return hottest;
+    }
 
-        switch (StatusLedsHandler::instance().current_animation()) {
-        case StateAnimation::Error:
-            // Possibly a redscreen: marlin_vars are not touched
-            return Status::error;
-
-        case StateAnimation::Warning:
-            return Status::warning;
-
-        case StateAnimation::Finished:
-            return Status::finished;
-
-        case StateAnimation::Printing: {
-            const auto type = print_status_message().current_message().message.type;
-            const bool waiting_for_heat = type == PrintStatusMessage::waiting_for_hotend_temp
-                || type == PrintStatusMessage::waiting_for_bed_temp
+    /// Takes the lock of the status messages
+    bool print_waits_for_heat() {
+        const auto type = print_status_message().current_message().message.type;
+        return type == PrintStatusMessage::waiting_for_hotend_temp
+            || type == PrintStatusMessage::waiting_for_bed_temp
     #if HAS_CHAMBER_API()
-                // Enclosure soak and M191
-                || type == PrintStatusMessage::waiting_for_chamber_temp
+            // Enclosure soak and M191
+            || type == PrintStatusMessage::waiting_for_chamber_temp
     #endif
-                || type == PrintStatusMessage::absorbing_heat;
-            return waiting_for_heat ? Status::heating : Status::printing;
-        }
+            || type == PrintStatusMessage::absorbing_heat;
+    }
 
-        case StateAnimation::Idle:
-            return any_heater_warming_up() ? Status::heating : Status::idle;
-
-        case StateAnimation::Aborted:
-        case StateAnimation::PowerPanic:
-        case StateAnimation::PowerUp:
-            return Status::untinted;
-        }
-        return Status::untinted;
+    /// Takes the lock of the status messages
+    bool bed_cooldown_runs() {
+    #if XL_ENCLOSURE_SUPPORT()
+        return print_status_message().current_message().message.type == PrintStatusMessage::bed_cooldown;
+    #else
+        return false;
+    #endif
     }
 
 } // namespace
+
+side_strip_status::Inputs SideStripHandler::read_inputs(uint32_t now_ms) {
+    using printer_state::DeviceState;
+    using side_strip_status::Activity;
+
+    side_strip_status::Inputs inputs;
+
+    const StateAnimation animation = StatusLedsHandler::instance().current_animation();
+    if (animation == StateAnimation::Error) {
+        // Possibly a redscreen: marlin_vars are not touched
+        inputs.error = true;
+        return inputs;
+    }
+
+    auto &vars = marlin_vars();
+    std::optional<fsm::States::Top> top;
+    vars.peek_fsm_states([&](const fsm::States &states) {
+        top = states.get_top();
+    });
+    const DeviceState device_state = printer_state::get_state();
+
+    was_hot = side_strip_status::is_above(hottest_heater(), side_strip_status::hot_temp, side_strip_status::hot_off_temp, was_hot);
+    was_bed_warm = side_strip_status::is_above(vars.temp_bed, side_strip_status::bed_warm_temp, side_strip_status::bed_cool_temp, was_bed_warm);
+    inputs.hot = was_hot;
+
+    switch (animation) {
+    case StateAnimation::Error:
+        // Returned above
+        break;
+
+    case StateAnimation::Warning:
+        inputs.waits_for_owner = true;
+        break;
+
+    case StateAnimation::Printing:
+        inputs.activity = Activity::printing;
+        inputs.heating = print_waits_for_heat();
+        break;
+
+    case StateAnimation::Finished:
+        inputs.activity = Activity::finished;
+        inputs.heating = any_heater_warming_up();
+        inputs.bed_warm = was_bed_warm || bed_cooldown_runs();
+        break;
+
+    case StateAnimation::Idle:
+    case StateAnimation::Aborted:
+        inputs.activity = Activity::idle;
+        inputs.heating = any_heater_warming_up();
+        break;
+
+    case StateAnimation::PowerPanic:
+    case StateAnimation::PowerUp:
+        inputs.activity = Activity::untinted;
+        break;
+    }
+
+    // Outside a print every dialog runs on its own, except the preheat menu. A serial print also
+    // reports busy, it shows as printing.
+    inputs.busy = device_state == DeviceState::Busy
+        && inputs.activity != Activity::printing
+        && !(top.has_value() && top->fsm_type == ClientFSM::Preheat);
+
+    // G-code without a dialog, such as a macro. Short commands, also the printer's own, do not count.
+    if (animation == StateAnimation::Idle && !top.has_value() && vars.is_processing) {
+        if (!gcode_since_ms.has_value()) {
+            gcode_since_ms = now_ms;
+        }
+    } else {
+        gcode_since_ms.reset();
+    }
+    if (gcode_since_ms.has_value() && ticks_diff(now_ms, *gcode_since_ms) >= static_cast<int32_t>(side_strip_status::gcode_busy_hold_ms)) {
+        inputs.busy = true;
+    }
+
+    return inputs;
+}
 #endif
 
 SideStripHandler &SideStripHandler::instance() {
@@ -101,12 +175,12 @@ void SideStripHandler::update() {
 #if PRINTER_IS_PRUSA_XL()
     // Read before taking the mutex, reading the printer status takes other locks
     const auto mode = status_mode.load();
-    std::optional<side_strip_status::Status> new_status;
+    std::optional<side_strip_status::Inputs> new_inputs;
     uint8_t new_percent_done = 0;
     if (const uint32_t now = ticks_ms(); mode != SideStripStatusMode::off && ticks_diff(now, status_read_ms) >= static_cast<int32_t>(status_read_interval_ms)) {
         status_read_ms = now;
-        new_status = read_printer_status();
-        if (*new_status == side_strip_status::Status::printing) {
+        new_inputs = read_inputs(now);
+        if (new_inputs->activity == side_strip_status::Activity::printing) {
             new_percent_done = marlin_vars().sd_percent_done;
         }
     }
@@ -116,8 +190,8 @@ void SideStripHandler::update() {
     const uint32_t time_ms = ticks_ms();
 
 #if PRINTER_IS_PRUSA_XL()
-    if (new_status.has_value()) {
-        printer_status = *new_status;
+    if (new_inputs.has_value()) {
+        status_inputs = *new_inputs;
         percent_done = new_percent_done;
     }
     const bool tint_changed = update_tint(mode, time_ms);
@@ -217,6 +291,7 @@ void SideStripHandler::set_status_mode(SideStripStatusMode value) {
 }
 
 bool SideStripHandler::update_tint(SideStripStatusMode mode, uint32_t time_ms) {
+    printer_status = side_strip_status::resolve(status_inputs);
     const auto new_tint = side_strip_status::tint(printer_status, mode, percent_done, time_ms);
     if (new_tint == tint) {
         return false;

@@ -17,8 +17,14 @@ enum class Status : uint8_t {
     finished,
     warning,
     error,
-    /// States shown without a tint (aborted, power panic, power up)
+    /// States shown without a tint (power panic, power up)
     untinted,
+    /// The printer works on its own outside a print: a wizard, a calibration, a filament load, G-code
+    busy,
+    /// Nothing runs and the bed or a nozzle is hot
+    hot,
+    /// A print has finished and its bed is still warm
+    cooling,
 };
 
 inline constexpr ColorRGBW heating_color { 255, 96, 0 };
@@ -26,6 +32,20 @@ inline constexpr ColorRGBW printing_color { 0, 150, 255 };
 inline constexpr ColorRGBW finished_color { 0, 255, 0 };
 inline constexpr ColorRGBW warning_color { 255, 255, 0 };
 inline constexpr ColorRGBW error_color { 255, 0, 0 };
+inline constexpr ColorRGBW busy_color { 160, 0, 255 };
+
+/// Above this the bed or a nozzle counts as hot, as for touching it
+inline constexpr float hot_temp = 50.0f;
+/// Below this a hot bed or nozzle no longer counts as hot
+inline constexpr float hot_off_temp = 45.0f;
+
+/// Below this the bed of a finished print counts as cool
+inline constexpr float bed_cool_temp = 40.0f;
+/// Above this a cool bed counts as warm again
+inline constexpr float bed_warm_temp = 42.0f;
+
+/// G-code running outside a print and without a dialog counts as busy once it has run this long
+inline constexpr uint32_t gcode_busy_hold_ms = 1000;
 
 /// Brightness of the dark half of an alert pulse, relative to the tint
 inline constexpr float pulse_dark_factor = 0.15f;
@@ -40,7 +60,10 @@ inline constexpr float warm_up_margin = 3.0f;
 constexpr uint32_t pulse_period_ms(Status status) {
     switch (status) {
     case Status::heating:
+    case Status::busy:
         return 3000;
+    case Status::cooling:
+        return 4000;
     case Status::warning:
         return 1000;
     case Status::error:
@@ -68,6 +91,51 @@ constexpr bool is_alert(Status status) {
 constexpr bool is_warming_up(float temp, int target) {
     return target > 0 && temp >= 0.0f && temp + warm_up_margin < static_cast<float>(target);
 }
+
+/// Hysteresis between two thresholds
+/// @returns true above @p on, false below @p off and @p was_above in between
+constexpr bool is_above(float temp, float on, float off, bool was_above) {
+    if (temp > on) {
+        return true;
+    }
+    if (temp < off) {
+        return false;
+    }
+    return was_above;
+}
+
+/// What the printer does, as far as the side strip tells it apart
+enum class Activity : uint8_t {
+    /// Nothing runs, also while and after a print is stopped
+    idle,
+    printing,
+    /// A print has finished and its end screen is still open
+    finished,
+    /// Power panic recovery and power up, shown without a tint
+    untinted,
+};
+
+/// Everything the side strip status depends on, as read from the printer
+struct Inputs {
+    Activity activity = Activity::idle;
+    /// A red screen or another error
+    bool error = false;
+    /// The printer waits for the owner: a warning dialog, a paused print, a prompt
+    bool waits_for_owner = false;
+    /// The printer works on its own outside a print
+    bool busy = false;
+    /// A print waits for a temperature, or a heater warms up outside a print
+    bool heating = false;
+    /// The bed cool-down after a print runs or the bed is not cool yet
+    bool bed_warm = false;
+    /// The bed or a nozzle is hot
+    bool hot = false;
+};
+
+/// @returns the status to show, the highest of the ones that apply:
+/// error, warning, busy, heating, printing, cooling, finished, hot, idle.
+/// Power panic recovery and power up show no tint whatever else applies, except an error.
+Status resolve(const Inputs &inputs);
 
 /// @returns transition time to use when the tint changes
 constexpr uint32_t transition_ms(Status status) {

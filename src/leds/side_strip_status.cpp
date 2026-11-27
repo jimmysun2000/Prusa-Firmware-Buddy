@@ -35,8 +35,44 @@ std::optional<Look> look(Status status, SideStripStatusMode mode, uint8_t percen
         return pulse(warning_color, pulse_dark_factor);
     case Status::error:
         return pulse(error_color, pulse_dark_factor);
+    case Status::busy:
+        return pulse(busy_color, slow_pulse_dark_factor);
+    case Status::hot:
+        return steady(heating_color);
+    case Status::cooling:
+        return Look { finished_color, heating_color, static_cast<uint16_t>(pulse_period_ms(status)) };
     }
     return std::nullopt;
+}
+
+Status resolve(const Inputs &inputs) {
+    if (inputs.error) {
+        return Status::error;
+    }
+    if (inputs.activity == Activity::untinted) {
+        return Status::untinted;
+    }
+    if (inputs.waits_for_owner) {
+        return Status::warning;
+    }
+    if (inputs.busy) {
+        return Status::busy;
+    }
+    if (inputs.heating) {
+        return Status::heating;
+    }
+
+    switch (inputs.activity) {
+    case Activity::printing:
+        return Status::printing;
+    case Activity::finished:
+        return inputs.bed_warm ? Status::cooling : Status::finished;
+    case Activity::idle:
+        return inputs.hot ? Status::hot : Status::idle;
+    case Activity::untinted:
+        break;
+    }
+    return Status::untinted;
 }
 
 std::optional<ColorRGBW> tint(Status status, SideStripStatusMode mode, uint8_t percent_done, uint32_t time_ms) {

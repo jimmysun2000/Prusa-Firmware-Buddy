@@ -93,7 +93,11 @@ private:
 #if PRINTER_IS_PRUSA_XL()
     static constexpr uint32_t status_read_interval_ms = 250;
 
-    /// Recomputes the tint from the last read status; call with the mutex held.
+    /// Reads what the status depends on. Takes the locks of the status LEDs, the FSM states and the
+    /// status messages; call without the mutex held.
+    side_strip_status::Inputs read_inputs(uint32_t now_ms);
+
+    /// Recomputes the status and the tint from the last read inputs; call with the mutex held.
     /// @returns whether the tint changed
     bool update_tint(SideStripStatusMode mode, uint32_t time_ms);
 #endif
@@ -122,7 +126,13 @@ private:
 
     // Touched only by update()
     uint32_t status_read_ms = 0;
+    /// Hysteresis of the hot and the warm bed checks
+    bool was_hot = false;
+    bool was_bed_warm = false;
+    /// Since when G-code has been running outside a print without a dialog
+    std::optional<uint32_t> gcode_since_ms;
 
+    side_strip_status::Inputs status_inputs;
     side_strip_status::Status printer_status = side_strip_status::Status::idle;
     uint8_t percent_done = 0;
     std::optional<ColorRGBW> tint;
