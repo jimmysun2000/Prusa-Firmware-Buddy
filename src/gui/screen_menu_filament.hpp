@@ -33,6 +33,7 @@ using ScreenMenuFilament__ = ScreenMenu<GuiDefaults::MenuFooter,
     MI_PURGE,
 #if PRINTER_IS_PRUSA_XL()
     MI_SHAPE_TIP,
+    MI_CLEANING_FILAMENT,
 #endif
     MI_FILAMENT_MANAGEMENT //
     >;

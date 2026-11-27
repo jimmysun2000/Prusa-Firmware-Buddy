@@ -795,6 +795,17 @@ void MI_PURGE_LENGTH::OnClick() {
     config_store().purge_length.set(static_cast<uint8_t>(value()));
 }
 
+#if PRINTER_IS_PRUSA_XL()
+// Not tool-specific, so the range of any installed hotend (AllTools)
+MI_CLEANING_TEMPERATURE::MI_CLEANING_TEMPERATURE()
+    : NumericInputConfigHolder { numeric_input_config::filament_nozzle_temperature(AllTools {}) }
+    , WiSpin(config_store().cleaning_filament_temperature.get(), NumericInputConfigHolder::owned_config, _(label)) {}
+
+void MI_CLEANING_TEMPERATURE::OnClick() {
+    config_store().cleaning_filament_temperature.set(static_cast<int16_t>(value()));
+}
+#endif
+
 #if HAS_TOOL_MAPPING()
 static constexpr EnumArray<ToolMappingPreset, const char *, ToolMappingPreset::_cnt, enum_array::AllowWeakIndexing::no> tool_mapping_preset_names {
     { ToolMappingPreset::smart_without_colors, N_("Smart") },

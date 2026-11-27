@@ -207,6 +207,16 @@ MI_SHAPE_TIP::MI_SHAPE_TIP()
 void MI_SHAPE_TIP::click(IWindowMenu &) {
     run_on_empty_tool("M1706");
 }
+
+/*****************************************************************************/
+// MI_CLEANING_FILAMENT
+MI_CLEANING_FILAMENT::MI_CLEANING_FILAMENT()
+    : IWindowMenuItem(_(label), nullptr, any_tool_configured() ? is_enabled_t::yes : is_enabled_t::no, is_hidden_t::no, multi_tool_expands()) {
+}
+
+void MI_CLEANING_FILAMENT::click(IWindowMenu &) {
+    run_on_empty_tool("M1706 C");
+}
 #endif
 
 /*****************************************************************************/

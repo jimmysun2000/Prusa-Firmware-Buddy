@@ -463,6 +463,19 @@ protected:
     void OnClick() override;
 };
 
+#if PRINTER_IS_PRUSA_XL()
+/// Nozzle temperature of the Cleaning Filament routine
+class MI_CLEANING_TEMPERATURE : private NumericInputConfigHolder, public WiSpin {
+    static constexpr const char *const label = N_("Cleaning Filament Temperature");
+
+public:
+    MI_CLEANING_TEMPERATURE();
+
+protected:
+    void OnClick() override;
+};
+#endif
+
 #if HAS_TOOL_MAPPING()
 /// Which mapping the tool mapping screen starts with
 class MI_TOOL_MAPPING_PRESET : public MenuItemSelectMenu {

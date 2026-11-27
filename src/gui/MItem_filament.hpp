@@ -77,6 +77,15 @@ public:
     MI_SHAPE_TIP();
     virtual void click(IWindowMenu &) override;
 };
+
+/// Runs M1706 C on a tool without loaded filament
+class MI_CLEANING_FILAMENT : public IWindowMenuItem {
+    constexpr static const char *const label = N_("Cleaning Filament");
+
+public:
+    MI_CLEANING_FILAMENT();
+    virtual void click(IWindowMenu &) override;
+};
 #endif
 
 class MI_ASK_COLOR_ON_LOAD final : public MenuItemToggleSwitch {

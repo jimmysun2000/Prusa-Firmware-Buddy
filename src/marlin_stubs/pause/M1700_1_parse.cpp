@@ -283,23 +283,26 @@ void PrusaGcodeSuite::M1600() {
 
 #if PRINTER_IS_PRUSA_XL()
 /**
- *### M1706: Shape Filament Tip
+ *### M1706: Shape Filament Tip / Cleaning Filament
  *
  * Internal GCode
  *
  * not meant to be used during print
  *
- * Asks for the filament type and heats the nozzle to its temperature, loads an inserted piece of filament,
- * melts 10 mm of it and ejects it with a proper tip. Only for a tool without a filament recorded as loaded.
- * The nozzle heater of the tool is off afterwards.
+ * Shape Filament Tip asks for the filament type and heats the nozzle to its temperature, loads an inserted piece
+ * of filament, melts 10 mm of it and ejects it with a proper tip.
+ * Cleaning Filament heats the nozzle to the Cleaning Filament Temperature setting, loads an inserted cleaning
+ * filament, purges it by the Purge Length setting until the user confirms and ejects it.
+ * Only for a tool without a filament recorded as loaded. The nozzle heater of the tool is off afterwards.
  *
  *#### Usage
  *
- *    M1706 [ T ]
+ *    M1706 [ T | C ]
  *
  *#### Parameters
  *
  * - `T` - Tool number. Current tool if omitted.
+ * - `C` - Cleaning Filament instead of Shape Filament Tip
  */
 void PrusaGcodeSuite::M1706() {
     const std::optional<VirtualToolIndex> virtual_tool = stdext::get_optional<VirtualToolIndex>(GcodeSuite::get_target_virtual_from_command());
@@ -307,7 +310,7 @@ void PrusaGcodeSuite::M1706() {
         return;
     }
 
-    filament_gcodes::M1706_filament_routine(*virtual_tool, Pause::LoadType::shape_tip);
+    filament_gcodes::M1706_filament_routine(*virtual_tool, parser.seen('C') ? Pause::LoadType::cleaning_filament : Pause::LoadType::shape_tip);
 }
 #endif
 

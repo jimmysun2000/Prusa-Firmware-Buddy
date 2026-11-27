@@ -587,6 +587,11 @@ struct CurrentStore
     /// Purge length after filament load/change in mm; purge_length_unset = the printer's built-in length
     StoreItem<uint8_t, purge_length_unset, ItemFlag::features, journal::hash("Filament Purge Length")> purge_length;
 
+#if PRINTER_IS_PRUSA_XL()
+    /// Nozzle temperature of the Cleaning Filament routine [C], clamped to the range of the hotend when used
+    StoreItem<int16_t, cleaning_filament_temperature_default, ItemFlag::features, journal::hash("Cleaning Filament Temperature")> cleaning_filament_temperature;
+#endif
+
     /// Whether to ask for filament color on filament load
     /// Tristate::other = default (decided dynamically)
     StoreItem<Tristate, Tristate::other, ItemFlag::features, journal::hash("Ask For Filament Color")> load_ask_for_filament_color;

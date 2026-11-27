@@ -25,6 +25,9 @@ using ScreenMenuUserInterface__ = BasicScreenMenu<
 #endif
     MI_FILAMENT_CHANGE_PREHEAT_ALL,
     MI_PURGE_LENGTH,
+#if PRINTER_IS_PRUSA_XL()
+    MI_CLEANING_TEMPERATURE,
+#endif
 #if HAS_TOOL_MAPPING()
     MI_TOOL_MAPPING_PRESET,
 #endif

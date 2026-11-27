@@ -240,6 +240,7 @@ bool Pause::is_unstoppable() const {
     case LoadType::load_to_gears:
     case LoadType::unload_from_gears:
     case LoadType::shape_tip:
+    case LoadType::cleaning_filament:
         return false;
 
 #if HAS_SPOOL_JOIN() && HAS_TOOLCHANGER()
@@ -254,7 +255,7 @@ bool Pause::is_unstoppable() const {
 }
 
 bool Pause::is_filament_routine() const {
-    return load_type == LoadType::shape_tip;
+    return load_type == LoadType::shape_tip || load_type == LoadType::cleaning_filament;
 }
 
 Pause::StopConditions Pause::load_stop_conditions() const {
@@ -287,6 +288,9 @@ LoadUnloadMode Pause::get_load_unload_mode() {
 
     case Pause::LoadType::shape_tip:
         return LoadUnloadMode::ShapeTip;
+
+    case Pause::LoadType::cleaning_filament:
+        return LoadUnloadMode::Clean;
     }
 
     bsod_unreachable();
@@ -315,6 +319,7 @@ bool Pause::should_park() {
 
     case LoadType::load:
     case LoadType::shape_tip:
+    case LoadType::cleaning_filament:
         return option::has_human_interactions || !FSensors_instance().has_filament_surely(LogicalFilamentSensor::extruder);
 
     case LoadType::unload_from_gears:
@@ -520,6 +525,7 @@ void Pause::start_process([[maybe_unused]] Response response) {
     case LoadType::load_to_gears:
     case LoadType::load_purge:
     case LoadType::shape_tip:
+    case LoadType::cleaning_filament:
         set(LoadState::load_start);
         break;
 
@@ -589,6 +595,7 @@ void Pause::load_start_process([[maybe_unused]] Response response) {
         set(LoadState::load_wait_temp);
         break;
     case LoadType::shape_tip:
+    case LoadType::cleaning_filament:
         // The piece of filament need not pass the side sensor, so the user confirms the insertion
         set(LoadState::filament_push_ask);
         break;
@@ -728,6 +735,7 @@ void Pause::runout_during_load_process([[maybe_unused]] Response response) {
     case LoadType::load:
     case LoadType::autoload:
     case LoadType::shape_tip:
+    case LoadType::cleaning_filament:
         set(LoadState::filament_push_ask);
         break;
     default:
@@ -1024,7 +1032,7 @@ bool Pause::nozzle_cleaner_purge_sequence() {
 #endif // HAS_NOZZLE_CLEANER()
 
 void Pause::color_correct_ask_process(Response response) {
-    setPhase(load_type == LoadType::load_purge ? PhasesLoadUnload::IsColorPurge : PhasesLoadUnload::IsColor);
+    setPhase((load_type == LoadType::load_purge || load_type == LoadType::cleaning_filament) ? PhasesLoadUnload::IsColorPurge : PhasesLoadUnload::IsColor);
     switch (response) {
 
     case Response::Purge_more:
@@ -1043,7 +1051,8 @@ void Pause::color_correct_ask_process(Response response) {
         break;
 
     case Response::Yes:
-        set(LoadState::load_finalize);
+        // The cleaning filament has done its job once it comes out clean
+        set(load_type == LoadType::cleaning_filament ? LoadState::eject : LoadState::load_finalize);
         break;
 
     default:
@@ -1145,7 +1154,8 @@ void Pause::eject_process([[maybe_unused]] Response response) {
         set(LoadState::filament_push_ask);
         break;
     case LoadType::shape_tip:
-        // Ejecting is the last step of the routine; a stop during the ramming has to stay a stop,
+    case LoadType::cleaning_filament:
+        // Ejecting is the last step of the routines; a stop during the ramming has to stay a stop,
         // the filament may not be out of the nozzle
         if (get_state() != LoadState::stop) {
             set(LoadState::_finished);
@@ -1439,6 +1449,7 @@ void Pause::unload_process([[maybe_unused]] Response response) {
         break;
 
     case LoadType::shape_tip:
+    case LoadType::cleaning_filament:
         // Not reached, the routines end through eject
         set(LoadState::unload_finish_or_change);
         break;
@@ -1621,6 +1632,7 @@ bool Pause::needs_hot_nozzle(LoadType lt, [[maybe_unused]] PhysicalToolIndex too
     case LoadType::autoload:
     case LoadType::load_purge:
     case LoadType::shape_tip:
+    case LoadType::cleaning_filament:
         return true;
 
     case LoadType::filament_change:
@@ -2006,6 +2018,7 @@ bool Pause::ram_filament() {
             return StandardRammingSequence::runout;
 
         case LoadType::shape_tip:
+        case LoadType::cleaning_filament:
         default:
             return StandardRammingSequence::unload;
         }
@@ -2198,7 +2211,8 @@ void Pause::setup_progress_mapper() {
         break;
     }
 
-    case LoadType::shape_tip: {
+    case LoadType::shape_tip:
+    case LoadType::cleaning_filament: {
         constexpr static ProgressMapperWorkflowArray workflow { std::to_array<WorkflowStep>({
             { LoadState::load_to_gears, 1 },
             { LoadState::load_wait_temp, 3 },

@@ -173,6 +173,8 @@ const char *get_name(LoadUnloadMode mode) {
         return N_("Ejecting filament");
     case LoadUnloadMode::ShapeTip:
         return N_("Shaping filament tip");
+    case LoadUnloadMode::Clean:
+        return N_("Cleaning nozzle");
     }
     bsod_unreachable();
 }

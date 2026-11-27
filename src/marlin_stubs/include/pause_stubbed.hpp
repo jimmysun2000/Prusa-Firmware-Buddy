@@ -191,6 +191,10 @@ public:
         /// Shape Filament Tip: loads a piece of filament, melts a little of it and ejects it with a proper tip.
         /// Records no filament as loaded and ignores the side sensor, as the piece need not reach it.
         shape_tip,
+
+        /// Cleaning Filament: loads a cleaning filament, purges until the user is happy and ejects it.
+        /// Keeps the nozzle target it was started with. Otherwise as shape_tip.
+        cleaning_filament,
     };
 
     static bool needs_hot_nozzle(LoadType lt, PhysicalToolIndex tool);
@@ -222,7 +226,7 @@ private:
 
     bool is_unstoppable() const;
 
-    /// Whether the load is one of the filament routines (\ref LoadType::shape_tip)
+    /// Whether the load is one of the filament routines (\ref LoadType::shape_tip, \ref LoadType::cleaning_filament)
     bool is_filament_routine() const;
 
     LoadUnloadMode get_load_unload_mode();

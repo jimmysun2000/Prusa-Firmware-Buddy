@@ -35,6 +35,9 @@ inline constexpr uint8_t purge_length_unset { 0 };
 inline constexpr uint8_t purge_length_min { 10 };
 inline constexpr uint8_t purge_length_max { 150 };
 
+// Nozzle temperature of the Cleaning Filament routine, in degrees Celsius.
+inline constexpr int16_t cleaning_filament_temperature_default { 290 };
+
 #if HAS_AUTO_RETRACT()
 inline constexpr uint8_t invalid_retracted_distance = 255;
 #endif

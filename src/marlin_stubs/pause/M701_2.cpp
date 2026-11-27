@@ -373,22 +373,35 @@ void filament_gcodes::M1706_filament_routine(VirtualToolIndex virtual_tool, Paus
         thermalManager.setTargetHotend(0, physical_tool);
     };
 
-    // Exactly the temperature of the selected filament, bed and chamber are left alone
-    const FilamentSelectionArgs selection {
-        .mode = PreheatMode::preheat,
-        .tool = virtual_tool,
-        .ret_cool = RetAndCool_t::Return,
-    };
-    const auto preheat_ret = preheat(selection, PreheatBehavior::for_filament_unload(true));
-    if (preheat_ret.first) {
-        PreheatStatus::SetResult(*preheat_ret.first);
-        return;
+    const bool is_cleaning = (routine == Pause::LoadType::cleaning_filament);
+
+    if (is_cleaning) {
+        const int16_t max_temperature = static_cast<int16_t>(Hotend::for_tool(physical_tool).config().max_nozzle_temp - HEATER_MAXTEMP_SAFETY_MARGIN);
+        const int16_t temperature = std::clamp<int16_t>(config_store().cleaning_filament_temperature.get(), EXTRUDE_MINTEMP, max_temperature);
+        thermalManager.setTargetHotend(temperature, physical_tool);
+
+        // With no filament type, the load keeps this target through every purge, the ramming and the unload
+        filament::set_type_to_load(FilamentType::none);
+
+    } else {
+        // Exactly the temperature of the selected filament, bed and chamber are left alone
+        const FilamentSelectionArgs selection {
+            .mode = PreheatMode::preheat,
+            .tool = virtual_tool,
+            .ret_cool = RetAndCool_t::Return,
+        };
+        const auto preheat_ret = preheat(selection, PreheatBehavior::for_filament_unload(true));
+        if (preheat_ret.first) {
+            PreheatStatus::SetResult(*preheat_ret.first);
+            return;
+        }
+        filament::set_type_to_load(preheat_ret.second);
     }
-    filament::set_type_to_load(preheat_ret.second);
 
     pause::Settings settings;
     settings.SetExtruder(virtual_tool);
-    settings.SetPurgeLength(FILAMENT_TIP_SHAPING_MELT_LENGTH);
+    // Cleaning purges by the Purge Length setting
+    settings.SetPurgeLength(is_cleaning ? std::nullopt : std::optional<float>(FILAMENT_TIP_SHAPING_MELT_LENGTH));
     settings.SetRetractLength(0.f);
 
     mapi::ParkingPosition park_position = mapi::get_parking_position(mapi::ParkPosition::load);
