@@ -1157,6 +1157,14 @@ struct CurrentStore
     StoreItemArray<uint8_t, uint8_t { 0 }, ItemFlag::user_interface, journal::hash("Macro Icon"), 16, 8> macro_icons;
 #endif
 
+#if XL_ENCLOSURE_SUPPORT()
+    // We cannot use the constant in StoreItemArray, because it is scanned by a script and it would not be able to parse it
+    static_assert(max_preset_filament_type_count == 32);
+    /// Chamber temperatures of the preset filament types set by the user, indexed by PresetFilamentType.
+    /// Each value is stored as filament_preset_override::encode() of the built-in one; the default reads as built in.
+    StoreItemArray<FilamentTypeParameters_EEPROM2, FilamentTypeParameters_EEPROM2 {}, ItemFlag::user_presets, journal::hash("Preset Filament Chamber Parameters"), 32, std::to_underlying(PresetFilamentType::_count_sparse)> preset_filament_chamber_parameters;
+#endif
+
 private:
     void perform_config_migrations();
 };

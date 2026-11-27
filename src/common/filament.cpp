@@ -22,6 +22,10 @@
     #include <feature/openprinttag/tool_tag.hpp>
 #endif
 
+#if XL_ENCLOSURE_SUPPORT()
+    #include "filament_preset_override.hpp"
+#endif
+
 // !!! If these value change, you need to inspect usages and possibly write up some config store migrations
 static_assert(filament_name_buffer_size == 8);
 static_assert(max_preset_filament_type_count == 32);
@@ -61,6 +65,27 @@ MutexAtomic<FilamentTypeParameters, freertos::Mutex> pending_adhoc_filament_para
         .name = "CUSTOM",
     },
 };
+
+#if XL_ENCLOSURE_SUPPORT()
+// The default record of preset_filament_chamber_parameters must read as built in
+static_assert(filament_preset_override::as_built_in == FilamentTypeParameters_EEPROM2::chamber_temp_off);
+
+namespace {
+
+/// \returns the built-in parameters of \p type with the chamber temperatures set by the user
+FilamentTypeParameters user_preset_parameters(PresetFilamentType type) {
+    using filament_preset_override::decode;
+
+    FilamentTypeParameters result = preset_filament_parameters(type);
+    const FilamentTypeParameters_EEPROM2 stored = config_store().preset_filament_chamber_parameters.get(std::to_underlying(type));
+    result.chamber_min_temperature = decode(stored.chamber_min_temperature, result.chamber_min_temperature);
+    result.chamber_max_temperature = decode(stored.chamber_max_temperature, result.chamber_max_temperature);
+    result.chamber_target_temperature = decode(stored.chamber_target_temperature, result.chamber_target_temperature);
+    return result;
+}
+
+} // namespace
+#endif
 
 std::optional<FilamentType> FilamentType::from_gcode_param(const std::string_view &value) {
     if (value.length() == 0) {
@@ -230,7 +255,11 @@ FilamentTypeParameters FilamentType::parameters() const {
 
     return std::visit([]<typename T>(const T &v) -> FilamentTypeParameters {
         if constexpr (std::is_same_v<T, PresetFilamentType>) {
+#if XL_ENCLOSURE_SUPPORT()
+            return user_preset_parameters(v);
+#else
             return preset_filament_parameters(v);
+#endif
 
         } else if constexpr (std::is_same_v<T, UserFilamentType>) {
             return build_eeprom(
@@ -299,7 +328,8 @@ FilamentTypeParameters FilamentType::parameters() const {
 }
 
 void FilamentType::set_parameters(const FilamentTypeParameters &set) const {
-    debug_assert(can_be_renamed_to(set.name));
+    // The name of a preset is not taken
+    debug_assert(is_chamber_adjustable_preset() || can_be_renamed_to(set.name));
     static_assert(
         aggregate_arity<FilamentTypeParameters>()
             == 7
@@ -374,7 +404,19 @@ void FilamentType::set_parameters(const FilamentTypeParameters &set) const {
 
     std::visit([&]<typename T>(const T &v) {
         if constexpr (std::is_same_v<T, PresetFilamentType>) {
+#if XL_ENCLOSURE_SUPPORT()
+            // Everything else of a preset stays as built in
+            using filament_preset_override::encode;
+            const FilamentTypeParameters built_in = preset_filament_parameters(v);
+            config_store().preset_filament_chamber_parameters.set(std::to_underlying(v),
+                FilamentTypeParameters_EEPROM2 {
+                    .chamber_min_temperature = encode(set.chamber_min_temperature, built_in.chamber_min_temperature),
+                    .chamber_max_temperature = encode(set.chamber_max_temperature, built_in.chamber_max_temperature),
+                    .chamber_target_temperature = encode(set.chamber_target_temperature, built_in.chamber_target_temperature),
+                });
+#else
             debug_assert(false);
+#endif
 
         } else if constexpr (std::is_same_v<T, UserFilamentType>) {
             config_store().user_filament_parameters.set(v.index, e1);
@@ -440,6 +482,15 @@ void FilamentType::set_parameters(const FilamentTypeParameters &set) const {
         }
     },
         *this);
+}
+
+bool FilamentType::is_modified_preset() const {
+#if XL_ENCLOSURE_SUPPORT()
+    const auto preset = std::get_if<PresetFilamentType>(this);
+    return preset && parameters() != preset_filament_parameters(*preset);
+#else
+    return false;
+#endif
 }
 
 bool FilamentType::is_visible() const {

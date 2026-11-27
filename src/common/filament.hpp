@@ -25,6 +25,7 @@
 #include <option/has_filament_cooldown_rate_param.h>
 #include <option/has_anfc.h>
 #include <option/has_ht_hotend.h>
+#include <option/xl_enclosure_support.h>
 
 class StringBuilder;
 
@@ -319,7 +320,8 @@ public:
     /// \returns parameters of the filament type
     FilamentTypeParameters parameters() const;
 
-    /// Sets parameters of the filament type, provided that the filament type is customizable
+    /// Sets parameters of the filament type, provided that the filament type is customizable.
+    /// Of a preset that is_chamber_adjustable_preset(), only the chamber temperatures are taken.
     void set_parameters(const FilamentTypeParameters &set) const;
 
     /// \returns Modified parameters of the filament type (calls \p f(params) and stores the modified data)
@@ -336,6 +338,19 @@ public:
         static_assert(std::is_same_v<FilamentType_, std::variant<NoFilamentType, PresetFilamentType, UserFilamentType, AdHocFilamentType, PendingAdHocFilamentType>>);
         return std::holds_alternative<UserFilamentType>(*this) || is_adhoc();
     }
+
+    /// \returns whether the filament is a preset whose chamber temperatures the user can change.
+    /// Its other parameters always stay as built in.
+    inline bool is_chamber_adjustable_preset() const {
+#if XL_ENCLOSURE_SUPPORT()
+        return std::holds_alternative<PresetFilamentType>(*this);
+#else
+        return false;
+#endif
+    }
+
+    /// \returns whether the filament is a preset with parameters that differ from its built-in ones
+    bool is_modified_preset() const;
 
     /// \returns whether the filament has a visibility parameter
     inline bool is_visibility_customizable() const {

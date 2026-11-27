@@ -169,3 +169,44 @@ TEST_CASE("chamber_requirements::target_without_minimum_arms") {
     CHECK(!requirements.soak_goal.has_value());
     CHECK(requirements.arms_heating(threshold));
 }
+
+// Values the user can set for a preset on the printer, None being saved as 0
+
+TEST_CASE("chamber_requirements::edited_maximum_below_minimum_does_not_arm") {
+    ChamberRequirements requirements;
+    add(requirements, { .min = 60, .max = 50, .target = 70 });
+    CHECK(requirements.soak_goal == 60);
+    CHECK(requirements.limit == 50);
+    CHECK(!requirements.arms_heating(threshold));
+}
+
+TEST_CASE("chamber_requirements::edited_minimum_none_arms_without_soak") {
+    ChamberRequirements requirements;
+    add(requirements, { .min = 0, .max = 75, .target = 70 });
+    CHECK(!requirements.soak_goal.has_value());
+    CHECK(requirements.limit == 75);
+    CHECK(requirements.arms_heating(threshold));
+}
+
+TEST_CASE("chamber_requirements::edited_maximum_none_arms_without_limit") {
+    ChamberRequirements requirements;
+    add(requirements, { .min = 40, .max = 0, .target = 70 });
+    CHECK(requirements.soak_goal == 40);
+    CHECK(!requirements.limit.has_value());
+    CHECK(requirements.arms_heating(threshold));
+}
+
+TEST_CASE("chamber_requirements::edited_nominal_none_does_not_arm") {
+    ChamberRequirements requirements;
+    add(requirements, { .min = 40, .max = 75, .target = 0 });
+    CHECK(!requirements.target.has_value());
+    CHECK(!requirements.arms_heating(threshold));
+}
+
+TEST_CASE("chamber_requirements::edited_pla_nominal_arms") {
+    // Any preset with a Nominal above the threshold heats, PLA included
+    ChamberRequirements requirements;
+    add(requirements, { .min = pla.min, .max = pla.max, .target = 50 });
+    CHECK(requirements.target == 50);
+    CHECK(requirements.arms_heating(threshold));
+}
