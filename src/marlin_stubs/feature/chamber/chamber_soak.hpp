@@ -12,6 +12,8 @@ namespace PrusaGcodeSuite {
 /// the enclosure heating is switched off, and at Max Soak Time. The chamber
 /// estimate is only available after 5 minutes of printing; until then only
 /// the time limit ends the wait. Does not change any target temperature.
+/// With Soak Fan set, runs the print fan of the picked tool at that power
+/// while soaking and restores its speed afterwards.
 void chamber_soak();
 
 } // namespace PrusaGcodeSuite

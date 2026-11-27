@@ -91,6 +91,26 @@ void MI_ENCLOSURE_COOLDOWN_RATE::Loop() {
     set_enabled(config_store().xl_enclosure_bed_heating.get());
 }
 
+static constexpr NumericInputConfig soak_fan_config {
+    .min_value = 0,
+    .max_value = 100,
+    .step = 5,
+    .special_value = 0,
+    .unit = Unit::percent,
+};
+
+MI_ENCLOSURE_SOAK_FAN::MI_ENCLOSURE_SOAK_FAN()
+    : WiSpin(config_store().xl_enclosure_soak_fan_percent.get(), soak_fan_config, _("Soak Fan")) {
+}
+
+void MI_ENCLOSURE_SOAK_FAN::OnClick() {
+    config_store().xl_enclosure_soak_fan_percent.set(static_cast<uint8_t>(value()));
+}
+
+void MI_ENCLOSURE_SOAK_FAN::Loop() {
+    set_enabled(config_store().xl_enclosure_bed_heating.get());
+}
+
 MI_ENCLOSURE_OVERTEMP_VENTING::MI_ENCLOSURE_OVERTEMP_VENTING()
     : WI_ICON_SWITCH_OFF_ON_t(config_store().xl_enclosure_overtemp_venting.get(), _("Vent When Too Warm")) {
 }

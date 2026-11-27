@@ -11,7 +11,10 @@
 #include <Marlin/src/Marlin.h>
 #include <module/planner.h>
 #include <module/temperature.h>
+#include <pwm_utils.hpp>
+#include <raii/scope_guard.hpp>
 #include <timing.h>
+#include <tool_index.hpp>
 
 void PrusaGcodeSuite::chamber_soak() {
     using buddy::chamber;
@@ -38,6 +41,20 @@ void PrusaGcodeSuite::chamber_soak() {
     buddy::SafetyTimerBlocker safety_timer_blocker;
     SkippableGCode::Guard skippable_operation;
     PrintStatusMessageGuard status_guard;
+
+    // Stir the chamber air with the print fan of the picked tool. Going through the
+    // print fan value also lets the bed know a fan is blowing at it.
+    const uint8_t soak_fan_percent = config_store().xl_enclosure_soak_fan_percent.get();
+    const bool stir_air = soak_fan_percent > 0 && PhysicalToolIndex::currently_selected_opt().has_value();
+    const uint8_t fan_speed_at_start = thermalManager.get_print_fan_speed();
+    if (stir_air) {
+        thermalManager.set_print_fan_speed(PWM255::from_percent(soak_fan_percent).value);
+    }
+    ScopeGuard fan_restore_guard = [&] {
+        if (stir_air) {
+            thermalManager.set_print_fan_speed(fan_speed_at_start);
+        }
+    };
 
     const uint32_t start_ms = ticks_ms();
     while (!skippable_operation.is_skip_requested() && !planner.draining() && heating_through_bed()) {

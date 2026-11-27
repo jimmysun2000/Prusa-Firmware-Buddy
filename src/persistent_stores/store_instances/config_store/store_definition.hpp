@@ -1113,6 +1113,8 @@ struct CurrentStore
     StoreItem<uint8_t, 10, ItemFlag::features, journal::hash("XL Enclosure Bed Cooldown Rate")> xl_enclosure_cooldown_rate;
     /// Run the enclosure fan at full power while the chamber is above the chamber maximum of a printed filament
     StoreItem<bool, false, ItemFlag::features, journal::hash("XL Enclosure Overtemp Venting")> xl_enclosure_overtemp_venting;
+    /// Print fan power during the enclosure soak [%], 0 = off
+    StoreItem<uint8_t, 0, ItemFlag::features, journal::hash("XL Enclosure Soak Fan")> xl_enclosure_soak_fan_percent;
 #endif
 
 private:

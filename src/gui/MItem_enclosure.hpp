@@ -51,6 +51,16 @@ protected:
     void Loop() override;
 };
 
+/// Print fan power while soaking the enclosure before a print
+class MI_ENCLOSURE_SOAK_FAN : public WiSpin {
+public:
+    MI_ENCLOSURE_SOAK_FAN();
+
+protected:
+    void OnClick() override;
+    void Loop() override;
+};
+
 /// Run the enclosure fan at full power while the chamber is warmer than a printed filament allows
 class MI_ENCLOSURE_OVERTEMP_VENTING : public WI_ICON_SWITCH_OFF_ON_t {
 public:
