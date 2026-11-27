@@ -239,6 +239,7 @@ bool Pause::is_unstoppable() const {
     case LoadType::unload_confirm:
     case LoadType::load_to_gears:
     case LoadType::unload_from_gears:
+    case LoadType::shape_tip:
         return false;
 
 #if HAS_SPOOL_JOIN() && HAS_TOOLCHANGER()
@@ -250,6 +251,14 @@ bool Pause::is_unstoppable() const {
     }
 
     bsod_unreachable();
+}
+
+bool Pause::is_filament_routine() const {
+    return load_type == LoadType::shape_tip;
+}
+
+Pause::StopConditions Pause::load_stop_conditions() const {
+    return is_filament_routine() ? StopConditions::UserStopped : StopConditions::All;
 }
 
 LoadUnloadMode Pause::get_load_unload_mode() {
@@ -275,6 +284,9 @@ LoadUnloadMode Pause::get_load_unload_mode() {
 
     case Pause::LoadType::filament_stuck:
         return LoadUnloadMode::FilamentStuck;
+
+    case Pause::LoadType::shape_tip:
+        return LoadUnloadMode::ShapeTip;
     }
 
     bsod_unreachable();
@@ -302,6 +314,7 @@ bool Pause::should_park() {
         // autoload on printers with side_fs, should behave similary to iX autoload
 
     case LoadType::load:
+    case LoadType::shape_tip:
         return option::has_human_interactions || !FSensors_instance().has_filament_surely(LogicalFilamentSensor::extruder);
 
     case LoadType::unload_from_gears:
@@ -343,13 +356,16 @@ bool Pause::ensureSafeTemperatureNotifyProgress() {
         return false;
     }
 
-    const auto is_tempreature_reached = [] {
+    const auto is_tempreature_reached = [this] {
         return
             // We're not restoring from a safety timer
             buddy::safety_timer().state() == buddy::SafetyTimer::State::idle
 
             // Pause-specific voodoo
-            && Temperature::degHotend(active_extruder) + heating_phase_min_hotend_diff > Temperature::degTargetHotend(active_extruder);
+            && Temperature::degHotend(active_extruder) + heating_phase_min_hotend_diff > Temperature::degTargetHotend(active_extruder)
+
+            // The tip is shaped at the temperature of the filament, so a hotter nozzle cools down first
+            && (load_type != LoadType::shape_tip || Temperature::degHotend(active_extruder) < Temperature::degTargetHotend(active_extruder) + heating_phase_min_hotend_diff);
     };
 
     if (is_tempreature_reached()) {
@@ -503,6 +519,7 @@ void Pause::start_process([[maybe_unused]] Response response) {
     case LoadType::autoload:
     case LoadType::load_to_gears:
     case LoadType::load_purge:
+    case LoadType::shape_tip:
         set(LoadState::load_start);
         break;
 
@@ -535,7 +552,7 @@ void Pause::load_start_process([[maybe_unused]] Response response) {
 #endif
 
 #if HAS_SIDE_FSENSOR() && HAS_EXTRUDER_FSENSOR()
-    if (FSensors_instance().has_filament_surely(LogicalFilamentSensor::extruder) && FSensors_instance().no_filament_surely(LogicalFilamentSensor::side)) {
+    if (!is_filament_routine() && FSensors_instance().has_filament_surely(LogicalFilamentSensor::extruder) && FSensors_instance().no_filament_surely(LogicalFilamentSensor::side)) {
         // When filament is in extruder sensor but not in side sensor, it's not a good idea to push another one in
 
         // Filament should be already out of gears by now, we move it just to be sure it's removable manually
@@ -570,6 +587,10 @@ void Pause::load_start_process([[maybe_unused]] Response response) {
         break;
     case LoadType::load_purge:
         set(LoadState::load_wait_temp);
+        break;
+    case LoadType::shape_tip:
+        // The piece of filament need not pass the side sensor, so the user confirms the insertion
+        set(LoadState::filament_push_ask);
         break;
     default:
         if (option::has_side_fsensor && !FSensors_instance().is_extruder_fs_independent()) {
@@ -645,7 +666,7 @@ void Pause::filament_push_ask_process(Response response) {
 
         if (response == Response::Continue || is_mmu_rework_and_has_filament) {
             set(LoadState::load_to_gears);
-        } else if (!is_unstoppable() && side_fs_empty && extruder_fs_not_working) {
+        } else if (!is_unstoppable() && !is_filament_routine() && side_fs_empty && extruder_fs_not_working) {
             // Extruder sensor unusable and side sensor empty: nothing can signal arrival, so exit
 #if HAS_SIDE_FSENSOR()
             // Only a manual load needs an explanation; pulling out of an autoload is deliberate
@@ -706,6 +727,7 @@ void Pause::runout_during_load_process([[maybe_unused]] Response response) {
         break;
     case LoadType::load:
     case LoadType::autoload:
+    case LoadType::shape_tip:
         set(LoadState::filament_push_ask);
         break;
     default:
@@ -754,10 +776,10 @@ void Pause::load_to_gears_process([[maybe_unused]] Response response) { // slow 
     setPhase(is_unstoppable() ? PhasesLoadUnload::LoadingToGears_unstoppable : PhasesLoadUnload::LoadingToGears_stoppable);
 
 #ifdef FILAMENT_CHANGE_SLOW_LOAD_PECK_START
-    const auto result = slow_load_notify_progress(StopConditions::All | StopConditions::UserRetry);
+    const auto result = slow_load_notify_progress(load_stop_conditions() | StopConditions::UserRetry);
 #else
     const auto result = do_e_move_notify_progress_coldextrude(
-        settings.slow_load_length, standard_feedrates::extruder(standard_feedrates::Extruder::filament_slow_load, filament::get_type_to_load()), StopConditions::All);
+        settings.slow_load_length, standard_feedrates::extruder(standard_feedrates::Extruder::filament_slow_load, filament::get_type_to_load()), load_stop_conditions());
 #endif
 
     if (result == StopConditions::SideFilamentSensorRunout) { // TODO method without param using actual phase
@@ -811,10 +833,11 @@ void Pause::load_wait_temp_process(Response response) {
             // temperature of the filament being loaded. Anything after the first
             // purge (purge more, reload on retry) uses the new filament's
             // temperature. A target below the new filament's temperature is
-            // raised right away, as there is nothing to keep.
+            // raised right away, as there is nothing to keep. The tip is shaped
+            // at the temperature of the filament, so its target is set at once.
             const int16_t new_temperature = filament_to_load.parameters().nozzle_temperature;
             Hotend &hotend = Hotend::for_tool(settings.physical_tool());
-            if (!first_purge_done && new_temperature < hotend.nozzle_target_temp()) {
+            if (load_type != LoadType::shape_tip && !first_purge_done && new_temperature < hotend.nozzle_target_temp()) {
                 deferred_nozzle_temperature = new_temperature;
             } else {
                 hotend.set_nozzle_target_temp(new_temperature);
@@ -862,7 +885,7 @@ void Pause::long_load_process(Response response) {
     }
 
     auto move_e_progress = do_e_move_notify_progress_hotextrude(
-        settings.fast_load_length, standard_feedrates::extruder(standard_feedrates::Extruder::filament_fast_load, filament::get_type_to_load()), StopConditions::All);
+        settings.fast_load_length, standard_feedrates::extruder(standard_feedrates::Extruder::filament_fast_load, filament::get_type_to_load()), load_stop_conditions());
 
     {
         auto s = planner.user_settings;
@@ -887,7 +910,9 @@ void Pause::purge_process([[maybe_unused]] Response response) {
 
     // Warning: purge_process can get called multiple times during a load thanks to PURGE MORE
     // mark_filament_as_loaded must be idempotent
-    mark_filament_as_loaded();
+    if (!is_filament_routine()) {
+        mark_filament_as_loaded();
+    }
 
 #if HAS_NOZZLE_CLEANER()
     const bool purge_ok = nozzle_cleaner_purge_sequence();
@@ -901,7 +926,9 @@ void Pause::purge_process([[maybe_unused]] Response response) {
     first_purge_done = true;
     apply_deferred_nozzle_temperature();
 
-    if constexpr (option::has_human_interactions) {
+    if (load_type == LoadType::shape_tip) {
+        set(LoadState::eject);
+    } else if constexpr (option::has_human_interactions) {
         set(LoadState::color_correct_ask);
     } else {
         set(LoadState::load_finalize);
@@ -912,7 +939,7 @@ void Pause::purge_process([[maybe_unused]] Response response) {
 
 bool Pause::standard_purge_sequence() {
     const auto purge_result = do_e_move_notify_progress_hotextrude(
-        settings.purge_length(), standard_feedrates::extruder(standard_feedrates::Extruder::advanced_pause_purge, filament::get_type_to_load()), StopConditions::All);
+        settings.purge_length(), standard_feedrates::extruder(standard_feedrates::Extruder::advanced_pause_purge, filament::get_type_to_load()), load_stop_conditions());
 
     if (purge_result == StopConditions::SideFilamentSensorRunout) {
         set(LoadState::runout_during_load);
@@ -1116,6 +1143,13 @@ void Pause::eject_process([[maybe_unused]] Response response) {
     case LoadType::load:
     case LoadType::autoload:
         set(LoadState::filament_push_ask);
+        break;
+    case LoadType::shape_tip:
+        // Ejecting is the last step of the routine; a stop during the ramming has to stay a stop,
+        // the filament may not be out of the nozzle
+        if (get_state() != LoadState::stop) {
+            set(LoadState::_finished);
+        }
         break;
     default:
         break;
@@ -1404,6 +1438,11 @@ void Pause::unload_process([[maybe_unused]] Response response) {
         }
         break;
 
+    case LoadType::shape_tip:
+        // Not reached, the routines end through eject
+        set(LoadState::unload_finish_or_change);
+        break;
+
     default:
         break;
     }
@@ -1581,6 +1620,7 @@ bool Pause::needs_hot_nozzle(LoadType lt, [[maybe_unused]] PhysicalToolIndex too
     case LoadType::load:
     case LoadType::autoload:
     case LoadType::load_purge:
+    case LoadType::shape_tip:
         return true;
 
     case LoadType::filament_change:
@@ -1965,6 +2005,7 @@ bool Pause::ram_filament() {
 #endif
             return StandardRammingSequence::runout;
 
+        case LoadType::shape_tip:
         default:
             return StandardRammingSequence::unload;
         }
@@ -2152,6 +2193,18 @@ void Pause::setup_progress_mapper() {
 #if HAS_AUTO_RETRACT()
                 { LoadState::auto_retract, 1 },
 #endif
+        }) };
+        result = &workflow;
+        break;
+    }
+
+    case LoadType::shape_tip: {
+        constexpr static ProgressMapperWorkflowArray workflow { std::to_array<WorkflowStep>({
+            { LoadState::load_to_gears, 1 },
+            { LoadState::load_wait_temp, 3 },
+            { LoadState::long_load, 1 },
+            { LoadState::purge, 1 },
+            { LoadState::eject, 2 },
         }) };
         result = &workflow;
         break;

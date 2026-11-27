@@ -19,6 +19,8 @@
 #include <Marlin/src/gcode/gcode.h>
 #include <mapi/parking.hpp>
 #include <raii/auto_restore.hpp>
+#include <raii/scope_guard.hpp>
+#include <fs_autoload_autolock.hpp>
 
 #include <option/has_human_interactions.h>
 #include <option/has_wastebin.h>
@@ -343,3 +345,69 @@ void filament_gcodes::M1600_change_filament(FilamentType filament_to_be_loaded, 
     tool_change(NoTool {}, tool_return_t::dock_backoff);
 #endif
 }
+
+#if PRINTER_IS_PRUSA_XL()
+namespace {
+
+/// Length of the piece melted by Shape Filament Tip before the tip is formed [mm]
+constexpr float FILAMENT_TIP_SHAPING_MELT_LENGTH = 10;
+
+} // namespace
+
+void filament_gcodes::M1706_filament_routine(VirtualToolIndex virtual_tool, Pause::LoadType routine) {
+    if (marlin_server::is_printing()) {
+        return;
+    }
+
+    InProgress progress;
+    FS_AutoloadAutolock autoload_lock;
+
+    // The routines record no filament, so a loaded one would be lost track of
+    if (FilamentType::for_tool(virtual_tool) != FilamentType::none) {
+        return;
+    }
+
+    // Whatever the outcome, the heater of the tool ends up off
+    const PhysicalToolIndex physical_tool = virtual_tool.to_physical();
+    ScopeGuard heater_off = [physical_tool] {
+        thermalManager.setTargetHotend(0, physical_tool);
+    };
+
+    // Exactly the temperature of the selected filament, bed and chamber are left alone
+    const FilamentSelectionArgs selection {
+        .mode = PreheatMode::preheat,
+        .tool = virtual_tool,
+        .ret_cool = RetAndCool_t::Return,
+    };
+    const auto preheat_ret = preheat(selection, PreheatBehavior::for_filament_unload(true));
+    if (preheat_ret.first) {
+        PreheatStatus::SetResult(*preheat_ret.first);
+        return;
+    }
+    filament::set_type_to_load(preheat_ret.second);
+
+    pause::Settings settings;
+    settings.SetExtruder(virtual_tool);
+    settings.SetPurgeLength(FILAMENT_TIP_SHAPING_MELT_LENGTH);
+    settings.SetRetractLength(0.f);
+
+    mapi::ParkingPosition park_position = mapi::get_parking_position(mapi::ParkPosition::load);
+    park_position.z = mapi::ParkingPosition::AtLeast { .above_print = Z_NOZZLE_PARK_RISE, .absolute = Z_AXIS_LOAD_POS };
+    settings.SetParkPoint(park_position);
+    const float e_position_to_restore = current_position.e;
+
+    if (!Pause::Instance().tool_change(virtual_tool, routine, settings)) {
+        return;
+    }
+
+    if (!Pause::Instance().perform(routine, settings) && FSensors_instance().has_filament_surely(LogicalFilamentSensor::extruder)) {
+        // Stopped or failed with the filament still in: one attempt to empty the tool
+        Pause::Instance().perform(Pause::LoadType::unload, settings);
+    }
+
+    sync_e_position_to(e_position_to_restore);
+    destination.e = e_position_to_restore;
+
+    PreheatStatus::SetResult(PreheatStatus::Result::DoneNoFilament);
+}
+#endif

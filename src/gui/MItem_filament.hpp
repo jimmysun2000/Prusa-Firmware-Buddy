@@ -68,6 +68,17 @@ public:
     virtual void click(IWindowMenu &) override;
 };
 
+#if PRINTER_IS_PRUSA_XL()
+/// Runs M1706 on a tool without loaded filament
+class MI_SHAPE_TIP : public IWindowMenuItem {
+    constexpr static const char *const label = N_("Shape Filament Tip");
+
+public:
+    MI_SHAPE_TIP();
+    virtual void click(IWindowMenu &) override;
+};
+#endif
+
 class MI_ASK_COLOR_ON_LOAD final : public MenuItemToggleSwitch {
 public:
     MI_ASK_COLOR_ON_LOAD();

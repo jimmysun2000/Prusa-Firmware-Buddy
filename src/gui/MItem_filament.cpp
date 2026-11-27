@@ -168,6 +168,47 @@ void MI_PURGE::click(IWindowMenu &) {
     marlin_client::gcode("M701 L0 W2"); // load with distance 0 and return option
 }
 
+#if PRINTER_IS_PRUSA_XL()
+namespace {
+
+/// Runs \p gcode on a tool picked by the user; a tool with filament recorded as loaded is refused
+void run_on_empty_tool(const char *gcode) {
+    static constexpr const char *txt_refused = N_("This needs a tool without loaded filament. Unload the filament first.");
+
+    const auto tool_is_empty = [](VirtualToolIndex tool) { return !tool_has_filament(tool); };
+    if (std::ranges::none_of(VirtualToolIndex::all().skip_all_disabled(), tool_is_empty)) {
+        MsgBoxWarning(_(txt_refused), Responses_Ok);
+        return;
+    }
+
+    if (!show_tool_selector_dialog({
+            .allow_return = true,
+            .tool_filter = tool_is_empty,
+        })) {
+        return;
+    }
+
+    if (FilamentType::for_tool(VirtualToolIndex::currently_selected()) != FilamentType::none) {
+        MsgBoxWarning(_(txt_refused), Responses_Ok);
+        return;
+    }
+
+    marlin_client::gcode(gcode);
+}
+
+} // namespace
+
+/*****************************************************************************/
+// MI_SHAPE_TIP
+MI_SHAPE_TIP::MI_SHAPE_TIP()
+    : IWindowMenuItem(_(label), nullptr, any_tool_configured() ? is_enabled_t::yes : is_enabled_t::no, is_hidden_t::no, multi_tool_expands()) {
+}
+
+void MI_SHAPE_TIP::click(IWindowMenu &) {
+    run_on_empty_tool("M1706");
+}
+#endif
+
 /*****************************************************************************/
 // MI_ASK_COLOR_ON_LOAD
 MI_ASK_COLOR_ON_LOAD::MI_ASK_COLOR_ON_LOAD()

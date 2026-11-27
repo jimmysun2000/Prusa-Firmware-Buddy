@@ -31,6 +31,9 @@ using ScreenMenuFilament__ = ScreenMenu<GuiDefaults::MenuFooter,
 #endif
     MI_CHANGE,
     MI_PURGE,
+#if PRINTER_IS_PRUSA_XL()
+    MI_SHAPE_TIP,
+#endif
     MI_FILAMENT_MANAGEMENT //
     >;
 

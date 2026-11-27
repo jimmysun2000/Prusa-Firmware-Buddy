@@ -123,6 +123,14 @@ struct M1700Args {
 /// Standalone preheat
 void M1700_preheat(const M1700Args &args);
 
+#if PRINTER_IS_PRUSA_XL()
+/// Runs a filament routine (\p routine is Pause::LoadType::shape_tip) on \p virtual_tool.
+/// Does nothing during a print or when the tool has a filament recorded as loaded.
+/// If the routine does not finish while the extruder sensor sees filament, tries one normal unload.
+/// Records no filament. Leaves the nozzle heater of the tool off on every exit; other heaters are not touched.
+void M1706_filament_routine(VirtualToolIndex virtual_tool, Pause::LoadType routine);
+#endif
+
 void mmu_load(uint8_t data);
 void mmu_load_test(VirtualToolIndex slot);
 void mmu_eject(uint8_t data);

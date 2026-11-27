@@ -171,6 +171,10 @@ void M1703(); //< Wi-fi setup. Prusa platform specific
 void M1705(); //< Autoretract
 #endif
 
+#if PRINTER_IS_PRUSA_XL()
+void M1706(); //< Filament routines
+#endif
+
 void M1978(); //< Fan Selftest
 #if HAS_DOOR_SENSOR_CALIBRATION()
 void M1980(); //< Door sensor calibration

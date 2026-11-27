@@ -187,6 +187,10 @@ public:
 
         filament_change,
         filament_stuck,
+
+        /// Shape Filament Tip: loads a piece of filament, melts a little of it and ejects it with a proper tip.
+        /// Records no filament as loaded and ignores the side sensor, as the piece need not reach it.
+        shape_tip,
     };
 
     static bool needs_hot_nozzle(LoadType lt, PhysicalToolIndex tool);
@@ -217,6 +221,10 @@ private:
     LoadType load_type {};
 
     bool is_unstoppable() const;
+
+    /// Whether the load is one of the filament routines (\ref LoadType::shape_tip)
+    bool is_filament_routine() const;
+
     LoadUnloadMode get_load_unload_mode();
     bool should_park();
     void setup_progress_mapper();
@@ -370,6 +378,9 @@ private:
     constexpr bool check4(Pause::StopConditions cf, Pause::StopConditions mask) {
         return !(!(cf & mask)); // force application of the operator!
     }
+
+    /// Conditions that interrupt the moves of a load: StopConditions::All, without the side sensor in a filament routine
+    StopConditions load_stop_conditions() const;
 
     /// Moves the extruder by \p length . Notifies the FSM about progress.
     /// @returns any of the \ref StopConditions if the move has been interrupted or StopConditions::Accomplished if the move has been successfully finished

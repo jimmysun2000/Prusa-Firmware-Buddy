@@ -101,6 +101,7 @@ enum class LoadUnloadMode : uint8_t {
     Test,
     Cut, // MMU
     Eject, // MMU
+    ShapeTip,
 };
 
 enum class PreheatMode : uint8_t {

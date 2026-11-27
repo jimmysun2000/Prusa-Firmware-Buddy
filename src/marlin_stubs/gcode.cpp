@@ -300,6 +300,12 @@ bool GcodeSuite::process_parsed_command_custom(bool no_ok) {
             break;
 #endif
 
+#if PRINTER_IS_PRUSA_XL()
+        case 1706:
+            PrusaGcodeSuite::M1706();
+            break;
+#endif
+
 #if HAS_INPUT_SHAPER_CALIBRATION()
         case 1959:
             PrusaGcodeSuite::M1959();

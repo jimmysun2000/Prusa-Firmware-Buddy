@@ -281,4 +281,34 @@ void PrusaGcodeSuite::M1600() {
     filament_gcodes::M1600_change_filament(filament_to_be_loaded, *virtual_tool, hasReturn ? RetAndCool_t::Return : RetAndCool_t::Neither, ask_unload, color_to_be_loaded, p.option<float>('D'));
 }
 
+#if PRINTER_IS_PRUSA_XL()
+/**
+ *### M1706: Shape Filament Tip
+ *
+ * Internal GCode
+ *
+ * not meant to be used during print
+ *
+ * Asks for the filament type and heats the nozzle to its temperature, loads an inserted piece of filament,
+ * melts 10 mm of it and ejects it with a proper tip. Only for a tool without a filament recorded as loaded.
+ * The nozzle heater of the tool is off afterwards.
+ *
+ *#### Usage
+ *
+ *    M1706 [ T ]
+ *
+ *#### Parameters
+ *
+ * - `T` - Tool number. Current tool if omitted.
+ */
+void PrusaGcodeSuite::M1706() {
+    const std::optional<VirtualToolIndex> virtual_tool = stdext::get_optional<VirtualToolIndex>(GcodeSuite::get_target_virtual_from_command());
+    if (!virtual_tool.has_value()) {
+        return;
+    }
+
+    filament_gcodes::M1706_filament_routine(*virtual_tool, Pause::LoadType::shape_tip);
+}
+#endif
+
 /** @}*/
