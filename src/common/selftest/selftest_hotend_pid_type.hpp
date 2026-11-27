@@ -2,12 +2,19 @@
 
 #include <cstdint>
 
+#include <hotend_pid_session.hpp>
 #include <hotend_pid_tuning.hpp>
 #include <marlin_server_extended_fsm_types.hpp>
 
-/// State of the hotend PID tuning, sent to the GUI as FSM extended data
+/// State of the hotend PID tuning session, sent to the GUI as FSM extended data.
+/// The data is limited to a few dozen bytes, so it describes one tool at a time.
 struct SelftestHotendPid_t : public FSMExtendedData {
-    uint8_t tool = 0; ///< Raw physical tool index
+    /// Raw physical tool index of the tool in turn, of the tool whose result is shown, or of the
+    /// tool that stopped the session
+    uint8_t tool = 0;
+
+    hotend_pid::ToolSet tool_mask = 0; ///< Tools of the session
+
     uint8_t print_fan_pwm = 0;
     int16_t target_temp = 0; ///< [°C]
 

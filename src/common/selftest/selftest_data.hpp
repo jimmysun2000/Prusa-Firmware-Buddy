@@ -8,6 +8,10 @@
 #include <option/has_indx.h>
 #include <option/has_toolchanger.h>
 
+#if HAS_TOOLCHANGER() && !HAS_INDX()
+    #include <hotend_pid_session.hpp>
+#endif
+
 namespace selftest {
 
 struct FirstLayerCalibrationData {
@@ -39,11 +43,12 @@ struct ToolOffsetsCalibrationData {
 };
 
 #if HAS_TOOLCHANGER() && !HAS_INDX()
-/// What the hotend PID tuning of one tool runs with, chosen by the user for each run
+/// What a hotend PID tuning session runs with, chosen by the user for each session
 struct HotendPidTuningData {
-    PhysicalToolIndex tool;
-    int16_t target_temp; ///< [°C]
-    uint8_t print_fan_pwm;
+    /// Tools to tune, one after another in ascending order
+    hotend_pid::ToolSet tool_mask;
+    int16_t target_temp; ///< [°C] Same for all tools of the session
+    uint8_t print_fan_pwm; ///< Same for all tools of the session
 };
 #endif
 

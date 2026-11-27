@@ -14,6 +14,7 @@ class SelftestFrameHotendPid : public SelftestFrameNamedWithRadio {
     window_text_t text_phase;
     window_text_t text_detail; ///< Target temperature | question | what happened to the stored gains
     char target_temp_text[10];
+    char tool_list_text[16]; ///< Tools of the session, as "1, 3, 4"
     StringViewUtf8Parameters<96> text_phase_params;
 
     /// Last shown data, the server sends the same data every selftest loop

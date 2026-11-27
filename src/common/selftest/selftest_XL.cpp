@@ -280,8 +280,8 @@ bool CSelftest::Start(const uint64_t test_mask, const selftest::TestData test_da
     }
 
     config_hotend_pid = {};
-    if (const auto *request = std::get_if<HotendPidTuningData>(&test_data); request && request->tool.to_raw() < PhysicalToolIndex::count) {
-        config_hotend_pid = { .heater = &Config_HeaterNozzle[request->tool.to_raw()], .request = *request };
+    if (const auto *request = std::get_if<HotendPidTuningData>(&test_data)) {
+        config_hotend_pid = { .heaters = Config_HeaterNozzle, .request = *request };
     }
 
     m_State = stsStart;

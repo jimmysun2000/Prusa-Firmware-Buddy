@@ -135,6 +135,7 @@ enum class TuningFailure : uint8_t {
     amplitude_too_small, ///< The swing is below MIN_PEAK_TO_PEAK
     cycles_disagree, ///< The cycles differ more in period or swing than accepted
     out_of_limits, ///< The computed gains fail is_valid
+    not_run, ///< The tuning session stopped before it was the tool's turn
 };
 
 struct TuningResult {

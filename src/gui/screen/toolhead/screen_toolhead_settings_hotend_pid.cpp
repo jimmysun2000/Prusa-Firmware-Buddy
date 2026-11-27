@@ -153,7 +153,7 @@ void ScreenToolheadDetailHotendPid::start_tuning() {
     }
 
     const selftest::HotendPidTuningData request {
-        .tool = *tool,
+        .tool_mask = static_cast<hotend_pid::ToolSet>(1u << tool->to_raw()),
         .target_temp = static_cast<int16_t>(Item<MI_HOTEND_PID_TUNE_TEMP>().value()),
         .print_fan_pwm = static_cast<uint8_t>(std::lround(Item<MI_HOTEND_PID_TUNE_FAN>().value() * 255 / 100)),
     };
