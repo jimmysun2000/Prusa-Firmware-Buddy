@@ -362,7 +362,9 @@ class Temperature {
       static bool wait_for_bed(const bool no_wait_for_cooling=true);
 
       static void init_bed_frame_est_celsius();
-      static void wait_for_frame_heatup();
+
+      /// @returns false if the wait was skipped or aborted
+      static bool wait_for_frame_heatup();
 
     #endif // HAS_HEATED_BED
 

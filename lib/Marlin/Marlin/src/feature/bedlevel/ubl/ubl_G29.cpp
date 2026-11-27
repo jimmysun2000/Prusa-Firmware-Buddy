@@ -62,6 +62,11 @@
     #include <feature/nozzle_cleaner_lite/include/nozzle_cleaner_lite.hpp>
   #endif
 
+  #include <option/xl_enclosure_support.h>
+  #if XL_ENCLOSURE_SUPPORT()
+    #include <marlin_stubs/feature/chamber/chamber_soak.hpp>
+  #endif
+
   #if ENABLED(EXTENSIBLE_UI)
     #include "../../../lcd/extensible_ui/ui_api.h"
   #endif
@@ -355,7 +360,13 @@
     if (g29_parameter_parsing()) return; // Abort on parameter error
 
     if (g29_wait_for_preheat) {
-        Temperature::wait_for_frame_heatup();
+        [[maybe_unused]] const bool heated_up = Temperature::wait_for_frame_heatup();
+      #if XL_ENCLOSURE_SUPPORT()
+        // Skipping the frame heat-up skips the enclosure soak as well
+        if (heated_up) {
+            PrusaGcodeSuite::chamber_soak();
+        }
+      #endif
     }
 
     // Check for commands that require the printer to be homed

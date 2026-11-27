@@ -1414,7 +1414,7 @@ void Temperature::isr() {
         }
     }
 
-    void Temperature::wait_for_frame_heatup() {
+    bool Temperature::wait_for_frame_heatup() {
         // Keep everything heated up when absorbing heat
         buddy::SafetyTimerBlocker safety_timer_blocker;
 
@@ -1422,18 +1422,18 @@ void Temperature::isr() {
 
         if (fabs(temp_bed.target - bed_frame_est_celsius) < finish_threshold) {
             log_info(MarlinServer, "Absorbing heat: already stable, continuing");
-            return;
+            return true;
         }
 
         if (marlin_debug_flags & MARLIN_DEBUG_DRYRUN) {
             // In dry run, the bed is left cold. The temperature would never stabilize.
-            return;
+            return true;
         }
 
         if (temp_bed.target < bed_frame_est_celsius) {
           // Do not wait for cooldown. Cooling is slow and propagated evenly across the bed, it won't warp the bed differently.
           log_info(MarlinServer, "Absorbing heat: target lower than actual temp, continuing");
-          return;
+          return true;
         }
 
         float soak_min_target = room_temperature;
@@ -1444,7 +1444,7 @@ void Temperature::isr() {
 #endif
         if (temp_bed.target <= soak_min_target) {
           log_info(MarlinServer, "Absorbing heat: target below soak threshold %.0f, continuing", (double)soak_min_target);
-          return;
+          return true;
         }
 
         SkippableGCode::Guard skippable_operation;
@@ -1473,6 +1473,8 @@ void Temperature::isr() {
         }
 
         MarlinUI::reset_status();
+
+        return !skippable_operation.is_skip_requested() && !planner.draining();
     }
 
   #endif // HAS_HEATED_BED

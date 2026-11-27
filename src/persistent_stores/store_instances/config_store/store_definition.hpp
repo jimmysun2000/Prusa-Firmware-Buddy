@@ -1107,6 +1107,8 @@ struct CurrentStore
 #if XL_ENCLOSURE_SUPPORT()
     /// Heat the enclosure through the whole bed for filaments that need a warm chamber
     StoreItem<bool, false, ItemFlag::features, journal::hash("XL Enclosure Bed Heating")> xl_enclosure_bed_heating;
+    /// Longest enclosure soak before a print [min], 0 = no soak
+    StoreItem<uint8_t, 60, ItemFlag::features, journal::hash("XL Enclosure Soak Max")> xl_enclosure_soak_max_min;
 #endif
 
 private:
