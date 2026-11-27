@@ -1,5 +1,5 @@
 /// @file
-/// Settings backup: writes the config store to a text file. Export only, nothing ever reads such a file back.
+/// Settings backup: writes the config store to a text file. The settings restore (config_store_import.hpp) reads it back.
 #pragma once
 
 #include <array>

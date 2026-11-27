@@ -120,6 +120,44 @@ namespace {
         return (it != name_table.entries.end() && it->id == id) ? std::string_view(name_table.chars.data() + it->offset) : std::string_view {};
     }
 
+    /// Calls f(id) for the id of every entry: one per current item, one per element of array items
+    template <typename F>
+    consteval void for_each_entry_id(F f) {
+        ConfigStore store;
+        visit_all_struct_fields(static_cast<CurrentStore &>(store), [&f]<typename Item>(Item &) {
+            if constexpr (LegacyArrayIds<Item>::is_legacy_array) {
+                for (const uint16_t id : LegacyArrayIds<Item>::ids) {
+                    f(id);
+                }
+            } else if constexpr (requires { Item::hashed_id_first; }) {
+                for (size_t i = 0; i < Item::item_count; i++) {
+                    f(static_cast<uint16_t>(Item::hashed_id_first + i));
+                }
+            } else {
+                f(Item::hashed_id);
+            }
+        });
+    }
+
+    constexpr size_t entry_count = []() consteval {
+        size_t count = 0;
+        for_each_entry_id([&count](uint16_t) { count++; });
+        return count;
+    }();
+
+    static_assert(entry_count <= max_entry_count, "Increase max_entry_count");
+
+    /// Ids of all entries, sorted
+    constexpr auto entry_ids = []() consteval {
+        std::array<uint16_t, entry_count> ids {};
+        size_t index = 0;
+        for_each_entry_id([&](uint16_t id) { ids[index++] = id; });
+        std::ranges::sort(ids);
+        return ids;
+    }();
+
+    static_assert(std::ranges::adjacent_find(entry_ids) == entry_ids.end());
+
 } // namespace
 
 config_store_export::Key item_key(uint16_t id, std::optional<uint16_t> array_first_id) {
@@ -130,6 +168,14 @@ config_store_export::Key item_key(uint16_t id, std::optional<uint16_t> array_fir
 
 bool is_redacted(uint16_t id, Kind kind) {
     return config_store_export::is_redacted(id, kind == Kind::string, secret_ids, allowed_string_ids);
+}
+
+std::optional<uint16_t> entry_position(uint16_t id) {
+    const auto it = std::ranges::lower_bound(entry_ids, id);
+    if (it == entry_ids.end() || *it != id) {
+        return std::nullopt;
+    }
+    return static_cast<uint16_t>(it - entry_ids.begin());
 }
 
 } // namespace config_store_backup

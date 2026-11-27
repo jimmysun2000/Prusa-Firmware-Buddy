@@ -66,4 +66,11 @@ config_store_export::Key item_key(uint16_t id, std::optional<uint16_t> array_fir
 /// Whether the backup leaves out the value of the entry @p id: passwords and tokens, and strings not on the allow-list
 bool is_redacted(uint16_t id, Kind kind);
 
+/// Upper bound of the number of entries of the current store
+inline constexpr size_t max_entry_count = 1024;
+
+/// Position of @p id among the entries of the current store (one per element of array items), if it is one of them.
+/// Always below max_entry_count.
+std::optional<uint16_t> entry_position(uint16_t id);
+
 } // namespace config_store_backup
