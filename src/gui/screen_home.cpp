@@ -224,6 +224,9 @@ constexpr const ShortcutLayout *layout_for(const std::array<bool, home_shortcut:
 static_assert(layout_for({}) == nullptr);
 static_assert(layout_for({ true }) == &four_column_layout);
 static_assert(layout_for({ false, true }) == &four_column_layout);
+static_assert(layout_for({ false, false, true }) == &five_column_layout);
+static_assert(layout_for({ false, false, false, true }) == &five_column_layout);
+static_assert(layout_for({ true, true, true, true }) == &five_column_layout);
 
 constexpr WindowMultiIconButton::Pngs shortcut_icon_home GEN_ICON_NAMES(home);
 // The XL packs no disabled variant of mapping and back; the shortcuts are never shadowed
@@ -382,9 +385,13 @@ screen_home_data_t::screen_home_data_t()
     // Registered later, only if shown
     , w_shortcut_buttons {
         { nullptr, Rect16(), nullptr, [](window_t&) {} },
+        { nullptr, Rect16(), nullptr, [](window_t&) {} },
+        { nullptr, Rect16(), nullptr, [](window_t&) {} },
         { nullptr, Rect16(), nullptr, [](window_t&) {} }
     },
     w_shortcut_labels {
+        { nullptr, Rect16(), is_multiline::no },
+        { nullptr, Rect16(), is_multiline::no },
         { nullptr, Rect16(), is_multiline::no },
         { nullptr, Rect16(), is_multiline::no }
     }

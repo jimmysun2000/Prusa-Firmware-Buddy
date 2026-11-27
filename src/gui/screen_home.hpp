@@ -86,7 +86,7 @@ private:
     void filamentBtnSetState();
 
 #if PRINTER_IS_PRUSA_XL()
-    /// Shows the configured shortcuts in a fourth column; the stock layout stays if all are None
+    /// Shows the configured shortcuts in a fourth and a fifth column; the stock layout stays if all are None
     void setup_shortcuts();
 #endif
 

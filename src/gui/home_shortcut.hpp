@@ -12,7 +12,8 @@ class StringViewUtf8ParamBase;
 /// Actions of the configurable shortcuts on the home screen
 namespace home_shortcut {
 
-inline constexpr size_t slot_count = 2;
+/// The first two shortcuts are a fourth column of the home screen, top and bottom; the other two a fifth
+inline constexpr size_t slot_count = 4;
 
 enum class Kind : uint8_t {
     none,

@@ -1137,7 +1137,7 @@ struct CurrentStore
 
 #if PRINTER_IS_PRUSA_XL()
     /// Action ID of each home screen shortcut, see home_shortcut::actions
-    StoreItemArray<uint8_t, uint8_t { 0 }, ItemFlag::user_interface, journal::hash("Home Shortcut"), 8, 2> home_shortcuts;
+    StoreItemArray<uint8_t, uint8_t { 0 }, ItemFlag::user_interface, journal::hash("Home Shortcut"), 8, 4> home_shortcuts;
 #endif
 
 #if HAS_TOOLCHANGER() && !HAS_INDX()
