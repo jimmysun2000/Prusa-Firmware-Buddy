@@ -58,6 +58,59 @@ TEST_CASE("bed_mesh_view::is_major") {
     CHECK_FALSE(is_major(35, 36, 1, 3));
 }
 
+TEST_CASE("bed_mesh_view::major_count") {
+    CHECK(major_count(36, 1, 3) == 12);
+    CHECK(major_count(4, 1, 3) == 1);
+    CHECK(major_count(5, 1, 3) == 1);
+    CHECK(major_count(6, 1, 3) == 2);
+    CHECK(major_count(12, 0, 1) == 12);
+    CHECK(major_count(2, 1, 3) == 0);
+    CHECK(major_count(36, 1, 0) == 0);
+
+    // Agrees with is_major
+    for (uint8_t n = 0; n < 40; n++) {
+        for (uint8_t border = 0; border < 3; border++) {
+            for (uint8_t step = 1; step < 5; step++) {
+                int count = 0;
+                for (uint8_t i = 0; i < n; i++) {
+                    count += is_major(i, n, border, step);
+                }
+                CAPTURE(n, border, step);
+                CHECK(major_count(n, border, step) == count);
+            }
+        }
+    }
+}
+
+TEST_CASE("bed_mesh_view::major_info") {
+    // Mesh extent of the XL: pitch 360 / 35 mm
+    constexpr Info info { .nx = 36, .ny = 36, .border = 1, .major_step = 3, .min_x = 0, .min_y = 0, .max_x = 360, .max_y = 360 };
+    const Info major = major_info(info);
+    CHECK(major.nx == 12);
+    CHECK(major.ny == 12);
+    CHECK(major.border == 0);
+    CHECK(major.major_step == 1);
+    CHECK_THAT(major.min_x, WithinAbs(360.0 / 35, 1e-4));
+    CHECK_THAT(major.min_y, WithinAbs(360.0 / 35, 1e-4));
+    CHECK_THAT(major.max_x, WithinAbs(360.0 * 34 / 35, 1e-4));
+    CHECK_THAT(major.max_y, WithinAbs(360.0 * 34 / 35, 1e-4));
+
+    // Every point of the reduced grid is a major one
+    for (uint8_t i = 0; i < major.nx; i++) {
+        CHECK(is_major(i, major.nx, major.border, major.major_step));
+    }
+
+    // Different axes and an offset origin
+    constexpr Info other { .nx = 7, .ny = 10, .border = 0, .major_step = 2, .min_x = -10, .min_y = 5, .max_x = 50, .max_y = 50 };
+    const Info other_major = major_info(other);
+    CHECK(other_major.nx == 4);
+    CHECK(other_major.ny == 5);
+    CHECK_THAT(other_major.min_x, WithinAbs(-10, 1e-4));
+    CHECK_THAT(other_major.max_x, WithinAbs(50, 1e-4));
+    CHECK_THAT(other_major.min_y, WithinAbs(5, 1e-4));
+    CHECK_THAT(other_major.max_y, WithinAbs(45, 1e-4));
+}
+
 TEST_CASE("bed_mesh_view::compute_state") {
     fill_mesh(0);
     CHECK(compute_state(xl_info, mesh_z) == State::none);

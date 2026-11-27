@@ -9,6 +9,27 @@
 
 namespace bed_mesh_view {
 
+Info major_info(const Info &info) {
+    const uint8_t nx = major_count(info.nx, info.border, info.major_step);
+    const uint8_t ny = major_count(info.ny, info.border, info.major_step);
+    const auto position = [](float min, float max, uint8_t n, uint8_t index) {
+        return n > 1 ? min + (max - min) * index / (n - 1) : min;
+    };
+    const auto last_index = [&](uint8_t count) {
+        return static_cast<uint8_t>(info.border + (count > 0 ? count - 1 : 0) * info.major_step);
+    };
+    return Info {
+        .nx = nx,
+        .ny = ny,
+        .border = 0,
+        .major_step = 1,
+        .min_x = position(info.min_x, info.max_x, info.nx, info.border),
+        .min_y = position(info.min_y, info.max_y, info.ny, info.border),
+        .max_x = position(info.min_x, info.max_x, info.nx, last_index(nx)),
+        .max_y = position(info.min_y, info.max_y, info.ny, last_index(ny)),
+    };
+}
+
 Stats compute_stats(const Info &info, ZGetter z) {
     Stats stats;
     float sum = 0;

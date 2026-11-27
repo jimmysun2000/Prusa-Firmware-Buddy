@@ -54,6 +54,10 @@
     #include "../../../feature/nozzle_cleaner/include/nozzle_cleaner.hpp"
 #endif
 
+#if PRINTER_IS_PRUSA_XL()
+    #include <common/bed_mesh_history.hpp>
+#endif
+
 /** \addtogroup G-Codes
  * @{
  */
@@ -402,6 +406,11 @@ void GcodeSuite::G29() {
 
         break;
     }
+
+#if PRINTER_IS_PRUSA_XL()
+    bed_mesh_history::capture_if_measured();
+#endif
+
     debug_assert(axes_home_level.is_homed(Z_AXIS, AxisHomeLevel::full));
 }
 

@@ -73,6 +73,15 @@ constexpr bool is_major(uint8_t i, uint8_t n, uint8_t border, uint8_t step) {
     return i >= border && i + border < n && (i - border) % step == 0;
 }
 
+/// @returns number of major points on an axis with @p n points
+constexpr uint8_t major_count(uint8_t n, uint8_t border, uint8_t step) {
+    return (step == 0 || n <= 2 * border) ? 0 : (n - 2 * border - 1) / step + 1;
+}
+
+/// @returns geometry of the grid made of the major points of @p info only: every point of it is a
+/// major point (border 0, step 1), min/max are the positions of the first/last major point
+Info major_info(const Info &info);
+
 /// Lower bound of the colour scale half-range [mm], so a flat bed is not shown as a rainbow of noise
 inline constexpr float min_full_scale = 0.10f;
 

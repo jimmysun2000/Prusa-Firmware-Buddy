@@ -129,6 +129,16 @@ add_executable(
 target_include_directories(bed_mesh_view_tests PUBLIC ${CMAKE_SOURCE_DIR}/src)
 add_catch_test(bed_mesh_view_tests)
 
+add_executable(
+  bed_mesh_history_tests
+  ${CMAKE_CURRENT_SOURCE_DIR}/bed_mesh_history_tests.cpp
+  ${CMAKE_SOURCE_DIR}/src/common/bed_mesh_history_store.cpp
+  ${CMAKE_SOURCE_DIR}/src/common/bed_mesh_view_math.cpp
+  )
+target_include_directories(bed_mesh_history_tests PUBLIC ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(bed_mesh_history_tests freertos-mock)
+add_catch_test(bed_mesh_history_tests)
+
 add_executable(hotend_detect_tests ${CMAKE_CURRENT_SOURCE_DIR}/hotend_detect_tests.cpp)
 target_include_directories(hotend_detect_tests PUBLIC ${CMAKE_SOURCE_DIR}/src/common)
 add_catch_test(hotend_detect_tests)
