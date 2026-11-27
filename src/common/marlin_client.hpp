@@ -48,6 +48,7 @@ gcode_printf(const char *format, ...);
 ///
 /// @returns false if the record was dropped because the inject queue
 // stayed full even after several retries.
+/// A GCodeMacroButton is also dropped unless the print state is Idle and no G-code is being processed.
 bool inject(InjectQueueRecord record);
 
 // inject gcode directly - thread-safe version

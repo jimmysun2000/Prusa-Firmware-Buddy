@@ -3785,6 +3785,10 @@ static bool _process_server_valid_request(const Request &request) {
         //@TODO return value depending on success of enqueueing gcode
         return enqueue_gcode_try(request.gcode);
     case Request::Type::Inject:
+        // Macro files must not run into a print, a pause or other running G-code
+        if (std::holds_alternative<GCodeMacroButton>(request.inject) && (server.print_state != State::Idle || is_processing())) {
+            return false;
+        }
         return inject(request.inject);
     case Request::Type::GcodeInterrupt:
         gcode_interrupt(request.gcode_interrupt);
