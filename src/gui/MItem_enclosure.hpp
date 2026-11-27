@@ -1,6 +1,7 @@
 #pragma once
 #include "WindowMenuItems.hpp"
 #include "WindowItemFormatableLabel.hpp"
+#include <WindowMenuSpin.hpp>
 
 class MI_ENCLOSURE : public IWindowMenuItem {
     constexpr static const char *label = N_("Enclosure Settings");
@@ -21,4 +22,31 @@ public:
 
 protected:
     void OnChange(size_t old_index) override;
+};
+
+/// Heat the enclosure through the bed for filaments that need a warm chamber
+class MI_ENCLOSURE_BED_HEATING : public WI_ICON_SWITCH_OFF_ON_t {
+public:
+    MI_ENCLOSURE_BED_HEATING();
+
+protected:
+    void OnChange(size_t old_index) override;
+};
+
+class MI_ENCLOSURE_SOAK_MAX : public WiSpin {
+public:
+    MI_ENCLOSURE_SOAK_MAX();
+
+protected:
+    void OnClick() override;
+    void Loop() override;
+};
+
+class MI_ENCLOSURE_COOLDOWN_RATE : public WiSpin {
+public:
+    MI_ENCLOSURE_COOLDOWN_RATE();
+
+protected:
+    void OnClick() override;
+    void Loop() override;
 };

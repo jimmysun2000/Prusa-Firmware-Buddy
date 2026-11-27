@@ -13,6 +13,7 @@ enum class Unit : uint8_t {
     micrometer,
     milliamper,
     minute,
+    celsius_per_minute,
     _cnt,
 };
 
@@ -27,6 +28,7 @@ static constexpr EnumArray<Unit, const char *, Unit::_cnt> units_str {
     { Unit::micrometer, "um" },
     { Unit::milliamper, "mA" },
     { Unit::minute, "min" },
+    { Unit::celsius_per_minute, "\xC2\xB0\x43/min" },
 };
 
 namespace standard_print_format {

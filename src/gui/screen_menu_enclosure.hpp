@@ -25,6 +25,10 @@ using ScreenMenuEnclosure = ScreenMenu<GuiDefaults::MenuFooter, MI_RETURN
     ,
     MI_CHAMBER_FILTRATION
 #endif
+#if XL_ENCLOSURE_SUPPORT()
+    ,
+    MI_ENCLOSURE_BED_HEATING, MI_ENCLOSURE_SOAK_MAX, MI_ENCLOSURE_COOLDOWN_RATE
+#endif
 #if HAS_CHAMBER_API()
     ,
     MI_CHAMBER_TEMP
