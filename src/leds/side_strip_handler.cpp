@@ -244,7 +244,8 @@ void SideStripHandler::update() {
         status_inputs = *new_inputs;
         percent_done = new_percent_done;
     }
-    const bool tint_changed = update_tint(mode, time_ms);
+    const bool user_present = active_timestamp_ms != 0 && time_ms - active_timestamp_ms < active_timeout_ms;
+    const bool tint_changed = update_tint(mode, time_ms, user_present);
 #endif
 
     auto &controller = controller_instance();
@@ -340,8 +341,10 @@ void SideStripHandler::set_status_mode(SideStripStatusMode value) {
     status_mode = value;
 }
 
-bool SideStripHandler::update_tint(SideStripStatusMode mode, uint32_t time_ms) {
-    printer_status = side_strip_status::resolve(status_inputs);
+bool SideStripHandler::update_tint(SideStripStatusMode mode, uint32_t time_ms, bool user_present) {
+    side_strip_status::Inputs inputs = status_inputs;
+    inputs.user_present = user_present;
+    printer_status = side_strip_status::resolve(inputs);
     const auto new_tint = side_strip_status::tint(printer_status, mode, percent_done, time_ms);
     if (new_tint == tint) {
         return false;
@@ -403,21 +406,21 @@ ColorRGBW SideStripHandler::get_color_for_state(SideStripState state) {
     case SideStripState::off:
         return ColorRGBW();
     case SideStripState::dimmed:
-        return with_tint(base_color.clamp(dimmed_brightness), dimmed_brightness);
+        return with_tint(base_color.clamp(dimmed_brightness));
     case SideStripState::active:
-        return with_tint(base_color.clamp(max_brightness), max_brightness);
+        return with_tint(base_color.clamp(max_brightness));
     case SideStripState::custom_color:
         return ColorRGBW(custom_color->color);
     }
     return {};
 }
 
-ColorRGBW SideStripHandler::with_tint(ColorRGBW plain, [[maybe_unused]] uint8_t level) const {
+ColorRGBW SideStripHandler::with_tint(ColorRGBW plain) const {
 #if PRINTER_IS_PRUSA_XL()
     if (tint.has_value()) {
-        // Alerts stay at full brightness while dimmed; no tint is ever brighter than max_brightness
-        const uint8_t tint_level = side_strip_status::is_alert(printer_status) ? max_brightness : std::min(level, max_brightness);
-        return side_strip_status::apply_tint(plain, *tint, tint_level);
+        // The dimming sets how much white is mixed in; the status colours keep the full brightness
+        plain.w = side_strip_status::white_under(printer_status, plain.w);
+        return side_strip_status::apply_tint(plain, *tint, max_brightness);
     }
 #endif
     return plain;

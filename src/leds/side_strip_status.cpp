@@ -49,7 +49,7 @@ Status resolve(const Inputs &inputs) {
     if (inputs.error) {
         return Status::error;
     }
-    if (inputs.activity == Activity::untinted) {
+    if (inputs.activity == Activity::untinted || inputs.user_present) {
         return Status::untinted;
     }
     if (inputs.waits_for_owner) {

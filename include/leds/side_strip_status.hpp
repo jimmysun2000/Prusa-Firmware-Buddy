@@ -3,6 +3,7 @@
 #include <leds/side_strip_status_mode.hpp>
 #include <utils/led_color.hpp>
 
+#include <algorithm>
 #include <cstdint>
 #include <optional>
 
@@ -17,7 +18,7 @@ enum class Status : uint8_t {
     finished,
     warning,
     error,
-    /// States shown without a tint (power panic, power up)
+    /// States shown without a tint (power panic, power up, the owner at the printer)
     untinted,
     /// The printer works on its own outside a print: a wizard, a calibration, a filament load, G-code
     busy,
@@ -81,9 +82,17 @@ struct Look {
     uint16_t period_ms;
 };
 
-/// @returns whether the status keeps the full tint while the strip is dimmed
+/// @returns whether the status lowers the white so that its colour stands out
 constexpr bool is_alert(Status status) {
     return status == Status::warning || status == Status::error;
+}
+
+/// Highest white under an alert, 25 % as the brightness settings count it
+inline constexpr uint8_t alert_white = 25 * 255 / 100;
+
+/// @returns the white to show under the status, given the white @p plain_white the strip shows without status colours
+constexpr uint8_t white_under(Status status, uint8_t plain_white) {
+    return is_alert(status) ? std::min(plain_white, alert_white) : plain_white;
 }
 
 /// @returns whether a heater with a target is still warming up.
@@ -120,6 +129,8 @@ struct Inputs {
     Activity activity = Activity::idle;
     /// A red screen or another error
     bool error = false;
+    /// The owner has used the knob or the touch screen lately, the strip is a plain work light
+    bool user_present = false;
     /// The printer waits for the owner: a warning dialog, a paused print, a prompt
     bool waits_for_owner = false;
     /// The printer works on its own outside a print
@@ -134,7 +145,8 @@ struct Inputs {
 
 /// @returns the status to show, the highest of the ones that apply:
 /// error, warning, busy, heating, printing, cooling, finished, hot, idle.
-/// Power panic recovery and power up show no tint whatever else applies, except an error.
+/// Power panic recovery, power up and the owner at the printer show no tint whatever else applies,
+/// except an error.
 Status resolve(const Inputs &inputs);
 
 /// @returns transition time to use when the tint changes

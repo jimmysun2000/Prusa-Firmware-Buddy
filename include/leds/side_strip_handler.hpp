@@ -87,8 +87,8 @@ private:
 
     ColorRGBW get_color_for_state(SideStripState state);
 
-    /// @returns @p plain with the status tint applied (if there is one), scaled to @p level
-    ColorRGBW with_tint(ColorRGBW plain, uint8_t level) const;
+    /// @returns @p plain with the status tint applied, if there is one
+    ColorRGBW with_tint(ColorRGBW plain) const;
 
 #if PRINTER_IS_PRUSA_XL()
     static constexpr uint32_t status_read_interval_ms = 250;
@@ -99,7 +99,7 @@ private:
 
     /// Recomputes the status and the tint from the last read inputs; call with the mutex held.
     /// @returns whether the tint changed
-    bool update_tint(SideStripStatusMode mode, uint32_t time_ms);
+    bool update_tint(SideStripStatusMode mode, uint32_t time_ms, bool user_present);
 #endif
 
     struct CustomColorState {

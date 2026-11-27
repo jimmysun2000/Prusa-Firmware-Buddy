@@ -269,6 +269,7 @@ Status expected_status(const Inputs &in) {
     const std::pair<bool, Status> order[] = {
         { in.error, Status::error },
         { in.activity == Activity::untinted, Status::untinted },
+        { in.user_present, Status::untinted },
         { in.waits_for_owner, Status::warning },
         { in.busy, Status::busy },
         { in.heating, Status::heating },
@@ -290,7 +291,7 @@ Status expected_status(const Inputs &in) {
 TEST_CASE("side_strip_status: resolve priority") {
     // Every combination of the inputs
     for (const auto activity : all_activities) {
-        for (unsigned flags = 0; flags < (1u << 6); ++flags) {
+        for (unsigned flags = 0; flags < (1u << 7); ++flags) {
             Inputs in;
             in.activity = activity;
             in.error = flags & (1u << 0);
@@ -299,6 +300,7 @@ TEST_CASE("side_strip_status: resolve priority") {
             in.heating = flags & (1u << 3);
             in.bed_warm = flags & (1u << 4);
             in.hot = flags & (1u << 5);
+            in.user_present = flags & (1u << 6);
             CAPTURE(static_cast<int>(activity), flags);
             CHECK(resolve(in) == expected_status(in));
         }
@@ -370,6 +372,48 @@ TEST_CASE("side_strip_status: resolve cases") {
         in = make(activity);
         in.error = true;
         in.waits_for_owner = true;
+        in.user_present = true;
         CHECK(resolve(in) == Status::error);
     }
+
+    // The owner at the printer gets a plain work light whatever runs, except on an error
+    for (const auto activity : all_activities) {
+        in = make(activity);
+        in.user_present = true;
+        in.waits_for_owner = true;
+        in.busy = true;
+        in.heating = true;
+        in.bed_warm = true;
+        in.hot = true;
+        CHECK(resolve(in) == Status::untinted);
+        CHECK_FALSE(tint(resolve(in), SideStripStatusMode::status_and_progress, 50, 0).has_value());
+    }
+}
+
+TEST_CASE("side_strip_status: white under alerts") {
+    CHECK(alert_white == 63);
+
+    for (const auto status : { Status::warning, Status::error }) {
+        CHECK(white_under(status, 255) == alert_white);
+        CHECK(white_under(status, 102) == alert_white);
+        // Never brighter than without the status colours
+        CHECK(white_under(status, 40) == 40);
+        CHECK(white_under(status, 0) == 0);
+    }
+
+    for (const auto status : all_statuses) {
+        if (is_alert(status)) {
+            continue;
+        }
+        for (const uint8_t white : { 0, 40, 102, 255 }) {
+            CHECK(white_under(status, white) == white);
+        }
+    }
+
+    // The white under an alert is the same at both pulse phases, so only the RGB driver word changes
+    const ColorRGBW plain(0, 0, 0, white_under(Status::warning, 255));
+    const auto bright = apply_tint(plain, *tint(Status::warning, SideStripStatusMode::status, 0, 0), 255);
+    const auto dark = apply_tint(plain, *tint(Status::warning, SideStripStatusMode::status, 0, 500), 255);
+    CHECK(bright.w == dark.w);
+    CHECK_FALSE(same(bright, dark));
 }
