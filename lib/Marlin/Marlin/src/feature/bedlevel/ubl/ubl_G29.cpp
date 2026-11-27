@@ -67,6 +67,12 @@
     #include <marlin_stubs/feature/chamber/chamber_soak.hpp>
   #endif
 
+  #if PRINTER_IS_PRUSA_XL()
+    #include <marlin_server.hpp>
+    #include <marlin_stubs/skippable_gcode.hpp>
+    #include <optional>
+  #endif
+
   #if ENABLED(EXTENSIBLE_UI)
     #include "../../../lcd/extensible_ui/ui_api.h"
   #endif
@@ -738,6 +744,18 @@
 
     PrintStatusMessageGuard statusGuard;
 
+    #if PRINTER_IS_PRUSA_XL()
+      // Outside a print, a click on the wait screen ends the probing after the current point.
+      // A print keeps probing to the end.
+      std::optional<SkippableGCode::Guard> skippable;
+      if (!marlin_server::is_printing() && !skippable_gcode().is_running()) {
+        skippable.emplace();
+      }
+      const auto skip_requested = [&] { return skippable.has_value() && skippable->is_skip_requested(); };
+    #else
+      const auto skip_requested = [] { return false; };
+    #endif
+
     /**
       * Enumerate over points in the grid.
       * @param func Function to be called for each grid point.
@@ -750,7 +768,7 @@
         int xStep = is_odd_y_position ? GRID_MAJOR_STEP : -GRID_MAJOR_STEP;
 
         for (int x = x0; GRID_BORDER <= x && x < GRID_MAX_POINTS_X - GRID_BORDER; x += xStep) {
-          if(ubl.g29_probing_failed) {
+          if(ubl.g29_probing_failed || skip_requested()) {
             return;
           }
           
