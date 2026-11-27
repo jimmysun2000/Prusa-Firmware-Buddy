@@ -103,7 +103,33 @@ endif()
 
 # /web directory
 add_gzip_resource("web/favicon.ico" "/web/favicon.ico")
-add_gzip_resource("web/index.html" "/web/index.html")
+if(PRINTER STREQUAL "XL")
+  # The menu gets a link to the XL data page in a copy, so web/ stays as it comes from
+  # Prusa-Link-Web. If a new bundle changes the menu markup, the build stops here until the anchor
+  # is updated.
+  set(xl_menu_anchor "<div class=\"separator\"></div></ul>")
+  set(xl_menu_link "<li><a href=\"xl/index.html\">XL data</a></li>")
+  set(xl_web_index_html "${CMAKE_CURRENT_BINARY_DIR}/web_index_xl.html")
+  set(xl_menu_link_py
+      "import sys"
+      "source, target, anchor, link = sys.argv[1:]"
+      "html = open(source, encoding='utf-8', newline='').read()"
+      "count = html.count(anchor)"
+      "count == 1 or sys.exit(f'{source}: menu anchor {anchor} found {count} times, expected once')"
+      "open(target, 'w', encoding='utf-8', newline='').write(html.replace(anchor, link + anchor))"
+      )
+  add_custom_command(
+    OUTPUT "${xl_web_index_html}"
+    DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/web/index.html"
+    COMMAND
+      ${Python3_EXECUTABLE} "-c" "${xl_menu_link_py}" "${CMAKE_CURRENT_SOURCE_DIR}/web/index.html"
+      "${xl_web_index_html}" "${xl_menu_anchor}" "${xl_menu_link}"
+    VERBATIM
+    )
+  add_gzip_resource("${xl_web_index_html}" "/web/index.html")
+else()
+  add_gzip_resource("web/index.html" "/web/index.html")
+endif()
 add_gzip_resource("web/main.b41402ed4d6d019ca007.js" "/web/main.b41402ed4d6d019ca007.js")
 add_gzip_resource("web/main.71c989a4a290e5c10892.css" "/web/main.71c989a4a290e5c10892.css")
 if(PRINTER STREQUAL "XL")
