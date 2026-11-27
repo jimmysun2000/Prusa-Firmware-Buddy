@@ -59,6 +59,7 @@ if(PRINTER STREQUAL "XL")
   target_sources(WUI INTERFACE nhttp/mesh_renderer.cpp)
   target_sources(WUI INTERFACE nhttp/tools_data.cpp nhttp/tools_renderer.cpp)
   target_sources(WUI INTERFACE nhttp/bed_tiles_data.cpp nhttp/bed_tiles_renderer.cpp)
+  target_sources(WUI INTERFACE nhttp/tool_stats_data.cpp nhttp/tool_stats_renderer.cpp)
 endif()
 
 file(GLOB AUTOMATA_GENERATORS ${PROJECT_ROOT_DIR}/utils/gen-automata/*.py)

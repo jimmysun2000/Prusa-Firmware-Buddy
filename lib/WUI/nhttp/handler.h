@@ -57,6 +57,7 @@
     #include "mesh_renderer.h"
     #include "tools_renderer.h"
     #include "bed_tiles_renderer.h"
+    #include "tool_stats_renderer.h"
 #endif
 
 namespace nhttp {
@@ -160,6 +161,7 @@ namespace handler {
         SendJson<MeshRenderer>,
         SendJson<ToolsRenderer>,
         SendJson<BedTilesRenderer>,
+        SendJson<ToolStatsRenderer>,
 #endif
         printer::GcodeUpload,
         printer::GCodePreview,
