@@ -46,6 +46,33 @@ bool all_nozzles_at_target(const ToolOffsetsCalibrationData &involved) {
     }
     return true;
 }
+
+/// @returns the tool whose nozzle can be heated for cleaning before a retry: the failed tool, if
+/// the calibration heats it
+std::optional<PhysicalToolIndex> tool_to_clean(const pin_tool_offset::Failure &failure, const ToolOffsetsCalibrationData &request) {
+    if (failure.tool.has_value() && is_tool_involved(*failure.tool, request)) {
+        return failure.tool;
+    }
+    return std::nullopt;
+}
+
+/// @returns the rejected-result phase offering the actions that are possible after the failure
+PhasesSelftest rejected_phase(const pin_tool_offset::Failure &failure, const ToolOffsetsCalibrationData &request) {
+    if (!pin_tool_offset::can_rerun_after(failure.reason)) {
+        return PhasesSelftest::ToolOffsets_result_rejected;
+    }
+    if (!tool_to_clean(failure, request).has_value()) {
+        return PhasesSelftest::ToolOffsets_result_rejected_retry;
+    }
+    return PhasesSelftest::ToolOffsets_result_rejected_retry_cold;
+}
+
+/// @brief Set temperature to the nozzle that can be heated for cleaning before a retry
+void set_nozzle_to_clean_temp(int16_t temp, const pin_tool_offset::Failure &failure, const ToolOffsetsCalibrationData &request) {
+    if (const auto tool = tool_to_clean(failure, request); tool.has_value()) {
+        thermalManager.setTargetHotend(temp, *tool);
+    }
+}
 }; // namespace
 
 CSelftestPart_ToolOffsets::CSelftestPart_ToolOffsets(IPartHandler &state_machine, const ToolOffsetsConfig_t &config, SelftestToolOffsets_t &result)
@@ -191,7 +218,7 @@ LoopResult CSelftestPart_ToolOffsets::state_finish_calibration() {
 LoopResult CSelftestPart_ToolOffsets::state_review_result() {
     if (failure.has_value()) {
         result.failure = *failure;
-        IPartHandler::SetFsmPhase(pin_tool_offset::can_rerun_after(failure->reason) ? PhasesSelftest::ToolOffsets_result_rejected_retry : PhasesSelftest::ToolOffsets_result_rejected);
+        IPartHandler::SetFsmPhase(rejected_phase(*failure, config.request));
         return LoopResult::RunNext;
     }
 
@@ -208,6 +235,27 @@ LoopResult CSelftestPart_ToolOffsets::state_wait_review() {
     }
 
     const auto button_pressed = state_machine.GetButtonPressed();
+
+    if (IPartHandler::GetFsmPhase() == PhasesSelftest::ToolOffsets_result_rejected_retry_cold && button_pressed == Response::Heatup) {
+        IPartHandler::SetFsmPhase(PhasesSelftest::ToolOffsets_result_rejected_retry_hot);
+        set_nozzle_to_clean_temp(SelftestToolOffsets_t::TOOL_OFFSET_CLEANING_TEMPERATURE, *failure, config.request);
+        quick_cooling.set_active(false);
+        return LoopResult::RunCurrent;
+    }
+
+    if (IPartHandler::GetFsmPhase() == PhasesSelftest::ToolOffsets_result_rejected_retry_hot) {
+        if (button_pressed == Response::Cooldown) {
+            IPartHandler::SetFsmPhase(PhasesSelftest::ToolOffsets_result_rejected_retry_cold);
+            set_nozzle_to_clean_temp(SelftestToolOffsets_t::TOOL_CALIBRATION_TEMPERATURE, *failure, config.request);
+            quick_cooling.set_active(true);
+            return LoopResult::RunCurrent;
+        }
+        if (button_pressed == Response::Continue) {
+            // Go on from the calibration temperature, as without the heat-up
+            set_nozzle_to_clean_temp(SelftestToolOffsets_t::TOOL_CALIBRATION_TEMPERATURE, *failure, config.request);
+            quick_cooling.set_active(true);
+        }
+    }
 
     if (button_pressed == Response::Retry && pin_tool_offset::can_rerun_after(failure->reason)) {
         failure.reset();

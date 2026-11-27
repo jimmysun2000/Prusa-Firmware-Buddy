@@ -107,6 +107,8 @@ void SelftestFrameToolOffsets::change() {
         break;
 
     case PhasesSelftest::ToolOffsets_result_rejected_retry:
+    case PhasesSelftest::ToolOffsets_result_rejected_retry_cold:
+    case PhasesSelftest::ToolOffsets_result_rejected_retry_hot:
         show_rejected(data);
         show_retry_hint(data);
         break;
