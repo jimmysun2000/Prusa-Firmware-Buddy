@@ -269,10 +269,19 @@ constexpr screen_menu_virtual::Configuration maintenance_menu {
     .title = N_("MAINTENANCE"),
 };
 
+ScreenFactory::Creator maintenance_screen_creator() {
+    return ScreenFactory::ScreenWithArg<ScreenMenuVirtual>(&maintenance_menu);
+}
+
 } // namespace
 
 MI_MAINTENANCE::MI_MAINTENANCE()
-    : MI_SCREEN_BASE(ScreenFactory::ScreenWithArg<ScreenMenuVirtual>(&maintenance_menu), N_("Maintenance")) {
+    : MI_SCREEN_BASE(maintenance_screen_creator(), N_("Maintenance")) {
     // The home screen applies the defaults only while idle, this menu shows them anyway
     maintenance_reminders::apply_defaults();
+}
+
+void open_maintenance_screen() {
+    maintenance_reminders::apply_defaults();
+    Screens::Access()->Open(maintenance_screen_creator());
 }

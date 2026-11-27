@@ -249,6 +249,10 @@ MI_TOOLHEAD_SETTINGS::MI_TOOLHEAD_SETTINGS()
 }
 
 void MI_TOOLHEAD_SETTINGS::click(IWindowMenu &) {
+    run();
+}
+
+void MI_TOOLHEAD_SETTINGS::run() {
     ScreenFactory::Creator screen = ScreenFactory::Screen<ScreenToolheadDetail>;
 
 #if HAS_TOOLCHANGER()

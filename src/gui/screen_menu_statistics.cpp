@@ -218,6 +218,10 @@ static constexpr screen_menu_virtual::Configuration statistics_configuration {
 
 } // namespace
 
+ScreenFactory::Creator screen_statistics_creator() {
+    return ScreenFactory::ScreenWithArg<ScreenMenuVirtual>(&statistics_configuration);
+}
+
 MI_STATISTICS::MI_STATISTICS()
-    : MI_SCREEN_BASE(ScreenFactory::ScreenWithArg<ScreenMenuVirtual>(&statistics_configuration), N_("Print Statistics")) {
+    : MI_SCREEN_BASE(screen_statistics_creator(), N_("Print Statistics")) {
 }

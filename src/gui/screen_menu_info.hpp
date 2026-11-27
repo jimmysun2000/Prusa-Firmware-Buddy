@@ -13,6 +13,10 @@
     #include <screen_menu_maintenance.hpp>
 #endif
 
+#if HAS_TOOLCHANGER() && HAS_PER_TOOL_TEMPERATURES()
+using MI_TOOLS_OVERVIEW = MenuItemVirtualSubmenu<N_("Tools Overview"), MI_TOOL_OVERVIEW, PhysicalToolIndex::count, PhysicalToolIndex::from_raw>;
+#endif
+
 using ScreenMenuInfo__ = BasicScreenMenu<
     MI_STATISTICS,
 #if HAS_TOOLCHANGER() && !HAS_INDX()
@@ -21,7 +25,7 @@ using ScreenMenuInfo__ = BasicScreenMenu<
     MI_NETWORK_STATUS,
     MI_SENSOR_INFO,
 #if HAS_TOOLCHANGER() && HAS_PER_TOOL_TEMPERATURES()
-    MenuItemVirtualSubmenu<N_("Tools Overview"), MI_TOOL_OVERVIEW, PhysicalToolIndex::count, PhysicalToolIndex::from_raw>,
+    MI_TOOLS_OVERVIEW,
 #endif
 #if PRINTER_IS_PRUSA_XL()
     MI_BED_MESH,

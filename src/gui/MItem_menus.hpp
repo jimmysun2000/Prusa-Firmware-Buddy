@@ -254,6 +254,9 @@ class MI_TOOLHEAD_SETTINGS final : public IWindowMenuItem {
 public:
     MI_TOOLHEAD_SETTINGS();
     void click(IWindowMenu &) override;
+
+    /// Opens what a click opens: the list of the tools, or the settings of the only toolhead
+    static void run();
 };
 
 #if HAS_CHAMBER_FILTRATION_API()

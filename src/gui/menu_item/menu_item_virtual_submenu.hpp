@@ -20,7 +20,12 @@ public:
     }
 
     void click(IWindowMenu &) override {
-        Screens::Access()->Open(ScreenFactory::ScreenWithArg<ScreenMenuVirtual>(&menu_config));
+        Screens::Access()->Open(creator());
+    }
+
+    /// @returns a creator for the submenu screen, which a click opens
+    static ScreenFactory::Creator creator() {
+        return ScreenFactory::ScreenWithArg<ScreenMenuVirtual>(&menu_config);
     }
 
 protected:
