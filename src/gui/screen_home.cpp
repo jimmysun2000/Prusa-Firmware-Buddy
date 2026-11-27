@@ -281,13 +281,14 @@ screen_home_data_t::screen_home_data_t()
         { this, Rect16(), is_multiline::no }
     }
 #if PRINTER_IS_PRUSA_XL()
+    // Registered later, only if shown
     , w_shortcut_buttons {
-        { this, Rect16(), nullptr, [](window_t&) {} },
-        { this, Rect16(), nullptr, [](window_t&) {} }
+        { nullptr, Rect16(), nullptr, [](window_t&) {} },
+        { nullptr, Rect16(), nullptr, [](window_t&) {} }
     },
     w_shortcut_labels {
-        { this, Rect16(), is_multiline::no },
-        { this, Rect16(), is_multiline::no }
+        { nullptr, Rect16(), is_multiline::no },
+        { nullptr, Rect16(), is_multiline::no }
     }
 #endif
     {
@@ -418,16 +419,16 @@ void screen_home_data_t::setup_shortcuts() {
         }
     }
 
+    // The knob moves the focus in the order the windows are registered: each shown shortcut
+    // goes after the stock buttons of its row and before those of the rows below
     for (size_t slot = 0; slot < actions.size(); ++slot) {
         const home_shortcut::Action &action = *actions[slot];
         WindowMultiIconButton &button = w_shortcut_buttons[slot];
         window_text_t &label = w_shortcut_labels[slot];
 
         if (action.kind == home_shortcut::Kind::none) {
-            // A hidden window can still take touch and knob focus while it is enabled
+            // Not registered, so never drawn or touched; disabled, so a restored focus cannot land on it
             button.Disable();
-            button.Hide();
-            label.Hide();
             continue;
         }
 
@@ -439,6 +440,13 @@ void screen_home_data_t::setup_shortcuts() {
         label.SetAlignment(Align_t::Center());
         label.SetPadding({ 0, 0, 0, 0 });
         label.SetText(home_shortcut::label(action, shortcut_label_params[slot]));
+
+        RegisterSubWin(button);
+        RegisterSubWin(label);
+        for (size_t i = (slot + 1) * 3; i < button_count; ++i) {
+            UnregisterSubWin(w_buttons[i]);
+            RegisterSubWin(w_buttons[i]);
+        }
     }
 }
 #endif
@@ -633,7 +641,7 @@ void screen_home_data_t::InitState(screen_init_variant var) {
 
     size_t pos = *(var.GetPosition());
 #if PRINTER_IS_PRUSA_XL()
-    // Shortcuts come after the stock buttons; a shortcut set to None meanwhile does not take the focus
+    // The positions after the stock buttons are the shortcuts; one set to None meanwhile does not take the focus
     if (pos >= button_count && pos < button_count + home_shortcut::slot_count) {
         w_shortcut_buttons[pos - button_count].SetFocus();
         return;
