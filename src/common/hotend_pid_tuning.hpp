@@ -130,6 +130,7 @@ private:
 enum class TuningFailure : uint8_t {
     none,
     invalid_request, ///< The tool, target temperature or fan speed is not allowed
+    not_at_load_position, ///< The tool could not be picked and moved to the filament load position; the heater was not used
     timeout, ///< The oscillation was not recorded within RELAY_TIME_LIMIT_MS
     amplitude_too_small, ///< The swing is below MIN_PEAK_TO_PEAK
     cycles_disagree, ///< The cycles differ more in period or swing than accepted

@@ -1,9 +1,14 @@
 #include "selftest_hotend_pid.hpp"
 
 #include "i_selftest.hpp"
+#include <Marlin/src/gcode/gcode.h>
+#include <Marlin/src/module/motion.h>
+#include <Marlin/src/module/prusa/toolchanger.h>
 #include <Marlin/src/module/temperature.h>
+#include <Marlin/src/module/tool_change.h>
 #include <config_store/store_instance.hpp>
 #include <logging/log.hpp>
+#include <mapi/parking.hpp>
 
 LOG_COMPONENT_REF(Selftest);
 
@@ -68,6 +73,65 @@ LoopResult CSelftestPart_HotendPid::state_wait_confirm() {
         return LoopResult::RunCurrent;
     }
     return LoopResult::RunNext;
+}
+
+LoopResult CSelftestPart_HotendPid::state_announce_move() {
+    if (result.failure != TuningFailure::none) {
+        return LoopResult::RunNext;
+    }
+
+    // The moves block the selftest loop, so the phase is sent before they start
+    IPartHandler::SetFsmPhase(PhasesSelftest::HotendPid_moving_to_load);
+    return LoopResult::RunNext;
+}
+
+LoopResult CSelftestPart_HotendPid::state_move_to_load() {
+    if (result.failure != TuningFailure::none) {
+        return LoopResult::RunNext;
+    }
+
+    if (!move_to_load_position()) {
+        log_error(Selftest, "Hotend PID: tool %d not brought to the load position, tuning not started", config.request.tool.display_index());
+        result.failure = TuningFailure::not_at_load_position;
+        return LoopResult::RunNext;
+    }
+
+    // Without a toolchanger the only tool stays on the head
+    park_when_done = prusa_toolchanger.is_toolchanger_enabled();
+    log_info(Selftest, "Hotend PID: tool %d at the load position", config.request.tool.display_index());
+    return LoopResult::RunNext;
+}
+
+bool CSelftestPart_HotendPid::move_to_load_position() {
+    const PhysicalToolIndex tool = config.request.tool;
+    const mapi::ParkingPosition load_position = mapi::get_parking_position(mapi::ParkPosition::load);
+
+    // Lift before the tool change as the filament load does. Z is never homed here: the load
+    // position Z only raises, and an unhomed Z is raised by a homing move relative to where it is.
+    if (!mapi::park({ .z = load_position.z })) {
+        return false;
+    }
+
+    // The tool change homes X and Y only if it changes the tool, the move to the load position needs them anyway
+    if (!prusa_toolchanger.can_move_safely()
+        && !GcodeSuite::G28_no_parser(true, true, false, { .only_if_needed = true, .z_raise = 0, .precise = true })) {
+        return false;
+    }
+
+    // Parks another tool that is on the head
+    if (!prusa_toolchanger.tool_change(tool, tool_return_t::no_return, current_position.xyz(), tool_change_lift_t::no_lift, false)) {
+        return false;
+    }
+
+    if (!mapi::park(load_position)) {
+        return false;
+    }
+
+    if (!stdext::holds_value(PhysicalToolIndex::currently_selected(), tool)) {
+        return false;
+    }
+    // Without a toolchanger, the tool is fixed on the head
+    return !prusa_toolchanger.is_toolchanger_enabled() || prusa_toolchanger.getTool(tool).is_picked();
 }
 
 LoopResult CSelftestPart_HotendPid::state_start_relay() {
@@ -140,27 +204,57 @@ LoopResult CSelftestPart_HotendPid::state_wait_result() {
     const Response response = state_machine.GetButtonPressed();
 
     if (result.failure != TuningFailure::none) {
-        return response == Response::Continue ? LoopResult::Fail : LoopResult::RunCurrent;
+        return response == Response::Continue ? LoopResult::RunNext : LoopResult::RunCurrent;
     }
 
     switch (response) {
 
     case Response::Yes:
         if (!hotend_pid::is_valid(result.new_gains)) {
-            return LoopResult::Fail;
+            return LoopResult::RunNext;
         }
         config_store().hotend_pid_gains.set(result.tool, result.new_gains);
         config.heater->set_pid(hotend_pid::to_config<PID_t>(result.new_gains, PID_dT));
         log_info(Selftest, "Hotend PID: tool %d new gains stored", config.request.tool.display_index());
+        passed = true;
         return LoopResult::RunNext;
 
     case Response::No:
         log_info(Selftest, "Hotend PID: tool %d new gains discarded", config.request.tool.display_index());
+        passed = true;
         return LoopResult::RunNext;
 
     default:
         return LoopResult::RunCurrent;
     }
+}
+
+LoopResult CSelftestPart_HotendPid::state_announce_park() {
+    if (!park_when_done) {
+        return LoopResult::RunNext;
+    }
+
+    // The tool change blocks the selftest loop, so the phase is sent before it starts
+    IPartHandler::SetFsmPhase(PhasesSelftest::HotendPid_parking);
+    return LoopResult::RunNext;
+}
+
+LoopResult CSelftestPart_HotendPid::state_park() {
+    if (!park_when_done) {
+        return LoopResult::RunNext;
+    }
+
+    // No extra lift and no Z return: the load position is already high above the bed and any print on it
+    if (prusa_toolchanger.tool_change(NoTool {}, tool_return_t::no_return, current_position.xyz(), tool_change_lift_t::no_lift, false)) {
+        log_info(Selftest, "Hotend PID: tool %d parked", config.request.tool.display_index());
+    } else {
+        log_error(Selftest, "Hotend PID: parking tool %d failed", config.request.tool.display_index());
+    }
+    return LoopResult::RunNext;
+}
+
+LoopResult CSelftestPart_HotendPid::state_report_result() {
+    return passed ? LoopResult::RunNext : LoopResult::Fail;
 }
 
 void CSelftestPart_HotendPid::end_relay() {

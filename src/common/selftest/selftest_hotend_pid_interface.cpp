@@ -16,10 +16,15 @@ TestReturn phaseHotendPid(IPartHandler *&part, const HotendPidConfig_t &config) 
             static_result,
             &CSelftestPart_HotendPid::state_check_request,
             &CSelftestPart_HotendPid::state_wait_confirm,
+            &CSelftestPart_HotendPid::state_announce_move,
+            &CSelftestPart_HotendPid::state_move_to_load,
             &CSelftestPart_HotendPid::state_start_relay,
             &CSelftestPart_HotendPid::state_record,
             &CSelftestPart_HotendPid::state_evaluate,
-            &CSelftestPart_HotendPid::state_wait_result);
+            &CSelftestPart_HotendPid::state_wait_result,
+            &CSelftestPart_HotendPid::state_announce_park,
+            &CSelftestPart_HotendPid::state_park,
+            &CSelftestPart_HotendPid::state_report_result);
     }
 
     const bool in_progress = part->Loop();

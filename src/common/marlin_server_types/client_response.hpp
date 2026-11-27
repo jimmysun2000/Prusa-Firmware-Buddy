@@ -225,12 +225,14 @@ enum class PhasesSelftest : PhaseUnderlyingType {
 
     #if HAS_TOOLCHANGER() && !HAS_INDX()
     HotendPid_confirm_start, ///< Shows the tool, target temperature and fan speed of the tuning
+    HotendPid_moving_to_load, ///< Picking the tool and moving it to the filament load position
     HotendPid_heating, ///< Heating up with the heater switched fully on and off
     HotendPid_measuring, ///< Recording the temperature oscillation
     HotendPid_result_accepted, ///< Shows the old and new gains, asks whether to store the new ones
     HotendPid_result_rejected, ///< Nothing was stored, shows why
+    HotendPid_parking, ///< Parking the tool in its dock
     _first_HotendPid = HotendPid_confirm_start,
-    _last_HotendPid = HotendPid_result_rejected,
+    _last_HotendPid = HotendPid_parking,
 
     _last = _last_HotendPid,
     #else
@@ -657,10 +659,12 @@ inline constexpr EnumArray<PhasesSelftest, PhaseResponses, CountPhases<PhasesSel
         { PhasesSelftest::RevisePrinterStatus_ask_retry, { Response::Yes, Response::No } },
     #if HAS_TOOLCHANGER() && !HAS_INDX()
         { PhasesSelftest::HotendPid_confirm_start, { Response::Continue, Response::Abort } },
+        { PhasesSelftest::HotendPid_moving_to_load, {} },
         { PhasesSelftest::HotendPid_heating, { Response::Abort } },
         { PhasesSelftest::HotendPid_measuring, { Response::Abort } },
         { PhasesSelftest::HotendPid_result_accepted, { Response::Yes, Response::No } },
         { PhasesSelftest::HotendPid_result_rejected, { Response::Continue } },
+        { PhasesSelftest::HotendPid_parking, {} },
     #endif
 };
 

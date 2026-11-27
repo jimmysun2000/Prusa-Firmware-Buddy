@@ -42,10 +42,15 @@ void SelftestFrameHotendPid::change() {
     switch (phase_current) {
 
     case PhasesSelftest::HotendPid_confirm_start:
-        text_phase.SetText(_("Tuning tool %d with the print fan at %d%%. The heater switches fully on and off for up to %d minutes. New values are stored only after you confirm them. Target:")
-                               .formatted(text_phase_params, tool, (data.print_fan_pwm * 100 + 127) / 255, relay_time_limit_min));
+        text_phase.SetText(_("Tool %d will be picked and moved to the front. Its heater then switches fully on and off for up to %d min, print fan at %d%%. New values are stored only after you confirm. Target:")
+                               .formatted(text_phase_params, tool, relay_time_limit_min, (data.print_fan_pwm * 100 + 127) / 255));
         text_detail.SetText(string_view_utf8::MakeRAM(target_temp_text));
         text_detail.Show();
+        break;
+
+    case PhasesSelftest::HotendPid_moving_to_load:
+        text_phase.SetText(_("Picking tool %d and moving it to the front.").formatted(text_phase_params, tool));
+        text_detail.Hide();
         break;
 
     case PhasesSelftest::HotendPid_heating:
@@ -77,6 +82,11 @@ void SelftestFrameHotendPid::change() {
         show_rejected(data);
         break;
 
+    case PhasesSelftest::HotendPid_parking:
+        text_phase.SetText(_("Parking tool %d.").formatted(text_phase_params, tool));
+        text_detail.Hide();
+        break;
+
     default:
         text_phase.Hide();
         text_detail.Hide();
@@ -90,6 +100,9 @@ void SelftestFrameHotendPid::show_rejected(const SelftestHotendPid_t &data) {
     switch (data.failure) {
     case TuningFailure::invalid_request:
         text_phase.SetText(_("Tuning not started, the tool or the target temperature is not allowed."));
+        break;
+    case TuningFailure::not_at_load_position:
+        text_phase.SetText(_("Tuning not started, the tool could not be brought to the load position."));
         break;
     case TuningFailure::timeout:
         text_phase.SetText(_("Tuning stopped, the temperature swing was not recorded within %d minutes.").formatted(text_phase_params, relay_time_limit_min));
