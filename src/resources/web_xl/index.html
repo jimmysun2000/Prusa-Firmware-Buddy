@@ -33,6 +33,7 @@ a { color: var(--accent); }
 .spacer { flex: 1; }
 button { font: inherit; color: var(--text); background: var(--button); border: 1px solid var(--line); border-radius: 6px; padding: 4px 14px; cursor: pointer; }
 button:hover, button:focus-visible { border-color: var(--accent); }
+button:disabled { color: var(--muted); border-color: var(--line); cursor: default; }
 dl { display: grid; grid-template-columns: max-content 1fr; gap: 2px 16px; margin: 0; }
 dt { color: var(--muted); }
 dd { margin: 0; font-variant-numeric: tabular-nums; }
@@ -104,6 +105,8 @@ tr.active td:first-child { color: var(--accent); font-weight: 600; }
 <div class="legend-labels"><span id="legend-low">–</span><span class="muted">mm</span><span id="legend-high">–</span></div>
 <div class="actions">
 <button id="mesh-refresh" type="button">Refresh</button>
+<button id="mesh-csv" type="button" disabled>Download CSV</button>
+<button id="mesh-json" type="button" disabled>Download JSON</button>
 <a href="/api/v1/mesh" target="_blank" rel="noopener">Raw JSON</a>
 </div>
 </div>
@@ -275,6 +278,22 @@ function meshProbed(mesh, ix, iy) {
     return row ? row[ix] === 1 : false;
 }
 
+function probedCount(mesh) {
+    let probed = 0;
+    for (let iy = 0; iy < mesh.grid.y; iy++) {
+        for (let ix = 0; ix < mesh.grid.x; ix++) {
+            probed += meshProbed(mesh, ix, iy) ? 1 : 0;
+        }
+    }
+    return probed;
+}
+
+// Enough of the shape for drawing and saving, so that a broken answer counts as a failed request
+function isMesh(mesh) {
+    const size = n => Number.isInteger(n) && n > 0;
+    return Boolean(mesh && mesh.grid && size(mesh.grid.x) && size(mesh.grid.y) && mesh.min && mesh.max && mesh.major && Array.isArray(mesh.z));
+}
+
 // Same as bed_mesh_view::compute_stats() in the firmware
 function meshStats(mesh) {
     const nx = mesh.grid.x;
@@ -377,13 +396,7 @@ function drawMesh(mesh) {
     }
     meshView = { mesh, cell };
 
-    let probed = 0;
-    for (let iy = 0; iy < ny; iy++) {
-        for (let ix = 0; ix < nx; ix++) {
-            probed += meshProbed(mesh, ix, iy) ? 1 : 0;
-        }
-    }
-
+    const probed = probedCount(mesh);
     const hasStats = hasData && stats.count > 0;
     setText('mesh-state', MESH_STATES[mesh.state] || mesh.state);
     setText('mesh-min', hasStats ? signed(stats.min, 3, ' mm') : '–');
@@ -422,6 +435,121 @@ function showMeshPoint(event) {
         value = `Z ${signed(z, 3, ' mm')}${meshProbed(mesh, ix, iy) ? ', probed' : ''}`;
     }
     setText('mesh-point', `X ${fixed(x, 1)} mm, Y ${fixed(y, 1)} mm: ${value}`);
+}
+
+// Bed mesh downloads, made from the data already fetched
+
+// The only way text gets into a CSV file (RFC 4180). Only the page's own words are written as text, no
+// string from the printer, so the formula guard is a safety net.
+function csvCell(text) {
+    let cell = String(text);
+    // A spreadsheet takes text starting like this for a formula
+    if (/^[=+\-@\t\r]/.test(cell)) {
+        cell = `'${cell}`;
+    }
+    return /[",\r\n]/.test(cell) ? `"${cell.replace(/"/g, '""')}"` : cell;
+}
+
+// Empty without a value
+function csvNumber(value, digits) {
+    return isNumber(value) ? value.toFixed(digits) : '';
+}
+
+// Browser-local time as YYYY-MM-DD HH:MM:SS
+function localDateTime(date) {
+    const two = n => String(n).padStart(2, '0');
+    return `${date.getFullYear()}-${two(date.getMonth() + 1)}-${two(date.getDate())} ${two(date.getHours())}:${two(date.getMinutes())}:${two(date.getSeconds())}`;
+}
+
+// Browser-local time as YYYYMMDD-HHMMSS, for file names
+function fileStamp(date) {
+    return localDateTime(date).replace(/[-:]/g, '').replace(' ', '-');
+}
+
+function majorCount(n, border, step) {
+    let count = 0;
+    for (let i = 0; i < n; i++) {
+        count += isMajor(i, n, border, step) ? 1 : 0;
+    }
+    return count;
+}
+
+// "36 of 144": probed points of the points the probe can measure
+function probedText(mesh) {
+    const { border, step } = mesh.major;
+    return `${probedCount(mesh)} of ${majorCount(mesh.grid.x, border, step) * majorCount(mesh.grid.y, border, step)}`;
+}
+
+function stateText(state) {
+    return Object.prototype.hasOwnProperty.call(MESH_STATES, state) ? MESH_STATES[state] : 'Unknown';
+}
+
+const CSV_AXES = 'Rows: Y from the back of the bed (first row) to the front (last row). Columns: X from left to right.';
+
+// The head rows, then the heights and the probed marks. The grids look like the bed from above, front
+// left at the bottom left, as on the page and on the printer.
+function meshCsv(head, mesh) {
+    const nx = mesh.grid.x;
+    const ny = mesh.grid.y;
+    const header = [csvCell('Y \\ X [mm]')];
+    for (let ix = 0; ix < nx; ix++) {
+        header.push(csvNumber(pointPosition(mesh.min.x, mesh.max.x, ix, nx), 3));
+    }
+    const grid = (title, cell) => {
+        const rows = [[csvCell(title)], header];
+        for (let iy = ny - 1; iy >= 0; iy--) {
+            const row = [csvNumber(pointPosition(mesh.min.y, mesh.max.y, iy, ny), 3)];
+            for (let ix = 0; ix < nx; ix++) {
+                row.push(cell(ix, iy));
+            }
+            rows.push(row);
+        }
+        return rows;
+    };
+    const rows = [
+        [csvCell('XL bed mesh')],
+        ...head,
+        [],
+        ...grid(`Height [mm]. ${CSV_AXES}`, (ix, iy) => csvNumber(meshValue(mesh, ix, iy), 3)),
+        [],
+        ...grid('Probed: 1 = measured by the probe; 0 = filled in by the printer.', (ix, iy) => meshProbed(mesh, ix, iy) ? '1' : '0'),
+    ];
+    return rows.map(row => `${row.join(',')}\r\n`).join('');
+}
+
+function liveCsv(mesh, fetched) {
+    return meshCsv([
+        [csvCell('Source'), csvCell('Live mesh')],
+        [csvCell('Fetched'), csvCell(localDateTime(fetched))],
+        [csvCell('State'), csvCell(stateText(mesh.state))],
+        [csvCell('Probed points'), csvCell(probedText(mesh))],
+        [csvCell('Grid'), csvCell(`${mesh.grid.x} x ${mesh.grid.y} points`)],
+    ], mesh);
+}
+
+function downloadText(name, text, type) {
+    const link = element('a');
+    link.href = URL.createObjectURL(new Blob([text], { type }));
+    link.download = name;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    // Some browsers read the file only after click() has returned
+    setTimeout(() => URL.revokeObjectURL(link.href), 10000);
+}
+
+// The last /api/v1/mesh answer and the PC time it came
+let live = null;
+
+function renderLive(mesh) {
+    if (!isMesh(mesh)) {
+        throw new Error('unexpected answer');
+    }
+    drawMesh(mesh);
+    live = { mesh, fetched: new Date() };
+    const empty = mesh.state === 'none';
+    $('mesh-csv').disabled = empty;
+    $('mesh-json').disabled = empty;
 }
 
 // Tools
@@ -593,7 +721,7 @@ const sources = [
     { path: '/api/v1/tools', period: 5000, render: renderToolList },
     { path: '/api/v1/bed_tiles', period: 5000, render: renderBedTiles },
     { path: '/api/v1/enclosure', period: 10000, render: renderEnclosure },
-    { path: '/api/v1/mesh', period: 30000, render: drawMesh },
+    { path: '/api/v1/mesh', period: 30000, render: renderLive },
     { path: '/api/v1/tool_stats', period: 30000, render: renderToolStats },
 ];
 for (const source of sources) {
@@ -653,6 +781,14 @@ $('retry').addEventListener('click', () => {
 $('mesh-refresh').addEventListener('click', () => {
     sources.find(s => s.path === '/api/v1/mesh').due = 0;
     schedule(0);
+});
+
+$('mesh-csv').addEventListener('click', () => {
+    downloadText(`xl-mesh_live_${fileStamp(live.fetched)}.csv`, liveCsv(live.mesh, live.fetched), 'text/csv');
+});
+
+$('mesh-json').addEventListener('click', () => {
+    downloadText(`xl-mesh_live_${fileStamp(live.fetched)}.json`, JSON.stringify(live.mesh), 'application/json');
 });
 
 document.addEventListener('visibilitychange', () => {
