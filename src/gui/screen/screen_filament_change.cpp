@@ -19,6 +19,12 @@
 #include <option/has_extruder_fsensor.h>
 #include <bsod/bsod.h>
 
+#if PRINTER_IS_PRUSA_XL()
+    #include <config_store/constants.hpp>
+    #include <gui/event/knob_event.hpp>
+    #include <purge_speed.hpp>
+#endif
+
 namespace {
 
 static constexpr const char *txt_init = N_("Finishing buffered gcodes");
@@ -239,9 +245,10 @@ private:
     FooterLine footer;
 };
 
-class FrameProgress : public FrameBase {
+template <class Radio>
+class FrameProgressBase : public FrameBase {
 public:
-    FrameProgress(window_t *parent, Phase phase, const char *label_text)
+    FrameProgressBase(window_t *parent, Phase phase, const char *label_text)
         : FrameBase(parent)
         , title(parent, get_title_rect(parent->GetRect()), is_multiline::no, is_closed_on_click_t::no, {})
         , progress_bar(parent, get_progress_bar_rect(parent->GetRect()), COLOR_BRAND, GuiDefaults::EnableDialogBigLayout ? COLOR_DARK_GRAY : COLOR_GRAY, PROGRESS_BAR_CORNER_RADIUS)
@@ -302,8 +309,11 @@ private:
     WindowRoundedProgressBar progress_bar;
     window_numb_t progress_number;
     window_text_t label;
-    RadioButtonFSM radio;
 
+protected:
+    Radio radio;
+
+private:
     window_text_t filament_type_text;
     window_colored_rect filament_color_icon;
 
@@ -313,45 +323,93 @@ private:
     bool first_update_done = false;
 };
 
+using FrameProgress = FrameProgressBase<RadioButtonFSM>;
+
 #if PRINTER_IS_PRUSA_XL()
-/// Progress of a purge, with the length purged so far out of the total, for example "12 / 27 mm"
-class FramePurging : public FrameProgress {
+/// Button row of the purge screen. While it has a single button, a turn of the knob goes to on_knob,
+/// as it cannot move the selection anyway.
+class PurgeRadio : public RadioButtonFSM {
+public:
+    using RadioButtonFSM::RadioButtonFSM;
+
+    /// Gets the knob diff, returns whether it changed anything
+    stdext::inplace_function<bool(int), sizeof(void *)> on_knob;
+
+protected:
+    void windowEvent(window_t *sender, GUI_event_t event, void *param) override {
+        if (event == GUI_event_t::KNOB && GetBtnCount() <= 1 && on_knob) {
+            auto &ctx = *static_cast<GuiEventContext *>(param);
+            const bool changed = on_knob(ctx.event.value<gui_event::KnobEvent>().diff);
+            sound::play(changed ? SoundType::encoder_move : SoundType::blind_alert);
+            ctx.accept();
+            return;
+        }
+        RadioButtonFSM::windowEvent(sender, event, param);
+    }
+};
+
+/// Progress of a purge, with the length purged so far out of the total and the purge speed,
+/// for example "12 / 27 mm   4.5 mm/s". Turning the knob changes the purge speed.
+class FramePurging : public FrameProgressBase<PurgeRadio> {
 public:
     FramePurging(window_t *parent, Phase phase, const char *label_text)
-        : FrameProgress(parent, phase, label_text)
-        , lengths(parent, get_purge_lengths_rect(parent->GetRect()), is_multiline::no, is_closed_on_click_t::no, string_view_utf8::MakeRAM(lengths_text.data())) {
-        lengths.set_font(Font::normal);
-        lengths.SetAlignment(Align_t::Center());
-        lengths.set_visible(false);
+        : FrameProgressBase(parent, phase, label_text)
+        , numbers(parent, get_numbers_rect(parent->GetRect()), is_multiline::no, is_closed_on_click_t::no, string_view_utf8::MakeRAM(numbers_text.data())) {
+        numbers.set_font(Font::normal);
+        numbers.SetAlignment(Align_t::Center());
+        radio.on_knob = [this](int diff) { return adjust_speed(diff); };
+        show_numbers();
     }
 
     void update(fsm::PhaseData fsm_data) {
-        FrameProgress::update(fsm_data);
+        FrameProgressBase::update(fsm_data);
 
         // Once the purge move is over, its last lengths stay up until the phase changes
         const PurgeLengths::Code code = fsm::deserialize_data<FSMLoadUnloadData>(fsm_data).purge;
-        const auto purge = PurgeLengths::decode(code);
-        if (!purge || code == shown_code) {
-            return;
+        const PurgeLengths::Code lengths_code = PurgeLengths::decode(code) ? code : shown_lengths;
+        if (lengths_code != shown_lengths || speed() != shown_speed) {
+            shown_lengths = lengths_code;
+            show_numbers();
         }
-        shown_code = code;
-
-        snprintf(lengths_text.data(), lengths_text.size(), "%u / %u mm", unsigned(purge->purged), unsigned(purge->total));
-        lengths.set_visible(true);
-        // The text stays in the same buffer, so SetText would not redraw it
-        lengths.Invalidate();
     }
 
 private:
+    /// Purge speed in use [0.1 mm/s], as the purge applies it before the halving for flexible filament
+    static uint8_t speed() {
+        return std::clamp(purge_speed::in_use.load(), config_store_ns::purge_speed_min, config_store_ns::purge_speed_max);
+    }
+
+    bool adjust_speed(int knob_diff) {
+        const uint8_t new_speed = purge_speed::adjusted(purge_speed::in_use, knob_diff, config_store_ns::purge_speed_min, config_store_ns::purge_speed_max);
+        if (new_speed == speed()) {
+            return false;
+        }
+        purge_speed::in_use = new_speed;
+        show_numbers();
+        return true;
+    }
+
+    void show_numbers() {
+        shown_speed = speed();
+        if (const auto lengths = PurgeLengths::decode(shown_lengths)) {
+            snprintf(numbers_text.data(), numbers_text.size(), "%u / %u mm   %u.%u mm/s", unsigned(lengths->purged), unsigned(lengths->total), unsigned(shown_speed / 10), unsigned(shown_speed % 10));
+        } else {
+            snprintf(numbers_text.data(), numbers_text.size(), "%u.%u mm/s", unsigned(shown_speed / 10), unsigned(shown_speed % 10));
+        }
+        // The text stays in the same buffer, so SetText would not redraw it
+        numbers.Invalidate();
+    }
+
     /// Second line of the label
-    static Rect16 get_purge_lengths_rect(Rect16 parent_rect) {
+    static Rect16 get_numbers_rect(Rect16 parent_rect) {
         const Rect16 label_rect = get_label_rect(parent_rect);
         return Rect16(label_rect.Left(), label_rect.Top() + height(Font::special) + 2 * LABEL_TEXT_PAD, label_rect.Width(), height(Font::normal));
     }
 
-    std::array<char, sizeof("360 / 360 mm")> lengths_text {};
-    window_text_t lengths;
-    PurgeLengths::Code shown_code = PurgeLengths::no_purge;
+    std::array<char, sizeof("360 / 360 mm   8.0 mm/s")> numbers_text {};
+    window_text_t numbers;
+    PurgeLengths::Code shown_lengths = PurgeLengths::no_purge;
+    uint8_t shown_speed = 0;
 };
 #endif
 
