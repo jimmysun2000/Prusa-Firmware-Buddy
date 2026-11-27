@@ -14,6 +14,7 @@
 #include <marlin_client.hpp>
 #include <marlin_server.hpp>
 #include <common/marlin_vars.hpp>
+#include <cooling_fan_assist.hpp>
 #include <module/motion.h>
 #include <utils/string_builder.hpp>
 #include <utils/variant_utils.hpp>
@@ -190,7 +191,18 @@ private:
     int shown_temp = INT_MIN;
 };
 
+/// The print fan value the server applies to the picked tool
+struct PrintFanPort {
+    uint8_t get() const {
+        return marlin_vars().print_fan_speed.get();
+    }
+    void set(uint8_t pwm) const {
+        marlin_client::set_fan_speed(pwm);
+    }
+};
+
 /// Switches the heaters off and waits for the nozzle of \p tool to cool for jogging.
+/// The print fan helps while the tool is picked and has its previous value again on return.
 /// \returns false if aborted or a print started
 bool cool_down(PhysicalToolIndex tool) {
     for (auto t : PhysicalToolIndex::all()) {
@@ -202,6 +214,7 @@ bool cool_down(PhysicalToolIndex tool) {
     struct Cooling {
         PhysicalToolIndex tool;
         CoolingBox box {};
+        cooling_fan_assist::Guard<PrintFanPort> fan {};
         bool cold = false;
         bool closing = false;
     } cooling { .tool = tool };
@@ -209,6 +222,12 @@ bool cool_down(PhysicalToolIndex tool) {
     Screens::Access()->gui_loop_until_dialog_closed([&cooling] {
         const float temp = marlin_vars().hotend(cooling.tool).temp_nozzle.get();
         cooling.box.show_temp(static_cast<int>(std::lround(temp)));
+        // The fan value reaches only the picked tool
+        if (stdext::holds_value(PhysicalToolIndex::currently_selected(), cooling.tool)) {
+            cooling.fan.update(temp, marlin_vars().hotend(cooling.tool).target_nozzle.get(), cold_nozzle_max_temp);
+        } else {
+            cooling.fan.release();
+        }
         cooling.cold = temp <= cold_nozzle_max_temp;
         if ((cooling.cold || marlin_client::is_printing()) && !cooling.closing) {
             cooling.closing = true;
