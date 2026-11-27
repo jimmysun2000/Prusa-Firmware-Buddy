@@ -157,6 +157,11 @@ bool near_front_strip(cw::Point p) {
     return taps || park || purge;
 }
 
+/// The print clearance check knows nothing of a part left on the bed after a restart or Z homing
+bool confirm_bed_clear() {
+    return MsgBoxWarning(_("The bed will rise to the wiper. Remove any print from the bed first. Continue?"), Responses_YesNo, 1) == Response::Yes;
+}
+
 /// Asks before saving a point that looks misplaced. \returns whether to save.
 bool confirm_points(std::span<const cw::Point> points) {
     for (const cw::Point &p : points) {
@@ -273,10 +278,14 @@ ScreenMenuNozzleWiper::ScreenMenuNozzleWiper()
         go_to_waiting_point();
     };
     Item<MI_TEST_WIPE>().callback = [] {
-        marlin_client::gcode("G12 D");
+        if (confirm_bed_clear()) {
+            marlin_client::gcode("G12 D");
+        }
     };
     Item<MI_WIPE_NOW>().callback = [] {
-        marlin_client::gcode("G12");
+        if (confirm_bed_clear()) {
+            marlin_client::gcode("G12");
+        }
     };
 
     loop();
