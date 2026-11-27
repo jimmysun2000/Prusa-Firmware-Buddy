@@ -39,6 +39,13 @@ uint32_t interval(uint8_t item);
 /// from the current counters. Writes the config store if the value changed.
 void set_interval(uint8_t item, uint32_t interval);
 
+/// Gives every printer row with a default interval that default, once per row: when a firmware
+/// that has the row calls this for the first time, or after the settings were reset.
+/// Only rows that are Off then get it, their counting starts from the current counters.
+/// A row turned Off later stays Off; a row the user set keeps its interval and counting.
+/// Writes the config store if anything changed.
+void apply_defaults();
+
 /// @returns the usage since the last reset, in the setting unit (h, m, picks)
 uint32_t usage(const Slot &slot);
 
@@ -54,10 +61,10 @@ void format_name(StringBuilder &sb, const Slot &slot);
 /// Appends the usage against the interval, e.g. "812/2000 m", or "Off"
 void format_progress(StringBuilder &sb, const Slot &slot);
 
-/// Shows a blocking message box for each due reminder that was not postponed.
-/// DONE resets the counter, NOT NOW postpones it (RAM only) until the usage grows
-/// by another 10 % of the interval. A box closes without an answer when a print starts.
-/// Does nothing unless the printer is idle and no dialog is open.
+/// Applies the default intervals (apply_defaults), then shows a blocking message box for each due
+/// reminder that was not postponed. DONE resets the counter, NOT NOW postpones it (RAM only)
+/// until the usage grows by another 10 % of the interval. A box closes without an answer when a
+/// print starts. Does nothing unless the printer is idle and no dialog is open.
 /// @returns true if the check was done
 bool prompt_due_items();
 

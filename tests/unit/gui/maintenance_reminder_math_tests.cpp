@@ -88,3 +88,22 @@ TEST_CASE("maintenance_reminders::starts_counting") {
         CHECK_FALSE(starts_counting(0, 0));
     }
 }
+
+TEST_CASE("maintenance_reminders::first_row_to_default") {
+    SECTION("first start: every row") {
+        CHECK(first_row_to_default(0, 5) == 0);
+    }
+
+    SECTION("a row appended by a later firmware") {
+        CHECK(first_row_to_default(4, 5) == 4);
+    }
+
+    SECTION("all rows done") {
+        CHECK(first_row_to_default(5, 5) == 5);
+    }
+
+    SECTION("stored by a firmware with more rows") {
+        CHECK(first_row_to_default(7, 5) == 5);
+        CHECK(first_row_to_default(255, 5) == 5);
+    }
+}

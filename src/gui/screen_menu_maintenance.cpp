@@ -152,4 +152,6 @@ constexpr screen_menu_virtual::Configuration maintenance_menu {
 
 MI_MAINTENANCE::MI_MAINTENANCE()
     : MI_SCREEN_BASE(ScreenFactory::ScreenWithArg<ScreenMenuVirtual>(&maintenance_menu), N_("Maintenance")) {
+    // The home screen applies the defaults only while idle, this menu shows them anyway
+    maintenance_reminders::apply_defaults();
 }

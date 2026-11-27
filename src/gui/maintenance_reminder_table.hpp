@@ -3,6 +3,7 @@
 #include <tool_index.hpp>
 #include <i18n.h>
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -26,19 +27,28 @@ struct Item {
     const char *name;
     Metric metric;
     Scope scope;
+
+    /// Interval the row gets once, at the first start of a firmware that has the row; 0 = stays Off.
+    /// Printer rows only.
+    uint32_t default_interval;
 };
 
 /// The row index identifies the stored interval and the row order the stored baselines:
 /// append rows only, never reorder or remove them or change their scope.
-/// Intervals default to 0 (Off), so a new row never shows a reminder by itself.
+/// A default interval starts counting when it is applied, so a new row is never due by itself.
+/// The defaults of 300 h, 500 h and 700 h are the intervals of Prusa's XL maintenance article;
+/// the general inspection covers the belts, the fans and the tool changer.
 inline constexpr std::array items {
-    Item { N_("Belt check"), Metric::print_hours, Scope::printer },
-    Item { N_("Lubrication"), Metric::print_hours, Scope::printer },
-    Item { N_("Dock check"), Metric::tool_changes, Scope::printer },
-    Item { N_("Nozzle wear"), Metric::filament_m, Scope::per_tool },
+    Item { N_("General inspection"), Metric::print_hours, Scope::printer, 300 },
+    Item { N_("Z-axis lubrication"), Metric::print_hours, Scope::printer, 500 },
+    Item { N_("Dock check"), Metric::tool_changes, Scope::printer, 0 },
+    Item { N_("Nozzle wear"), Metric::filament_m, Scope::per_tool, 0 },
+    Item { N_("Electronics check"), Metric::print_hours, Scope::printer, 700 },
 };
 
 inline constexpr size_t item_count = items.size();
+
+static_assert(std::ranges::all_of(items, [](const Item &item) { return item.scope == Scope::printer || item.default_interval == 0; }));
 
 constexpr size_t slot_span(Scope scope) {
     return (scope == Scope::per_tool) ? PhysicalToolIndex::count : 1;

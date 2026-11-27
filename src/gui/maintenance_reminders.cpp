@@ -184,6 +184,24 @@ void set_interval(uint8_t item, uint32_t new_interval) {
     std::fill(postponed_until_counter.begin() + first_slot(item), postponed_until_counter.begin() + first_slot(item + 1), 0);
 }
 
+void apply_defaults() {
+    auto &store = config_store();
+    const size_t applied = store.maintenance_defaults_applied.get();
+    const size_t first_row = first_row_to_default(applied, item_count);
+    if (first_row == item_count) {
+        return;
+    }
+
+    auto transaction = store.get_backend().transaction_guard();
+    for (uint8_t row = static_cast<uint8_t>(first_row); row < item_count; ++row) {
+        const Item &item = items[row];
+        if (item.scope == Scope::printer && item.default_interval != 0 && interval(row) == 0) {
+            set_interval(row, item.default_interval);
+        }
+    }
+    store.maintenance_defaults_applied.set(static_cast<uint8_t>(item_count));
+}
+
 uint32_t usage(const Slot &slot) {
     return usage_in_counts(slot, counter(slot)) / metric_info(items[slot.item].metric).unit_size;
 }
@@ -219,6 +237,8 @@ bool prompt_due_items() {
     if (!is_idle_without_dialog()) {
         return false;
     }
+
+    apply_defaults();
 
     for_each_visible_slot([](const Slot &slot) {
         if (!is_idle_without_dialog()) {

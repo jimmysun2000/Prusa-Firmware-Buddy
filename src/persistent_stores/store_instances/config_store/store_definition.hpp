@@ -1092,6 +1092,8 @@ struct CurrentStore
     StoreItemArray<uint32_t, uint32_t { 0 }, ItemFlag::features, journal::hash("Maintenance Reminder Interval"), 16, maintenance_reminders::item_count> maintenance_interval;
     /// Odometer counter at the last maintenance reset, per reminder slot. Use maintenance_reminders.
     StoreItemArray<uint32_t, uint32_t { 0 }, ItemFlag::stats, journal::hash("Maintenance Reminder Baseline"), 32, maintenance_reminders::slot_count> maintenance_baseline;
+    /// Number of leading maintenance reminder table rows that got their default interval. Use maintenance_reminders.
+    StoreItem<uint8_t, 0, ItemFlag::features, journal::hash("Maintenance Defaults Applied")> maintenance_defaults_applied;
 #endif
 
 #if HAS_CUSTOM_NOZZLE_WIPER()

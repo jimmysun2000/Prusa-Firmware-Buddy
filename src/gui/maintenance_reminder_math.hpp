@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <limits>
 
@@ -34,6 +35,13 @@ constexpr uint32_t postponed_until(uint32_t counter, uint32_t interval, uint32_t
 /// @returns whether an interval change starts the counting anew (baseline = current counter): from Off to a value
 constexpr bool starts_counting(uint32_t old_interval, uint32_t new_interval) {
     return (old_interval == 0) && (new_interval != 0);
+}
+
+/// @param applied number of leading table rows that already got their default interval, as stored
+/// @returns the first row that still has to get its default interval; @p item_count if none
+constexpr size_t first_row_to_default(size_t applied, size_t item_count) {
+    // A firmware with more rows may have stored a higher number
+    return std::min(applied, item_count);
 }
 
 } // namespace maintenance_reminders
