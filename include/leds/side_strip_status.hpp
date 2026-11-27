@@ -94,17 +94,36 @@ struct Look {
     uint16_t period_ms;
 };
 
-/// @returns whether the status lowers the white so that its colour stands out
-constexpr bool is_alert(Status status) {
-    return status == Status::warning_dialog || status == Status::waiting || status == Status::error;
+/// @returns whether the status shows a colour; the others leave the strip a plain work light
+constexpr bool shows_color(Status status) {
+    switch (status) {
+    case Status::owner_present:
+    case Status::printing:
+    case Status::idle:
+        return false;
+    case Status::error:
+    case Status::recovering:
+    case Status::warning_dialog:
+    case Status::waiting:
+    case Status::busy:
+    case Status::print_heating:
+    case Status::preheating:
+    case Status::stopped:
+    case Status::finished_warm:
+    case Status::finished:
+    case Status::hot:
+        return true;
+    }
+    return false;
 }
 
-/// Highest white under an alert, 25 % as the brightness settings count it
-inline constexpr uint8_t alert_white = 25 * 255 / 100;
+/// Highest white under a status colour, 25 % as the brightness settings count it
+inline constexpr uint8_t color_white = 25 * 255 / 100;
 
-/// @returns the white to show under the status, given the white @p plain_white the strip shows without status colours
+/// @returns the white to show under the status, given the white @p plain_white the strip shows without status colours.
+/// Under a status colour the white is lowered so that the colour stands out.
 constexpr uint8_t white_under(Status status, uint8_t plain_white) {
-    return is_alert(status) ? std::min(plain_white, alert_white) : plain_white;
+    return shows_color(status) ? std::min(plain_white, color_white) : plain_white;
 }
 
 /// @returns whether a heater with a target is still warming up.

@@ -203,10 +203,12 @@ TEST_CASE("side_strip_status: apply_tint") {
     CHECK(same(apply_tint(ColorRGBW(0, 0, 0, 102), ColorRGBW(255, 150, 1), 102), ColorRGBW(102, 60, 0, 102)));
 }
 
-TEST_CASE("side_strip_status: alerts") {
+TEST_CASE("side_strip_status: shows colour") {
     for (const auto status : all_statuses) {
         CAPTURE(static_cast<int>(status));
-        CHECK(is_alert(status) == (status == Status::warning_dialog || status == Status::waiting || status == Status::error));
+        const bool plain = status == Status::owner_present || status == Status::printing || status == Status::idle;
+        CHECK(shows_color(status) == !plain);
+        CHECK(look(status, SideStripStatusMode::status).has_value() == shows_color(status));
     }
 }
 
@@ -453,30 +455,31 @@ TEST_CASE("side_strip_status: first layer") {
     CHECK(resolve(in) == Status::waiting);
 }
 
-TEST_CASE("side_strip_status: white under alerts") {
-    CHECK(alert_white == 63);
-
-    for (const auto status : { Status::warning_dialog, Status::waiting, Status::error }) {
-        CHECK(white_under(status, 255) == alert_white);
-        CHECK(white_under(status, 102) == alert_white);
-        // Never brighter than without the status colours
-        CHECK(white_under(status, 40) == 40);
-        CHECK(white_under(status, 0) == 0);
-    }
+TEST_CASE("side_strip_status: white under colours") {
+    CHECK(color_white == 63);
 
     for (const auto status : all_statuses) {
-        if (is_alert(status)) {
-            continue;
-        }
-        for (const uint8_t white : { 0, 40, 102, 255 }) {
-            CHECK(white_under(status, white) == white);
+        CAPTURE(static_cast<int>(status));
+        if (shows_color(status)) {
+            CHECK(white_under(status, 255) == color_white);
+            CHECK(white_under(status, 102) == color_white);
+            // Never brighter than without the status colours
+            CHECK(white_under(status, 40) == 40);
+            CHECK(white_under(status, 0) == 0);
+        } else {
+            for (const uint8_t white : { 0, 40, 102, 255 }) {
+                CHECK(white_under(status, white) == white);
+            }
         }
     }
 
-    // The white under an alert is the same at both pulse phases, so only the RGB driver word changes
-    const ColorRGBW plain(0, 0, 0, white_under(Status::waiting, 255));
-    const auto bright = apply_tint(plain, *tint(Status::waiting, SideStripStatusMode::status, 0), 255);
-    const auto dark = apply_tint(plain, *tint(Status::waiting, SideStripStatusMode::status, 500), 255);
-    CHECK(bright.w == dark.w);
-    CHECK_FALSE(same(bright, dark));
+    // The white under a pulse is the same at both phases, so only the RGB driver word changes
+    for (const auto status : { Status::waiting, Status::preheating }) {
+        CAPTURE(static_cast<int>(status));
+        const ColorRGBW plain(0, 0, 0, white_under(status, 255));
+        const auto bright = apply_tint(plain, *tint(status, SideStripStatusMode::status, 0), 255);
+        const auto dark = apply_tint(plain, *tint(status, SideStripStatusMode::status, pulse_period_ms(status) / 2), 255);
+        CHECK(bright.w == dark.w);
+        CHECK_FALSE(same(bright, dark));
+    }
 }
