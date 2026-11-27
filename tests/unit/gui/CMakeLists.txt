@@ -74,6 +74,11 @@ add_executable(user_macro_tests ${CMAKE_CURRENT_SOURCE_DIR}/user_macro_tests.cpp
 target_include_directories(user_macro_tests PUBLIC ${CMAKE_SOURCE_DIR}/src)
 add_catch_test(user_macro_tests)
 
+# home_shortcut_tests
+add_executable(home_shortcut_tests ${CMAKE_CURRENT_SOURCE_DIR}/home_shortcut_tests.cpp)
+target_include_directories(home_shortcut_tests PUBLIC ${CMAKE_SOURCE_DIR}/src)
+add_catch_test(home_shortcut_tests)
+
 add_subdirectory(lazyfilelist)
 add_subdirectory(jogwheel)
 add_subdirectory(window)

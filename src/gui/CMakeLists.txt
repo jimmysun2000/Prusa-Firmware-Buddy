@@ -223,5 +223,8 @@ if(HAS_BED_LEVEL_CORRECTION)
 endif()
 
 if(PRINTER STREQUAL "XL")
-  target_sources(firmware PRIVATE screen_menu_macros.cpp user_macro.cpp)
+  target_sources(
+    firmware PRIVATE home_shortcut.cpp screen_menu_home_shortcuts.cpp screen_menu_macros.cpp
+                     user_macro.cpp
+    )
 endif()

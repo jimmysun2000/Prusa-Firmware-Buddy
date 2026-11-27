@@ -67,6 +67,7 @@ bool file_exists(uint8_t n);
 /// Runs macro @p n (1 to count) if the printer is idle and the file passes the checks.
 /// Otherwise shows a message that says why it does not run.
 /// Once started, a macro cannot be stopped.
-void run(uint8_t n);
+/// @param confirm ask Yes/No before it starts, with No focused
+void run(uint8_t n, bool confirm = false);
 
 } // namespace user_macro

@@ -68,7 +68,7 @@ bool file_exists(uint8_t n) {
     return access(file_path(n).data(), R_OK) == 0;
 }
 
-void run(uint8_t n) {
+void run(uint8_t n, bool confirm) {
     if (!marlin_client::is_idle() || marlin_vars().is_processing.get()) {
         show_busy();
         return;
@@ -90,6 +90,10 @@ void run(uint8_t n) {
         return;
     case Fault::line_too_long:
         MsgBoxWarning(_("The macro file %s has a line that is too long. A line can have at most %u characters.").formatted(params, path.data(), static_cast<unsigned>(max_line_length)), Responses_Ok);
+        return;
+    }
+
+    if (confirm && MsgBoxQuestion(_("Run Macro %u?").formatted(params, static_cast<unsigned>(n)), Responses_YesNo, 1) != Response::Yes) {
         return;
     }
 

@@ -134,6 +134,63 @@ static constexpr Rect16 buttonTextRect(size_t col, size_t row) {
         buttonTextHeight);
 }
 
+#if PRINTER_IS_PRUSA_XL()
+namespace {
+
+// With shortcuts, a fourth column fits by narrowing the gaps between the columns
+constexpr size_t shortcut_layout_columns = 4;
+constexpr size_t shortcut_layout_x_spacing = 30;
+constexpr size_t shortcut_layout_text_spacing = GuiDefaults::ButtonIconSize + shortcut_layout_x_spacing - buttonTextWidth;
+constexpr size_t shortcut_layout_left_offset = (GuiDefaults::ScreenWidth - shortcut_layout_columns * GuiDefaults::ButtonIconSize - (shortcut_layout_columns - 1) * shortcut_layout_x_spacing) / 2;
+constexpr size_t shortcut_layout_texts_left_offset = (GuiDefaults::ScreenWidth - shortcut_layout_columns * buttonTextWidth - (shortcut_layout_columns - 1) * shortcut_layout_text_spacing) / 2;
+
+constexpr Rect16 shortcut_layout_button_rect(size_t col, size_t row) {
+    return Rect16(
+        shortcut_layout_left_offset + (shortcut_layout_x_spacing + GuiDefaults::ButtonIconSize) * col,
+        buttonTopOffset + (GuiDefaults::ButtonIconVerticalSpacing + GuiDefaults::ButtonIconSize) * row,
+        GuiDefaults::ButtonIconSize,
+        GuiDefaults::ButtonIconSize);
+}
+
+constexpr Rect16 shortcut_layout_text_rect(size_t col, size_t row) {
+    return Rect16(
+        shortcut_layout_texts_left_offset + (shortcut_layout_x_spacing + GuiDefaults::ButtonIconSize) * col,
+        buttonTextTopOffset + (GuiDefaults::ButtonIconVerticalSpacing + GuiDefaults::ButtonIconSize) * row,
+        buttonTextWidth,
+        buttonTextHeight);
+}
+
+constexpr WindowMultiIconButton::Pngs shortcut_icon_home GEN_ICON_NAMES(home);
+// The XL packs no disabled variant of this one; the shortcuts are never shadowed
+constexpr WindowMultiIconButton::Pngs shortcut_icon_mapping { img::mapping_80x80, img::mapping_80x80_focused, img::mapping_80x80 };
+constexpr WindowMultiIconButton::Pngs shortcut_icon_calibrate GEN_ICON_NAMES(calibrate);
+constexpr WindowMultiIconButton::Pngs shortcut_icon_stop GEN_ICON_NAMES(stop);
+constexpr WindowMultiIconButton::Pngs shortcut_icon_preheat GEN_ICON_NAMES(preheat);
+constexpr WindowMultiIconButton::Pngs shortcut_icon_resume GEN_ICON_NAMES(resume);
+
+const WindowMultiIconButton::Pngs &shortcut_icon(home_shortcut::Kind kind) {
+    using Kind = home_shortcut::Kind;
+    switch (kind) {
+    case Kind::none:
+    case Kind::auto_home:
+        return shortcut_icon_home;
+    case Kind::pick_park:
+        return shortcut_icon_mapping;
+    case Kind::move_axis:
+        return shortcut_icon_calibrate;
+    case Kind::motors_off:
+        return shortcut_icon_stop;
+    case Kind::wipe_nozzle:
+        return shortcut_icon_preheat;
+    case Kind::macro:
+        return shortcut_icon_resume;
+    }
+    return shortcut_icon_home;
+}
+
+} // namespace
+#endif
+
 const char *labels[] = {
     N_("Print"),
     N_("Preheat"),
@@ -222,7 +279,18 @@ screen_home_data_t::screen_home_data_t()
         { this, Rect16(), is_multiline::no },
         { this, Rect16(), is_multiline::no },
         { this, Rect16(), is_multiline::no }
-    } {
+    }
+#if PRINTER_IS_PRUSA_XL()
+    , w_shortcut_buttons {
+        { this, Rect16(), nullptr, [](window_t&) {} },
+        { this, Rect16(), nullptr, [](window_t&) {} }
+    },
+    w_shortcut_labels {
+        { this, Rect16(), is_multiline::no },
+        { this, Rect16(), is_multiline::no }
+    }
+#endif
+    {
     // clang-format on
 
     EnableLongHoldScreenAction();
@@ -267,6 +335,10 @@ screen_home_data_t::screen_home_data_t()
             w_labels[i].SetText(_(labels[i]));
         }
     }
+
+#if PRINTER_IS_PRUSA_XL()
+    setup_shortcuts();
+#endif
 
     filamentBtnSetState();
 
@@ -329,6 +401,47 @@ void screen_home_data_t::filamentBtnSetState() {
     }
 #endif
 }
+
+#if PRINTER_IS_PRUSA_XL()
+void screen_home_data_t::setup_shortcuts() {
+    std::array<const home_shortcut::Action *, home_shortcut::slot_count> actions;
+    bool any_shown = false;
+    for (size_t slot = 0; slot < actions.size(); ++slot) {
+        actions[slot] = &home_shortcut::find(config_store().home_shortcuts.get(slot));
+        any_shown = any_shown || actions[slot]->kind != home_shortcut::Kind::none;
+    }
+
+    if (any_shown) {
+        for (size_t i = 0; i < button_count; ++i) {
+            w_buttons[i].SetRect(shortcut_layout_button_rect(i % 3, i / 3));
+            w_labels[i].SetRect(shortcut_layout_text_rect(i % 3, i / 3));
+        }
+    }
+
+    for (size_t slot = 0; slot < actions.size(); ++slot) {
+        const home_shortcut::Action &action = *actions[slot];
+        WindowMultiIconButton &button = w_shortcut_buttons[slot];
+        window_text_t &label = w_shortcut_labels[slot];
+
+        if (action.kind == home_shortcut::Kind::none) {
+            // A hidden window can still take touch and knob focus while it is enabled
+            button.Disable();
+            button.Hide();
+            label.Hide();
+            continue;
+        }
+
+        button.SetRect(shortcut_layout_button_rect(shortcut_layout_columns - 1, slot));
+        button.SetRes(&shortcut_icon(action.kind));
+        button.SetAction([id = action.id](window_t &) { home_shortcut::run(id); });
+        label.SetRect(shortcut_layout_text_rect(shortcut_layout_columns - 1, slot));
+        label.set_font(Font::small);
+        label.SetAlignment(Align_t::Center());
+        label.SetPadding({ 0, 0, 0, 0 });
+        label.SetText(home_shortcut::label(action, shortcut_label_params[slot]));
+    }
+}
+#endif
 
 namespace {
 struct Config {
@@ -519,6 +632,13 @@ void screen_home_data_t::InitState(screen_init_variant var) {
     }
 
     size_t pos = *(var.GetPosition());
+#if PRINTER_IS_PRUSA_XL()
+    // Shortcuts come after the stock buttons; a shortcut set to None meanwhile does not take the focus
+    if (pos >= button_count && pos < button_count + home_shortcut::slot_count) {
+        w_shortcut_buttons[pos - button_count].SetFocus();
+        return;
+    }
+#endif
     if (pos >= button_count) {
         return;
     }
@@ -534,5 +654,13 @@ screen_init_variant screen_home_data_t::GetCurrentState() const {
             return ret;
         }
     }
+#if PRINTER_IS_PRUSA_XL()
+    for (size_t slot = 0; slot < home_shortcut::slot_count; ++slot) {
+        if (w_shortcut_buttons[slot].IsFocused()) {
+            ret.SetPosition(button_count + slot);
+            return ret;
+        }
+    }
+#endif
     return ret;
 }

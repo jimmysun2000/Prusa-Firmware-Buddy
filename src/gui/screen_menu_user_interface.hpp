@@ -9,6 +9,10 @@
 
 #include <option/has_tool_mapping.h>
 
+#if PRINTER_IS_PRUSA_XL()
+    #include <screen_menu_home_shortcuts.hpp>
+#endif
+
 #include <option/has_touch.h>
 #if HAS_TOUCH()
     #include "MItem_touch.hpp"
@@ -16,6 +20,9 @@
 
 using ScreenMenuUserInterface__ = BasicScreenMenu<
     MI_FOOTER_SETTINGS,
+#if PRINTER_IS_PRUSA_XL()
+    MI_HOME_SHORTCUTS,
+#endif
     MI_SOUND_MODE,
     MI_SORT_FILES,
     MI_PRINT_PROGRESS_TIME,

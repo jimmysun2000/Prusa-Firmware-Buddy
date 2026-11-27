@@ -1128,6 +1128,11 @@ struct CurrentStore
     StoreItemArray<FilamentTypeParameters_EEPROM7, FilamentTypeParameters_EEPROM7 {}, ItemFlag::printer_state, journal::hash("Adhoc Filament Parameters 7d"), 16, adhoc_filament_type_count> adhoc_filament_parameters_7;
 #endif
 
+#if PRINTER_IS_PRUSA_XL()
+    /// Action ID of each home screen shortcut, see home_shortcut::actions
+    StoreItemArray<uint8_t, uint8_t { 0 }, ItemFlag::user_interface, journal::hash("Home Shortcut"), 8, 2> home_shortcuts;
+#endif
+
 private:
     void perform_config_migrations();
 };

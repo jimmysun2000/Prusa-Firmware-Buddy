@@ -11,6 +11,7 @@
 #include <option/has_nfc.h>
 #include <option/has_toolchanger.h>
 #include <option/has_indx.h>
+#include <printers.h>
 
 #if HAS_MMU2()
     #include "../../lib/Marlin/Marlin/src/feature/prusa/MMU2/mmu2_state.h"
@@ -19,6 +20,10 @@
 #if HAS_NFC()
     #include <nfc.hpp>
     #include <optional>
+#endif
+
+#if PRINTER_IS_PRUSA_XL()
+    #include "home_shortcut.hpp"
 #endif
 
 class screen_home_data_t : public screen_t {
@@ -53,6 +58,12 @@ private:
     WindowMultiIconButton w_buttons[button_count];
     window_text_t w_labels[button_count];
 
+#if PRINTER_IS_PRUSA_XL()
+    WindowMultiIconButton w_shortcut_buttons[home_shortcut::slot_count];
+    window_text_t w_shortcut_labels[home_shortcut::slot_count];
+    std::array<StringViewUtf8Parameters<4>, home_shortcut::slot_count> shortcut_label_params;
+#endif
+
 #if HAS_NFC()
     std::optional<nfc::SharedEnabler> nfc_enable { std::in_place };
     void update_nfc_state();
@@ -73,6 +84,11 @@ private:
     void printBtnEna();
     void printBtnDis();
     void filamentBtnSetState();
+
+#if PRINTER_IS_PRUSA_XL()
+    /// Shows the configured shortcuts in a fourth column; the stock layout stays if all are None
+    void setup_shortcuts();
+#endif
 
     void handle_wifi_credentials();
 };
