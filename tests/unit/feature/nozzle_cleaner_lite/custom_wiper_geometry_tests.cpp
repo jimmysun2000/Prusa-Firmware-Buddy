@@ -22,7 +22,7 @@ constexpr TravelLimits xl_limits {
     .z_min = -1.45f,
 };
 
-constexpr std::array<Offset, 1> no_offset { Offset {} };
+constexpr std::array<ToolOffset, 1> no_offset { ToolOffset {} };
 
 /// A front wiper running along X, the way the owner's is mounted
 Geometry front_wiper() {
@@ -153,66 +153,72 @@ TEST_CASE("custom wiper print clearance") {
 
 TEST_CASE("custom wiper validation") {
     SECTION("a taught front wiper is valid") {
-        CHECK(validate(front_wiper(), 3, no_offset, xl_limits) == Fault::none);
+        CHECK(validate(front_wiper(), 3, no_offset, xl_limits).ok());
     }
 
     SECTION("both points have to be taught") {
         Geometry g = front_wiper();
         g.taught = Geometry::taught_start;
-        CHECK(validate(g, 3, no_offset, xl_limits) == Fault::not_taught);
+        CHECK(validate(g, 3, no_offset, xl_limits).fault == Fault::not_taught);
         g.taught = Geometry::taught_end;
-        CHECK(validate(g, 3, no_offset, xl_limits) == Fault::not_taught);
+        CHECK(validate(g, 3, no_offset, xl_limits).fault == Fault::not_taught);
         g.taught = 0;
-        CHECK(validate(g, 3, no_offset, xl_limits) == Fault::not_taught);
+        CHECK(validate(g, 3, no_offset, xl_limits).fault == Fault::not_taught);
     }
 
     SECTION("stroke length") {
         Geometry g = front_wiper();
         g.end_x = g.start_x + 9.9f;
-        CHECK(validate(g, 3, no_offset, xl_limits) == Fault::stroke_length);
+        CHECK(validate(g, 3, no_offset, xl_limits).fault == Fault::stroke_length);
         g.end_x = g.start_x + 10.0f;
-        CHECK(validate(g, 3, no_offset, xl_limits) == Fault::none);
+        CHECK(validate(g, 3, no_offset, xl_limits).ok());
         g.end_x = g.start_x + 100.0f;
-        CHECK(validate(g, 3, no_offset, xl_limits) == Fault::none);
+        CHECK(validate(g, 3, no_offset, xl_limits).ok());
         g.end_x = g.start_x + 100.5f;
-        CHECK(validate(g, 3, no_offset, xl_limits) == Fault::stroke_length);
+        CHECK(validate(g, 3, no_offset, xl_limits).fault == Fault::stroke_length);
         g.end_x = g.start_x;
-        CHECK(validate(g, 3, no_offset, xl_limits) == Fault::stroke_length);
+        CHECK(validate(g, 3, no_offset, xl_limits).fault == Fault::stroke_length);
     }
 
     SECTION("width") {
         Geometry g = front_wiper();
         g.start_y = g.end_y = 10.0f;
-        CHECK(validate(g, 0, no_offset, xl_limits) == Fault::none);
-        CHECK(validate(g, 8, no_offset, xl_limits) == Fault::none);
-        CHECK(validate(g, 8.5f, no_offset, xl_limits) == Fault::width);
-        CHECK(validate(g, -1, no_offset, xl_limits) == Fault::width);
-        CHECK(validate(g, std::numeric_limits<float>::quiet_NaN(), no_offset, xl_limits) == Fault::width);
+        CHECK(validate(g, 0, no_offset, xl_limits).ok());
+        CHECK(validate(g, 8, no_offset, xl_limits).ok());
+        CHECK(validate(g, 8.5f, no_offset, xl_limits).fault == Fault::width);
+        CHECK(validate(g, -1, no_offset, xl_limits).fault == Fault::width);
+        CHECK(validate(g, std::numeric_limits<float>::quiet_NaN(), no_offset, xl_limits).fault == Fault::width);
         // A wider band reaches further: at Y -5 an 8 mm band ends at Y -9
-        CHECK(validate(front_wiper(), 8, no_offset, xl_limits) == Fault::travel_xy);
+        CHECK(validate(front_wiper(), 8, no_offset, xl_limits).fault == Fault::travel_xy);
     }
 
     SECTION("wipe height") {
         Geometry g = front_wiper();
         g.wipe_z = 0.29f;
-        CHECK(validate(g, 3, no_offset, xl_limits) == Fault::wipe_z);
+        CHECK(validate(g, 3, no_offset, xl_limits).fault == Fault::wipe_z);
         g.wipe_z = wipe_z_min;
-        CHECK(validate(g, 3, no_offset, xl_limits) == Fault::none);
+        CHECK(validate(g, 3, no_offset, xl_limits).ok());
         g.wipe_z = 50.0f;
-        CHECK(validate(g, 3, no_offset, xl_limits) == Fault::none);
+        CHECK(validate(g, 3, no_offset, xl_limits).ok());
         g.wipe_z = 50.1f;
-        CHECK(validate(g, 3, no_offset, xl_limits) == Fault::wipe_z);
+        CHECK(validate(g, 3, no_offset, xl_limits).fault == Fault::wipe_z);
         g.wipe_z = std::numeric_limits<float>::quiet_NaN();
-        CHECK(validate(g, 3, no_offset, xl_limits) == Fault::wipe_z);
+        CHECK(validate(g, 3, no_offset, xl_limits).fault == Fault::wipe_z);
     }
 
     SECTION("the band edges have to stay inside the travel") {
         Geometry g = front_wiper();
         // Band edge at -7.0 - 1.5 = -8.5 is inside -8.6, at -8.7 it is not
         g.start_y = g.end_y = -7.0f;
-        CHECK(validate(g, 3, no_offset, xl_limits) == Fault::none);
+        CHECK(validate(g, 3, no_offset, xl_limits).ok());
         g.start_y = g.end_y = -7.2f;
-        CHECK(validate(g, 3, no_offset, xl_limits) == Fault::travel_xy);
+        const Problem problem = validate(g, 3, no_offset, xl_limits);
+        CHECK(problem.fault == Fault::travel_xy);
+        CHECK(problem.spot == Spot::stroke_start);
+        CHECK(problem.axis == Axis::y);
+        CHECK_FALSE(problem.beyond_max);
+        CHECK(problem.by == Approx(0.1));
+        CHECK(problem.limit == Approx(-8.6));
     }
 
     SECTION("the staging point has to stay inside the travel") {
@@ -220,31 +226,80 @@ TEST_CASE("custom wiper validation") {
         g.start_x = 2.0f;
         g.end_x = 40.0f;
         // Staging at X -8 is outside -7.6
-        CHECK(validate(g, 3, no_offset, xl_limits) == Fault::travel_xy);
+        const Problem problem = validate(g, 3, no_offset, xl_limits);
+        CHECK(problem.fault == Fault::travel_xy);
+        CHECK(problem.spot == Spot::waiting_point);
+        CHECK(problem.axis == Axis::x);
+        CHECK_FALSE(problem.beyond_max);
+        CHECK(problem.by == Approx(0.4));
         g.start_x = 3.0f;
-        CHECK(validate(g, 3, no_offset, xl_limits) == Fault::none);
+        CHECK(validate(g, 3, no_offset, xl_limits).ok());
+    }
+
+    SECTION("a stroke end beyond the right limit") {
+        Geometry g = front_wiper();
+        g.start_x = 300.0f;
+        g.end_x = 361.0f;
+        const Problem problem = validate(g, 3, no_offset, xl_limits);
+        CHECK(problem.fault == Fault::travel_xy);
+        CHECK(problem.spot == Spot::stroke_end);
+        CHECK(problem.axis == Axis::x);
+        CHECK(problem.beyond_max);
+        CHECK(problem.by == Approx(0.4).margin(1e-4));
+        CHECK(problem.limit == Approx(360.6));
     }
 
     SECTION("every tool's machine frame has to fit") {
         Geometry g = front_wiper();
         g.start_y = g.end_y = -7.0f;
-        const std::array<Offset, 2> offsets { Offset {}, Offset { .y = 0.2f } };
+        const std::array<ToolOffset, 2> offsets { ToolOffset { .tool = 0 }, ToolOffset { .tool = 3, .offset = { .y = 0.2f } } };
         // The second tool needs machine Y 0.2 lower than the tip, which is outside
-        CHECK(validate(g, 3, offsets, xl_limits) == Fault::travel_xy);
+        const Problem problem = validate(g, 3, offsets, xl_limits);
+        CHECK(problem.fault == Fault::travel_xy);
+        CHECK(problem.tool == 3);
+        CHECK(problem.by == Approx(0.1));
+    }
+
+    SECTION("the owner's wiper at the front limit fails with the first tool") {
+        const Geometry g {
+            .start_x = 155.0f,
+            .start_y = -9.0f,
+            .end_x = 205.0f,
+            .end_y = -9.0f,
+            .wipe_z = 1.0f,
+            .taught = Geometry::taught_start | Geometry::taught_end,
+        };
+        const Problem problem = validate(g, 3, no_offset, xl_limits);
+        CHECK(problem.fault == Fault::travel_xy);
+        CHECK(problem.tool == 0);
+        CHECK(problem.spot == Spot::stroke_start);
+        CHECK(problem.axis == Axis::y);
+        CHECK_FALSE(problem.beyond_max);
+        // The front band edge at -10.5 against -8.6
+        CHECK(problem.by == Approx(1.9));
     }
 
     SECTION("the machine Z has to stay above the Z travel limit") {
         Geometry g = front_wiper();
         g.wipe_z = 0.5f;
-        const std::array<Offset, 2> offsets { Offset {}, Offset { .z = 2.0f } };
-        CHECK(validate(g, 3, offsets, xl_limits) == Fault::travel_z);
-        const std::array<Offset, 2> fine_offsets { Offset {}, Offset { .z = 1.9f } };
-        CHECK(validate(g, 3, fine_offsets, xl_limits) == Fault::none);
+        const std::array<ToolOffset, 2> offsets { ToolOffset {}, ToolOffset { .tool = 1, .offset = { .z = 2.0f } } };
+        const Problem problem = validate(g, 3, offsets, xl_limits);
+        CHECK(problem.fault == Fault::travel_z);
+        CHECK(problem.tool == 1);
+        CHECK(problem.spot == Spot::height);
+        CHECK(problem.by == Approx(0.05));
+        const std::array<ToolOffset, 2> fine_offsets { ToolOffset {}, ToolOffset { .tool = 1, .offset = { .z = 1.9f } } };
+        CHECK(validate(g, 3, fine_offsets, xl_limits).ok());
     }
 
     SECTION("a corrupted start fails") {
         Geometry g = front_wiper();
         g.start_x = std::numeric_limits<float>::quiet_NaN();
-        CHECK(validate(g, 3, no_offset, xl_limits) != Fault::none);
+        CHECK_FALSE(validate(g, 3, no_offset, xl_limits).ok());
+    }
+
+    SECTION("a corrupted offset fails") {
+        const std::array<ToolOffset, 1> offsets { ToolOffset { .offset = { .x = std::numeric_limits<float>::quiet_NaN() } } };
+        CHECK(validate(front_wiper(), 3, offsets, xl_limits).fault == Fault::travel_xy);
     }
 }

@@ -14,6 +14,7 @@
 #include <utils/string_builder.hpp>
 #include <timing.h>
 
+#include <array>
 #include <cmath>
 
 using namespace screen_menu_nozzle_wiper;
@@ -87,39 +88,113 @@ NumericInputConfig jog_config(AxisEnum axis) {
     };
 }
 
-const char *status_text(const cw::Geometry &geometry, cw::Fault fault) {
+/// Translated text in RAM, to be passed as a %s parameter of a formatted text
+class Fragment {
+public:
+    explicit Fragment(const char *text) {
+        _(text).copyToRAM(buffer.data(), buffer.size());
+    }
+
+    const char *c_str() const { return buffer.data(); }
+
+private:
+    std::array<char, 24> buffer;
+};
+
+const char *axis_name(cw::Axis axis) {
+    switch (axis) {
+    case cw::Axis::x:
+        return "X";
+    case cw::Axis::y:
+        return "Y";
+    case cw::Axis::z:
+        return "Z";
+    }
+    return "";
+}
+
+const char *spot_name(cw::Spot spot) {
+    switch (spot) {
+    case cw::Spot::stroke_start:
+        return N_("stroke start");
+    case cw::Spot::stroke_end:
+        return N_("stroke end");
+    case cw::Spot::waiting_point:
+        return N_("waiting point");
+    case cw::Spot::height:
+        return N_("wipe height");
+    }
+    return "";
+}
+
+/// Fits the 21 characters of the status line
+const char *spot_short_name(cw::Spot spot) {
+    switch (spot) {
+    case cw::Spot::stroke_start:
+        return N_("start");
+    case cw::Spot::stroke_end:
+        return N_("end");
+    case cw::Spot::waiting_point:
+        return N_("wait");
+    case cw::Spot::height:
+        return N_("height");
+    }
+    return "";
+}
+
+/// The X and Y limits as seen from the front of the printer
+const char *limit_side_name(const cw::Problem &problem) {
+    if (problem.axis == cw::Axis::x) {
+        return problem.beyond_max ? N_("right") : N_("left");
+    }
+    return problem.beyond_max ? N_("rear") : N_("front");
+}
+
+/// Which way the taught point has to move to get inside the limit
+const char *fix_direction(const cw::Problem &problem) {
+    if (problem.axis == cw::Axis::x) {
+        return problem.beyond_max ? N_("left") : N_("right");
+    }
+    return problem.beyond_max ? N_("forward") : N_("back");
+}
+
+using StatusParams = StringViewUtf8Parameters<32>;
+
+string_view_utf8 status_text(const cw::Geometry &geometry, const cw::Problem &problem, StatusParams &params) {
     const bool start = geometry.taught & cw::Geometry::taught_start;
     const bool end = geometry.taught & cw::Geometry::taught_end;
     if (!start && !end) {
-        return N_("Not taught");
+        return _("Not taught");
     } else if (!end) {
-        return N_("Start only");
+        return _("Start only");
     } else if (!start) {
-        return N_("End only");
+        return _("End only");
     }
 
-    switch (fault) {
+    switch (problem.fault) {
     case cw::Fault::none:
-        return N_("Ready");
+        return _("Ready");
     case cw::Fault::not_taught:
-        return N_("Not taught");
+        return _("Not taught");
     case cw::Fault::stroke_length:
-        return N_("Bad stroke length");
+        return _("Bad stroke length");
     case cw::Fault::width:
-        return N_("Bad width");
+        return _("Bad width");
     case cw::Fault::wipe_z:
-        return N_("Bad height");
-    case cw::Fault::travel_xy:
-        return N_("Out of XY reach");
-    case cw::Fault::travel_z:
-        return N_("Out of Z reach");
+        return _("Bad height");
+    case cw::Fault::travel_xy: {
+        const Fragment spot { spot_short_name(problem.spot) };
+        return _("T%u %s %s %.1f short").formatted(params, static_cast<unsigned>(problem.tool + 1), spot.c_str(), axis_name(problem.axis), static_cast<double>(problem.by));
     }
-    return N_("Not taught");
+    case cw::Fault::travel_z:
+        return _("T%u height %.1f short").formatted(params, static_cast<unsigned>(problem.tool + 1), static_cast<double>(problem.by));
+    }
+    return _("Not taught");
 }
 
-void show_fault(cw::Fault fault) {
-    StringViewUtf8Parameters<16> params;
-    switch (fault) {
+void show_problem(const cw::Problem &problem) {
+    StringViewUtf8Parameters<128> params;
+    switch (problem.fault) {
     case cw::Fault::none:
         return;
     case cw::Fault::not_taught:
@@ -134,11 +209,19 @@ void show_fault(cw::Fault fault) {
     case cw::Fault::wipe_z:
         MsgBoxWarning(_("The wipe height has to be %.1f to %.0f mm above the bed.").formatted(params, static_cast<double>(cw::wipe_z_min), static_cast<double>(cw::wipe_z_max)), Responses_Ok);
         return;
-    case cw::Fault::travel_xy:
-        MsgBoxWarning(_("With one of the tools, the stroke or the waiting point before it is out of reach."), Responses_Ok);
+    case cw::Fault::travel_xy: {
+        const Fragment spot { spot_name(problem.spot) };
+        const Fragment side { limit_side_name(problem) };
+        const Fragment what { problem.spot == cw::Spot::waiting_point ? N_("the stroke") : N_("that point") };
+        const Fragment direction { fix_direction(problem) };
+        MsgBoxWarning(_("Tool %u cannot reach the %s: %.1f mm beyond the %s limit (%s %.1f). Move %s %.1f mm %s.")
+                          .formatted(params, static_cast<unsigned>(problem.tool + 1), spot.c_str(), static_cast<double>(problem.by), side.c_str(),
+                              axis_name(problem.axis), static_cast<double>(problem.limit), what.c_str(), static_cast<double>(problem.by), direction.c_str()),
+            Responses_Ok);
         return;
+    }
     case cw::Fault::travel_z:
-        MsgBoxWarning(_("With one of the tools, the wipe height is below the Z travel."), Responses_Ok);
+        MsgBoxWarning(_("Tool %u cannot reach the wipe height: it is %.1f mm below the Z travel.").formatted(params, static_cast<unsigned>(problem.tool + 1), static_cast<double>(problem.by)), Responses_Ok);
         return;
     }
 }
@@ -202,7 +285,8 @@ MI_WIPER_STATUS::MI_WIPER_STATUS()
 void MI_WIPER_STATUS::refresh() {
     auto &store = config_store();
     const cw::Geometry geometry = store.nozzle_wiper_geometry.get();
-    ChangeInformation(_(status_text(geometry, nozzle_cleaner_lite::validate_custom_geometry(geometry, store.nozzle_wiper_width.get()))));
+    StatusParams params;
+    ChangeInformation(status_text(geometry, nozzle_cleaner_lite::validate_custom_geometry(geometry, store.nozzle_wiper_width.get()), params));
 }
 
 MI_JOG_STEP::MI_JOG_STEP()
@@ -232,9 +316,9 @@ void MI_WIPE_WIDTH::OnClick() {
     auto &store = config_store();
     const cw::Geometry geometry = store.nozzle_wiper_geometry.get();
     const float old_width = store.nozzle_wiper_width.get();
-    if (nozzle_cleaner_lite::validate_custom_geometry(geometry, old_width) == cw::Fault::none) {
-        if (const auto fault = nozzle_cleaner_lite::validate_custom_geometry(geometry, value()); fault != cw::Fault::none) {
-            show_fault(fault);
+    if (nozzle_cleaner_lite::validate_custom_geometry(geometry, old_width).ok()) {
+        if (const auto problem = nozzle_cleaner_lite::validate_custom_geometry(geometry, value()); !problem.ok()) {
+            show_problem(problem);
             set_value(old_width);
             return;
         }
@@ -459,7 +543,7 @@ void ScreenMenuNozzleWiper::save_start() {
         return;
     }
     if (!(tip.z >= cw::wipe_z_min && tip.z <= cw::wipe_z_max)) {
-        show_fault(cw::Fault::wipe_z);
+        show_problem({ .fault = cw::Fault::wipe_z });
         return;
     }
 
@@ -471,13 +555,13 @@ void ScreenMenuNozzleWiper::save_start() {
     candidate.taught |= cw::Geometry::taught_start;
 
     if (candidate.is_taught()) {
-        switch (const auto fault = nozzle_cleaner_lite::validate_custom_geometry(candidate, store.nozzle_wiper_width.get())) {
+        switch (const auto problem = nozzle_cleaner_lite::validate_custom_geometry(candidate, store.nozzle_wiper_width.get()); problem.fault) {
         case cw::Fault::none:
             break;
         case cw::Fault::wipe_z:
         case cw::Fault::travel_z:
             // The height comes from the start alone
-            show_fault(fault);
+            show_problem(problem);
             return;
         default:
             if (MsgBoxWarning(_("The saved end does not fit this start. Save the start and clear the end?"), Responses_YesNo, 1) != Response::Yes) {
@@ -515,8 +599,8 @@ void ScreenMenuNozzleWiper::save_end() {
     }
 
     if (candidate.is_taught()) {
-        if (const auto fault = nozzle_cleaner_lite::validate_custom_geometry(candidate, store.nozzle_wiper_width.get()); fault != cw::Fault::none) {
-            show_fault(fault);
+        if (const auto problem = nozzle_cleaner_lite::validate_custom_geometry(candidate, store.nozzle_wiper_width.get()); !problem.ok()) {
+            show_problem(problem);
             return;
         }
     }

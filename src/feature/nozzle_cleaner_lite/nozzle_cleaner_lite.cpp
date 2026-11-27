@@ -331,8 +331,10 @@ namespace {
         auto &store = config_store();
         const cw::Geometry geometry = store.nozzle_wiper_geometry.get();
         const float width = store.nozzle_wiper_width.get();
-        if (const cw::Fault fault = validate_custom_geometry(geometry, width); fault != cw::Fault::none) {
-            log_error(NozzleCleanerLite, "custom wiper unusable: %s", cw::to_string(fault));
+        if (const cw::Problem problem = validate_custom_geometry(geometry, width); !problem.ok()) {
+            log_error(NozzleCleanerLite, "custom wiper unusable: %s; tool %u, %s, axis %u, %.2f mm beyond %s %.2f",
+                cw::to_string(problem.fault), static_cast<unsigned>(problem.tool + 1), cw::to_string(problem.spot), static_cast<unsigned>(problem.axis),
+                static_cast<double>(problem.by), problem.beyond_max ? "max" : "min", static_cast<double>(problem.limit));
             return std::nullopt;
         }
 
@@ -562,13 +564,15 @@ bool uses_custom_geometry() {
     return config_store().nozzle_wiper_custom.get();
 }
 
-cw::Fault validate_custom_geometry(const cw::Geometry &geometry, float width) {
+cw::Problem validate_custom_geometry(const cw::Geometry &geometry, float width) {
     // The applied offset is what a wipe now moves with; the stored ones are what any later wipe will
-    std::array<cw::Offset, PhysicalToolIndex::count + 1> offsets;
+    std::array<cw::ToolOffset, PhysicalToolIndex::count + 1> offsets;
     size_t offset_count = 0;
-    offsets[offset_count++] = to_offset(hotend_currently_applied_offset);
+    if (const auto picked = PhysicalToolIndex::currently_selected_opt()) {
+        offsets[offset_count++] = { .tool = picked->to_raw(), .offset = to_offset(hotend_currently_applied_offset) };
+    }
     for (auto tool : PhysicalToolIndex::all().skip_all_disabled()) {
-        offsets[offset_count++] = to_offset(hotend_offset[tool]);
+        offsets[offset_count++] = { .tool = tool.to_raw(), .offset = to_offset(hotend_offset[tool]) };
     }
 
     static constexpr cw::TravelLimits limits {
@@ -584,7 +588,7 @@ cw::Fault validate_custom_geometry(const cw::Geometry &geometry, float width) {
 
 bool custom_geometry_valid() {
     auto &store = config_store();
-    return validate_custom_geometry(store.nozzle_wiper_geometry.get(), store.nozzle_wiper_width.get()) == cw::Fault::none;
+    return validate_custom_geometry(store.nozzle_wiper_geometry.get(), store.nozzle_wiper_width.get()).ok();
 }
 
 std::optional<xyz_pos_t> custom_waiting_point() {

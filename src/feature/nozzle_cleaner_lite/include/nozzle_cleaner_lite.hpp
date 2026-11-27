@@ -31,7 +31,8 @@ bool is_available();
 bool uses_custom_geometry();
 
 /// Checks \p geometry against the current tool offsets and travel limits.
-custom_wiper::Fault validate_custom_geometry(const custom_wiper::Geometry &geometry, float width);
+/// \returns the first problem found, the picked tool's first
+custom_wiper::Problem validate_custom_geometry(const custom_wiper::Geometry &geometry, float width);
 
 /// True when the taught custom wiper geometry fits the current tool offsets and travel limits.
 bool custom_geometry_valid();

@@ -130,8 +130,50 @@ enum class Fault : uint8_t {
     travel_z,
 };
 
+/// Point of the wipe a Problem is about
+enum class Spot : uint8_t {
+    stroke_start,
+    stroke_end,
+    waiting_point,
+    height,
+};
+
+enum class Axis : uint8_t {
+    x,
+    y,
+    z,
+};
+
+/// Why a taught geometry cannot be wiped, precise enough to tell what to change
+struct Problem {
+    Fault fault = Fault::none;
+
+    // The rest is only set for travel_xy and travel_z
+
+    /// Tool the problem was found with, 0-based
+    uint8_t tool = 0;
+    Spot spot = Spot::stroke_start;
+    Axis axis = Axis::x;
+    /// Beyond the upper limit of \p axis rather than the lower one
+    bool beyond_max = false;
+    /// How far beyond the limit [mm]
+    float by = 0;
+    /// The limit, as a machine coordinate [mm]
+    float limit = 0;
+
+    constexpr bool ok() const { return fault == Fault::none; }
+};
+
+/// A tool and its offset
+struct ToolOffset {
+    /// 0-based
+    uint8_t tool = 0;
+    Offset offset {};
+};
+
 /// Short English description for the log
 const char *to_string(Fault fault);
+const char *to_string(Spot spot);
 
 /// \returns the frame of the stroke from \p start to \p end, nullopt if they coincide
 std::optional<Frame> make_frame(Point start, Point end);
@@ -161,6 +203,7 @@ bool print_clearance_ok(float max_printed_z, float tallest_tool_offset_z, float 
 /// Checks that the taught geometry can be wiped with every tool in \p tool_offsets:
 /// stroke length and height within limits, and the stroke band of \p width plus
 /// the staging point inside \p limits in the machine frame of each tool.
-Fault validate(const Geometry &geometry, float width, std::span<const Offset> tool_offsets, const TravelLimits &limits);
+/// \returns the first problem found, in the order of \p tool_offsets
+Problem validate(const Geometry &geometry, float width, std::span<const ToolOffset> tool_offsets, const TravelLimits &limits);
 
 } // namespace nozzle_cleaner_lite::custom_wiper
