@@ -205,6 +205,10 @@ void M9150(); //< Set stealth mode
 void M9160(); ///< Bed cool-down in the XL enclosure after a print
 #endif
 
+#if PRINTER_IS_PRUSA_XL()
+void M9170(); ///< Whole bed mesh measurement at temperature, started from the Bed Mesh screen
+#endif
+
 void M9200(); //< Re-load IS settings from config store
 void M9201(); //< Reset to default motion parameters (accelerations, feedrates, ...)
 

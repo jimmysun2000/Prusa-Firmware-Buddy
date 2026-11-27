@@ -148,3 +148,7 @@ endif()
 if(HAS_CRASH_DETECTION)
   target_sources(firmware PRIVATE M9944.cpp)
 endif()
+
+if(PRINTER STREQUAL "XL")
+  target_sources(firmware PRIVATE M9170.cpp)
+endif()

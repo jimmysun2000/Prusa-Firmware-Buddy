@@ -383,6 +383,12 @@ bool GcodeSuite::process_parsed_command_custom(bool no_ok) {
             break;
 #endif
 
+#if PRINTER_IS_PRUSA_XL()
+        case 9170:
+            PrusaGcodeSuite::M9170();
+            break;
+#endif
+
         case 9200:
             PrusaGcodeSuite::M9200();
             break;
