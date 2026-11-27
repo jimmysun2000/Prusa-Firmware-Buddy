@@ -100,9 +100,9 @@ TEST_CASE("side_strip_status: pulse phase") {
     CHECK(warning_dark.g == 38);
     CHECK(warning_dark.b == 0);
 
-    // Heating: 3 s period, 40 % for the second half
+    // Heating: 3 s period, 10 % for the second half
     const ColorRGBW heating_dark = heating_color.fade(slow_pulse_dark_factor);
-    CHECK(same(heating_dark, ColorRGBW(102, 38, 0)));
+    CHECK(same(heating_dark, ColorRGBW(25, 9, 0)));
     CHECK(same(tint(Status::heating, mode, 0), heating_color));
     CHECK(same(tint(Status::heating, mode, 1499), heating_color));
     CHECK(same(tint(Status::heating, mode, 1500), heating_dark));
@@ -140,12 +140,12 @@ TEST_CASE("side_strip_status: looks") {
         uint16_t period_ms;
     };
     const Expected expected[] = {
-        { Status::heating, heating_color, ColorRGBW(102, 38, 0), 3000 },
+        { Status::heating, heating_color, ColorRGBW(25, 9, 0), 3000 },
         { Status::printing, printing_color, printing_color, 0 },
         { Status::finished, finished_color, finished_color, 0 },
         { Status::warning, warning_color, ColorRGBW(38, 38, 0), 1000 },
         { Status::error, error_color, ColorRGBW(38, 0, 0), 500 },
-        { Status::busy, ColorRGBW(160, 0, 255), ColorRGBW(64, 0, 102), 3000 },
+        { Status::busy, ColorRGBW(160, 0, 255), ColorRGBW(16, 0, 25), 3000 },
         { Status::hot, heating_color, heating_color, 0 },
         { Status::cooling, finished_color, heating_color, 4000 },
     };

@@ -52,7 +52,7 @@ inline constexpr uint32_t gcode_busy_hold_ms = 1000;
 inline constexpr float pulse_dark_factor = 0.15f;
 
 /// Brightness of the dark half of a slow pulse, relative to the tint
-inline constexpr float slow_pulse_dark_factor = 0.4f;
+inline constexpr float slow_pulse_dark_factor = 0.1f;
 
 /// A heater counts as warming up while it is more than this below its target
 inline constexpr float warm_up_margin = 3.0f;
