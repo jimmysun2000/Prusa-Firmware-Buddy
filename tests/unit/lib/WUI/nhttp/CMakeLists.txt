@@ -179,6 +179,22 @@ target_include_directories(
 add_catch_test(mesh_renderer_tests)
 
 add_executable(
+  mesh_history_renderer_tests
+  ${CMAKE_CURRENT_SOURCE_DIR}/mesh_history_renderer_tests.cpp
+  ${CMAKE_SOURCE_DIR}/lib/WUI/nhttp/mesh_history_renderer.cpp
+  ${CMAKE_SOURCE_DIR}/src/common/bed_mesh_history_store.cpp
+  ${CMAKE_SOURCE_DIR}/src/common/bed_mesh_view_math.cpp
+  ${CMAKE_SOURCE_DIR}/src/common/segmented_json.cpp
+  ${CMAKE_SOURCE_DIR}/src/common/json_encode.cpp
+  )
+target_include_directories(
+  mesh_history_renderer_tests PRIVATE ${CMAKE_SOURCE_DIR}/lib/WUI/nhttp
+                                      ${CMAKE_SOURCE_DIR}/src/common ${CMAKE_SOURCE_DIR}/src
+  )
+target_link_libraries(mesh_history_renderer_tests freertos-mock)
+add_catch_test(mesh_history_renderer_tests)
+
+add_executable(
   tools_renderer_tests
   ${CMAKE_CURRENT_SOURCE_DIR}/tools_renderer_tests.cpp
   ${CMAKE_SOURCE_DIR}/lib/WUI/nhttp/tools_renderer.cpp

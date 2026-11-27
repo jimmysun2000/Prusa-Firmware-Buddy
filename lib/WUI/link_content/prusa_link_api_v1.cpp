@@ -11,10 +11,12 @@
 #include <printers.h>
 #if PRINTER_IS_PRUSA_XL()
     #include "../nhttp/mesh_renderer.h"
+    #include "../nhttp/mesh_history_renderer.h"
     #include "../nhttp/tools_renderer.h"
     #include "../nhttp/bed_tiles_renderer.h"
     #include "../nhttp/tool_stats_renderer.h"
     #include "../nhttp/enclosure_renderer.h"
+    #include <common/bed_mesh_history.hpp>
 #endif
 #include "prusa_api_helpers.hpp"
 
@@ -58,6 +60,22 @@ namespace {
 
         return ret;
     }
+
+#if PRINTER_IS_PRUSA_XL()
+    /// @returns the entry id of a mesh history URL, nullopt unless @p str is a whole number 1 to 65535
+    optional<uint16_t> get_mesh_history_id(string_view str) {
+        // The parser would also take a sign or leading spaces
+        if (str.empty() || str.front() < '0' || str.front() > '9') {
+            return nullopt;
+        }
+        uint16_t id;
+        const auto result = from_chars_light(str.begin(), str.end(), id);
+        if (result.ec != std::errc {} || result.ptr != str.end() || id == 0) {
+            return nullopt;
+        }
+        return id;
+    }
+#endif
 
     void stop_print(const RequestParser &parser, handler::Step &out) {
         switch (printer_state::get_state(false)) {
@@ -132,6 +150,20 @@ Selector::Accepted PrusaLinkApiV1::accept(const RequestParser &parser, handler::
 #if PRINTER_IS_PRUSA_XL()
     } else if (suffix == "mesh") {
         get_only(SendJson(MeshRenderer(), parser.can_keep_alive()), parser, out);
+        return Accepted::Accepted;
+    } else if (suffix == "mesh/history") {
+        get_only(SendJson(MeshHistoryRenderer(), parser.can_keep_alive()), parser, out);
+        return Accepted::Accepted;
+    } else if (auto history_suffix = remove_prefix(suffix, "mesh/history/"); history_suffix.has_value()) {
+        const auto id = get_mesh_history_id(*history_suffix);
+        bed_mesh_history::Summary summary;
+        if (!id.has_value()) {
+            out.next = StatusPage(Status::BadRequest, parser);
+        } else if (!bed_mesh_history::store().summary(*id, summary)) {
+            out.next = StatusPage(Status::NotFound, parser);
+        } else {
+            get_only(SendJson(MeshHistoryRenderer(*id), parser.can_keep_alive()), parser, out);
+        }
         return Accepted::Accepted;
     } else if (suffix == "tools") {
         get_only(SendJson(ToolsRenderer(), parser.can_keep_alive()), parser, out);

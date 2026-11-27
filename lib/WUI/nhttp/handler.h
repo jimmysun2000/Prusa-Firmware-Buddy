@@ -55,6 +55,7 @@
 #include <printers.h>
 #if PRINTER_IS_PRUSA_XL()
     #include "mesh_renderer.h"
+    #include "mesh_history_renderer.h"
     #include "tools_renderer.h"
     #include "bed_tiles_renderer.h"
     #include "tool_stats_renderer.h"
@@ -159,6 +160,7 @@ namespace handler {
         SendJson<StatusRenderer>,
 #if PRINTER_IS_PRUSA_XL()
         SendJson<MeshRenderer>,
+        SendJson<MeshHistoryRenderer>,
         SendJson<ToolsRenderer>,
         SendJson<BedTilesRenderer>,
         SendJson<ToolStatsRenderer>,
