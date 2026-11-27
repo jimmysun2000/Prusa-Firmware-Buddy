@@ -237,8 +237,11 @@ std::optional<uint8_t> SpoolJoin::get_spool_2_unlocked(uint8_t tool) const {
 }
 
 bool SpoolJoin::do_join(VirtualToolIndex current_virtual_tool) {
-    std::unique_lock lock(mutex);
-    auto new_raw_virtual_tool = spool_join.get_spool_2_unlocked(current_virtual_tool.to_raw());
+    // Lock only the lookup: the join takes minutes and can wait for the user, which would block every reader
+    auto new_raw_virtual_tool = [&] {
+        std::unique_lock lock(mutex);
+        return spool_join.get_spool_2_unlocked(current_virtual_tool.to_raw());
+    }();
     if (!new_raw_virtual_tool.has_value()) {
         return false;
     }
