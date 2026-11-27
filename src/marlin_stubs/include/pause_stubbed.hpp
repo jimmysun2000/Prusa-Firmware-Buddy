@@ -16,6 +16,7 @@
 #include <array>
 #include <fsm/filament_change_phases.hpp>
 
+#include <printers.h>
 #include <option/has_human_interactions.h>
 #include <option/has_mmu2.h>
 #include <option/has_nozzle_cleaner.h>
@@ -157,6 +158,19 @@ class Pause : public PausePrivatePhase {
 
     /// Whether the forward E moves report their lengths as a purge (purge_lengths)
     bool shows_purge_lengths = false;
+
+#if PRINTER_IS_PRUSA_XL()
+    /// Purge speed the purge move was last planned with [0.1 mm/s], see plan_purge_feedrate()
+    uint8_t planned_purge_speed = 0;
+
+    /// When planned_purge_speed was taken [ms]
+    uint32_t planned_purge_speed_ms = 0;
+
+    /// Stepper E position before the latest E move started [steps]; with its length [mm],
+    /// it tells how much of the move a quick stop left over
+    int32_t e_move_start_steps = 0;
+    float e_move_length = 0;
+#endif
 
 #if HAS_NOZZLE_CLEANER()
     uint8_t failed_purge_attempts = 0;
@@ -375,6 +389,7 @@ private:
         Failed = 1 << 2, ///< some failure, currently only used in \ref do_e_move_notify_progress_hotextrude
         UserRetry = 1 << 3, ///< user asked to release the filament and insert it again, see \ref check_user_retry
         UserSkip = 1 << 4, ///< user pressed Skip to cut the move short; the rest of the move is dropped and the routine goes on
+        PurgeSpeedChange = 1 << 5, ///< the purge speed in use changed; the move is cut to be planned again at the new speed, see \ref purge_speed_change_due
         All = UserStopped | SideFilamentSensorRunout
     };
 
@@ -396,7 +411,23 @@ private:
     /// Conditions that interrupt the moves of a load: StopConditions::All, without the side sensor in a filament routine
     StopConditions load_stop_conditions() const;
 
+    /// Feedrate of a purge move [mm/s], halved for flexible filament. On the XL it is the purge speed in use
+    /// (purge_speed::in_use), which is remembered for purge_speed_change_due().
+    feedRate_t plan_purge_feedrate();
+
+    /// Whether the purge move is to be cut and planned again: the purge speed in use differs from the one
+    /// it was planned with, that plan is at least 200 ms old and more than 1 mm of the move is left.
+    /// Always false off the XL.
+    bool purge_speed_change_due() const;
+
+#if PRINTER_IS_PRUSA_XL()
+    /// Part of the latest E move the extruder has not done yet [mm], from the stepper position
+    float e_move_left() const;
+#endif
+
     /// Moves the extruder by \p length . Notifies the FSM about progress.
+    /// With StopConditions::PurgeSpeedChange in \p check_for, a move cut for a new purge speed goes on from where
+    /// the extruder stopped at that speed (plan_purge_feedrate()) and ends where the whole move would have.
     /// @returns any of the \ref StopConditions if the move has been interrupted or StopConditions::Accomplished if the move has been successfully finished
     [[nodiscard]] StopConditions do_e_move_notify_progress(const float &length, const feedRate_t &fr_mm_s, StopConditions check_for);
 

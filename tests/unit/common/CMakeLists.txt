@@ -197,6 +197,10 @@ add_executable(purge_lengths_tests ${CMAKE_CURRENT_SOURCE_DIR}/purge_lengths_tes
 target_include_directories(purge_lengths_tests PUBLIC ${CMAKE_SOURCE_DIR}/src/common)
 add_catch_test(purge_lengths_tests)
 
+add_executable(purge_speed_tests ${CMAKE_CURRENT_SOURCE_DIR}/purge_speed_tests.cpp)
+target_include_directories(purge_speed_tests PUBLIC ${CMAKE_SOURCE_DIR}/src/common)
+add_catch_test(purge_speed_tests)
+
 add_executable(
   filament_preset_override_tests ${CMAKE_CURRENT_SOURCE_DIR}/filament_preset_override_tests.cpp
   )

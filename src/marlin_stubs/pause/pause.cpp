@@ -48,6 +48,7 @@ static_assert(HAS_PAUSE());
 #include "client_response.hpp"
 #include "fsm_loadunload_type.hpp"
 #include <raii/auto_restore.hpp>
+#include <purge_speed.hpp>
 #include "mapi/motion.hpp"
 #include <cmath>
 #include <logging/log.hpp>
@@ -149,6 +150,18 @@ namespace {
 uint16_t purge_whole_mm(float length) {
     return static_cast<uint16_t>(std::lround(std::clamp<float>(length, 0, PurgeLengths::max_total)));
 }
+
+#if PRINTER_IS_PRUSA_XL()
+/// Where the extruder is [steps]. Whole steps, so a difference of two is exact at any E position.
+int32_t stepper_e_steps() {
+    return stepper.position(E_AXIS_N(active_extruder));
+}
+
+/// \p speed [0.1 mm/s] limited to the range of the Purge Speed setting
+uint8_t clamped_purge_speed(uint8_t speed) {
+    return std::clamp(speed, config_store_ns::purge_speed_min, config_store_ns::purge_speed_max);
+}
+#endif
 
 } // namespace
 
@@ -466,9 +479,37 @@ bool Pause::ensureSafeTemperatureNotifyProgress() {
         purge_lengths_notifier.emplace(*this, length);
     }
 
+#if PRINTER_IS_PRUSA_XL()
+    e_move_start_steps = stepper_e_steps();
+    e_move_length = length;
+#endif
+
     mapi::extruder_move(length, fr_mm_s);
 
-    return wait_for_motion_finish_stoppable(check_for);
+    StopConditions result = wait_for_motion_finish_stoppable(check_for);
+
+#if PRINTER_IS_PRUSA_XL()
+    while (result == StopConditions::PurgeSpeedChange) {
+        const float left = e_move_left();
+
+        // The quick stop leaves the planned E at the end of the dropped move
+        sync_e_position_to(planner.get_axis_position_mm(E_AXIS_N(active_extruder)));
+
+        if (left <= 0) {
+            return StopConditions::Accomplished;
+        }
+
+        // From where the extruder stopped to where the whole move ends
+        mapi::extruder_move(left, plan_purge_feedrate());
+
+        // The planner holds back the first move of an empty queue for more moves to come; none will
+        planner.start_moving();
+
+        result = wait_for_motion_finish_stoppable(check_for);
+    }
+#endif
+
+    return result;
 }
 
 [[nodiscard]] Pause::StopConditions Pause::do_e_move_notify_progress_coldextrude(const float &length, const feedRate_t &fr_mm_s, StopConditions check_for) {
@@ -990,25 +1031,43 @@ void Pause::purge_process([[maybe_unused]] Response response) {
     handle_filament_removal(LoadState::filament_push_ask);
 }
 
-namespace {
-
-/// Filament feedrate of the purges of a load or change [mm/s], halved for flexible filament
-feedRate_t purge_feedrate() {
+feedRate_t Pause::plan_purge_feedrate() {
 #if PRINTER_IS_PRUSA_XL()
-    const uint8_t setting = std::clamp(config_store().purge_speed.get(), config_store_ns::purge_speed_min, config_store_ns::purge_speed_max);
-    return adjust_feedrate_for_filament(setting / 10.f, filament::get_type_to_load());
+    planned_purge_speed = clamped_purge_speed(purge_speed::in_use);
+    planned_purge_speed_ms = ticks_ms();
+    return adjust_feedrate_for_filament(planned_purge_speed / 10.f, filament::get_type_to_load());
 #else
     return standard_feedrates::extruder(standard_feedrates::Extruder::advanced_pause_purge, filament::get_type_to_load());
 #endif
 }
 
-} // namespace
+bool Pause::purge_speed_change_due() const {
+#if PRINTER_IS_PRUSA_XL()
+    // Each re-plan stops the extruder dead, so they are kept apart while the knob is turning
+    constexpr int32_t replan_interval_ms = 200;
+
+    // Keeps the rest well above the shortest move the planner takes (it drops shorter ones)
+    constexpr float min_left_mm = 1;
+
+    return clamped_purge_speed(purge_speed::in_use) != planned_purge_speed
+        && ticks_diff(ticks_ms(), planned_purge_speed_ms) >= replan_interval_ms
+        && e_move_left() > min_left_mm;
+#else
+    return false;
+#endif
+}
+
+#if PRINTER_IS_PRUSA_XL()
+float Pause::e_move_left() const {
+    return e_move_length - (stepper_e_steps() - e_move_start_steps) * planner.mm_per_step[E_AXIS_N(active_extruder)];
+}
+#endif
 
 bool Pause::standard_purge_sequence() {
     const float purge_length = settings.purge_length();
     const auto purge_result = [&] {
         AutoRestore show_purge_lengths(shows_purge_lengths, true);
-        return do_e_move_notify_progress_hotextrude(purge_length, purge_feedrate(), load_stop_conditions() | StopConditions::UserSkip);
+        return do_e_move_notify_progress_hotextrude(purge_length, plan_purge_feedrate(), load_stop_conditions() | StopConditions::UserSkip | StopConditions::PurgeSpeedChange);
     }();
 
     // The last update while moving can be a little short of the end
@@ -1757,6 +1816,10 @@ bool Pause::invoke_loop() {
 
     first_purge_done = false;
     deferred_nozzle_temperature.reset();
+#if PRINTER_IS_PRUSA_XL()
+    // A speed dialled on the purge screen lasts until this load is over
+    purge_speed::in_use = clamped_purge_speed(config_store().purge_speed.get());
+#endif
     set(LoadState::start);
 
     while (!finished()) {
@@ -1839,6 +1902,11 @@ bool Pause::parkMoveXGreaterThanY(const xyz_pos_t &pos0, const xyz_pos_t &pos1) 
             planner.quick_stop_and_resume();
 
             return StopConditions::SideFilamentSensorRunout;
+        }
+        // Checked last, so a button or a runout seen in the same pass wins
+        if (check4(check_for, StopConditions::PurgeSpeedChange) && !planner.draining() && purge_speed_change_due()) {
+            planner.quick_stop_and_resume();
+            return StopConditions::PurgeSpeedChange;
         }
         idle(true);
     }
