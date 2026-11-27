@@ -93,6 +93,9 @@ class MI_AUTO_HOME : public IWindowMenuItem {
 public:
     MI_AUTO_HOME();
 
+    /// Homes all axes, or shows the printer busy message if G-codes are queued
+    static void run();
+
 protected:
     virtual void click(IWindowMenu &window_menu) override;
 };
@@ -182,6 +185,8 @@ protected:
 class MI_DISABLE_MOTORS : public IWindowMenuItem {
 public:
     MI_DISABLE_MOTORS();
+
+    static void run();
 
 protected:
     virtual void click(IWindowMenu &window_menu) override;

@@ -218,6 +218,10 @@ MI_AUTO_HOME::MI_AUTO_HOME()
 }
 
 void MI_AUTO_HOME::click(IWindowMenu & /*window_menu*/) {
+    run();
+}
+
+void MI_AUTO_HOME::run() {
     // Only issue if there are no gcodes in the queue yet
     if (marlin_vars().gqueue != 0) {
         MsgBoxWarning(_(printer_busy_text), Responses_Ok);
@@ -341,6 +345,10 @@ MI_DISABLE_MOTORS::MI_DISABLE_MOTORS()
     } {}
 
 void MI_DISABLE_MOTORS::click(IWindowMenu & /*window_menu*/) {
+    run();
+}
+
+void MI_DISABLE_MOTORS::run() {
 #if (PRINTER_IS_PRUSA_MK4() || PRINTER_IS_PRUSA_XL() || PRINTER_IS_PRUSA_MK3_5())
     marlin_client::gcode("M18 X Y E");
 #else
