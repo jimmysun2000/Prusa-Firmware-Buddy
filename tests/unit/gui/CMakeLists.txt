@@ -69,6 +69,11 @@ add_executable(
 target_include_directories(maintenance_reminder_math_tests PUBLIC ${CMAKE_SOURCE_DIR}/src)
 add_catch_test(maintenance_reminder_math_tests)
 
+# user_macro_tests
+add_executable(user_macro_tests ${CMAKE_CURRENT_SOURCE_DIR}/user_macro_tests.cpp)
+target_include_directories(user_macro_tests PUBLIC ${CMAKE_SOURCE_DIR}/src)
+add_catch_test(user_macro_tests)
+
 add_subdirectory(lazyfilelist)
 add_subdirectory(jogwheel)
 add_subdirectory(window)

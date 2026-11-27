@@ -26,6 +26,10 @@
     #include <MItem_steel_sheets.hpp>
 #endif
 
+#if PRINTER_IS_PRUSA_XL()
+    #include "screen_menu_macros.hpp"
+#endif
+
 using ScreenMenuControlSpec = ScreenMenu<EFooter::On,
     MI_RETURN,
 #if BUDDY_ENABLE_CONNECT()
@@ -38,6 +42,9 @@ using ScreenMenuControlSpec = ScreenMenu<EFooter::On,
 #endif
     MI_MOVE_AXIS,
     MI_DISABLE_MOTORS,
+#if PRINTER_IS_PRUSA_XL()
+    MI_MACROS,
+#endif
 #if HAS_SHEET_PROFILES()
     MI_CURRENT_SHEET_PROFILE,
 #endif
