@@ -16,6 +16,13 @@
 #include <option/has_filament_heatbreak_param.h>
 #include <option/has_filament_base_preset_param.h>
 #include <option/has_filament_cooldown_rate_param.h>
+#include <option/xl_enclosure_support.h>
+
+#if XL_ENCLOSURE_SUPPORT()
+    #include <array>
+    #include <type_traits>
+    #include <img_resources.hpp>
+#endif
 
 #include <option/has_anfc.h>
 #if HAS_ANFC()
@@ -106,6 +113,7 @@ class MI_FILAMENT_MIN_CHAMBER_TEMPERATURE final : public WiSpin {
 public:
     static constexpr auto parameter_ptr = &FilamentTypeParameters::chamber_min_temperature;
     static constexpr bool is_chamber_item = true;
+    static constexpr bool is_preset_customizable = true;
 
     MI_FILAMENT_MIN_CHAMBER_TEMPERATURE();
 };
@@ -116,6 +124,7 @@ class MI_FILAMENT_MAX_CHAMBER_TEMPERATURE final : public WiSpin {
 public:
     static constexpr auto parameter_ptr = &FilamentTypeParameters::chamber_max_temperature;
     static constexpr bool is_chamber_item = true;
+    static constexpr bool is_preset_customizable = true;
 
     MI_FILAMENT_MAX_CHAMBER_TEMPERATURE();
 };
@@ -126,6 +135,7 @@ class MI_FILAMENT_TARGET_CHAMBER_TEMPERATURE final : public WiSpin {
 public:
     static constexpr auto parameter_ptr = &FilamentTypeParameters::chamber_target_temperature;
     static constexpr bool is_chamber_item = true;
+    static constexpr bool is_preset_customizable = true;
 
     MI_FILAMENT_TARGET_CHAMBER_TEMPERATURE();
 };
@@ -281,6 +291,17 @@ static_assert(
 template <typename T>
 inline constexpr bool is_utility_button = std::is_same_v<T, MI_RETURN> || std::is_same_v<T, MI_CALLBACK>;
 
+#if XL_ENCLOSURE_SUPPORT()
+/// Rows tagged is_preset_customizable are also editable for a preset that is_chamber_adjustable_preset()
+template <typename T>
+inline constexpr bool is_preset_customizable_row = requires { T::is_preset_customizable; };
+
+/// Number of preset customizable rows of the screen
+inline constexpr size_t preset_customizable_row_count = []<EFooter footer, typename... T>(std::type_identity<ScreenMenu<footer, T...>>) {
+    return (static_cast<size_t>(is_preset_customizable_row<T>) + ...);
+}(std::type_identity<ScreenFilamentDetail_> {});
+#endif
+
 /// Management of a specified filament type
 class ScreenFilamentDetail : public ScreenFilamentDetail_ {
 public:
@@ -325,9 +346,37 @@ protected:
 
     void setup_preheat_mode_confirm(PreheatModeParams params);
 
+#if XL_ENCLOSURE_SUPPORT()
+    void windowEvent(window_t *sender, GUI_event_t event, void *param) override;
+#endif
+
 protected:
     FilamentType filament_type_;
     StringViewUtf8Parameters<4> title_params_;
+
+#if XL_ENCLOSURE_SUPPORT()
+private:
+    /// Marks each preset customizable row: a warning icon on Minimum and Maximum when they block the heating
+    /// Nominal asks for, else the user icon when the value differs from the built-in one of a preset.
+    /// Enables Restore Chamber Defaults while a value differs.
+    /// \returns whether the rows are editable and in that conflict
+    bool update_chamber_marks();
+
+    /// Asks, then sets the preset customizable rows to the built-in values of the preset
+    void restore_chamber_defaults();
+
+    /// Icon set by update_chamber_marks() on each preset customizable row, in menu order
+    std::array<const img::Resource *, preset_customizable_row_count> chamber_row_icons_ {};
+
+    /// The preset customizable rows of a preset are shown and editable, and saved
+    bool preset_rows_editable_ : 1 = false;
+
+    /// The utility row is Restore Chamber Defaults
+    bool has_restore_row_ : 1 = false;
+
+    /// The box explaining the current conflict of the chamber rows has been shown
+    bool conflict_explained_ : 1 = false;
+#endif
 };
 
 }; // namespace screen_filament_detail

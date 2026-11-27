@@ -20,8 +20,25 @@
     #include <cmath>
 #endif
 
+#if XL_ENCLOSURE_SUPPORT()
+    #include <feature/chamber/chamber_requirements.hpp>
+#endif
+
 using namespace buddy;
 using namespace screen_filament_detail;
+
+#if XL_ENCLOSURE_SUPPORT()
+namespace {
+
+/// \returns the value of the row \p item, as save_changes() takes it
+template <typename T>
+auto row_value(const T &item) {
+    using Value = std::remove_cvref_t<decltype(std::declval<FilamentTypeParameters>().*(T::parameter_ptr))>;
+    return static_cast<Value>(item.value());
+}
+
+} // namespace
+#endif
 
 // * MI_FILAMENT_NAME
 MI_FILAMENT_NAME::MI_FILAMENT_NAME()
@@ -238,6 +255,19 @@ MI_FILAMENT_VISIBLE::MI_FILAMENT_VISIBLE()
 ScreenFilamentDetail::ScreenFilamentDetail(FilamentType filament_type)
     : ScreenFilamentDetail(N_("FILAMENT DETAIL")) {
     setup(filament_type, SetupArgs {});
+
+#if XL_ENCLOSURE_SUPPORT()
+    if (preset_rows_editable_) {
+        auto &item = Item<MI_CALLBACK>();
+        item.SetLabel(_("Restore Chamber Defaults"));
+        item.set_is_hidden(false);
+        item.callback = [this] {
+            restore_chamber_defaults();
+        };
+        has_restore_row_ = true;
+        update_chamber_marks();
+    }
+#endif
 }
 
 ScreenFilamentDetail::ScreenFilamentDetail(PreheatModeParams params)
@@ -328,6 +358,7 @@ void ScreenFilamentDetail::setup(FilamentType filament_type, const FilamentTypeP
 #if XL_ENCLOSURE_SUPPORT()
     // Shown also without Chamber Heating: Vent When Too Warm uses the chamber maximum on its own
     const bool hide_chamber_items = chamber().backend() != Chamber::Backend::xl_enclosure;
+    preset_rows_editable_ = filament_type.is_chamber_adjustable_preset() && !args.force_disable_customizable && !hide_chamber_items;
 #elif HAS_CHAMBER_API()
     const bool hide_chamber_items = !chamber().capabilities().temperature_control_generally();
 #endif
@@ -377,7 +408,13 @@ void ScreenFilamentDetail::setup(FilamentType filament_type, const FilamentTypeP
 
         } else if constexpr (true) {
             item.set_value(params.*(T::parameter_ptr));
-            item.set_enabled(is_customizable);
+            bool enabled = is_customizable;
+#if XL_ENCLOSURE_SUPPORT()
+            if constexpr (is_preset_customizable_row<T>) {
+                enabled |= preset_rows_editable_;
+            }
+#endif
+            item.set_enabled(enabled);
         }
 
         if constexpr (!is_utility_button) {
@@ -385,6 +422,10 @@ void ScreenFilamentDetail::setup(FilamentType filament_type, const FilamentTypeP
             item.set_is_hidden(set_hidden);
         }
     });
+
+#if XL_ENCLOSURE_SUPPORT()
+    update_chamber_marks();
+#endif
 }
 
 void ScreenFilamentDetail::save_changes() {
@@ -412,6 +453,13 @@ void ScreenFilamentDetail::save_changes() {
     if (filament_type_.is_customizable()) {
         filament_type_.set_parameters(params);
     }
+
+#if XL_ENCLOSURE_SUPPORT()
+    if (preset_rows_editable_) {
+        // Of a preset, set_parameters() takes only the chamber values
+        filament_type_.set_parameters(params);
+    }
+#endif
 }
 
 void ScreenFilamentDetail::setup_preheat_mode_confirm(PreheatModeParams params) {
@@ -428,3 +476,81 @@ void ScreenFilamentDetail::setup_preheat_mode_confirm(PreheatModeParams params) 
         }
     };
 }
+
+#if XL_ENCLOSURE_SUPPORT()
+void ScreenFilamentDetail::windowEvent(window_t *sender, GUI_event_t event, void *param) {
+    if (event == GUI_event_t::LOOP) {
+        if (!update_chamber_marks()) {
+            conflict_explained_ = false;
+
+        } else if (!conflict_explained_ && !IWindowMenuItem::edited_item()) {
+            // Set before opening, so that a LOOP event while the box is open does not open another one
+            conflict_explained_ = true;
+            MsgBoxWarning(_("Maximum Chamber Temperature is below Minimum Chamber Temperature. Chamber heating will not start for this filament."), Responses_Ok);
+        }
+    }
+
+    ScreenFilamentDetail_::windowEvent(sender, event, param);
+}
+
+bool ScreenFilamentDetail::update_chamber_marks() {
+    const auto &min_item = Item<MI_FILAMENT_MIN_CHAMBER_TEMPERATURE>();
+    const auto &max_item = Item<MI_FILAMENT_MAX_CHAMBER_TEMPERATURE>();
+    if (min_item.IsHidden()) {
+        return false;
+    }
+
+    // The rule the print start arms the enclosure heating by, for this filament alone
+    ChamberRequirements requirements;
+    requirements.add(row_value(min_item), row_value(max_item), row_value(Item<MI_FILAMENT_TARGET_CHAMBER_TEMPERATURE>()));
+    constexpr auto threshold = Chamber::closed_chamber_target_threshold;
+    const bool conflict = requirements.target.has_value() && *requirements.target > threshold && !requirements.arms_heating(threshold);
+
+    const auto preset = std::get_if<PresetFilamentType>(&filament_type_);
+    const std::optional<FilamentTypeParameters> built_in = preset ? std::optional(preset_filament_parameters(*preset)) : std::nullopt;
+
+    bool any_differs = false;
+    size_t row = 0;
+    stdext::visit_tuple(container.menu_items, [&]<typename T>(T &item) {
+        if constexpr (is_preset_customizable_row<T>) {
+            const bool differs = built_in.has_value() && row_value(item) != (*built_in).*(T::parameter_ptr);
+            any_differs |= differs;
+
+            const img::Resource *icon = nullptr;
+            if (conflict && (std::is_same_v<T, MI_FILAMENT_MIN_CHAMBER_TEMPERATURE> || std::is_same_v<T, MI_FILAMENT_MAX_CHAMBER_TEMPERATURE>)) {
+                icon = &img::warning_16x16;
+            } else if (differs) {
+                icon = &img::user_filament_16x16;
+            }
+
+            // SetIconId() redraws only the icon cell, where an empty icon paints nothing
+            if (chamber_row_icons_[row] != icon) {
+                chamber_row_icons_[row] = icon;
+                item.SetIconId(icon);
+                item.Invalidate();
+            }
+            row++;
+        }
+    });
+
+    if (has_restore_row_) {
+        Item<MI_CALLBACK>().set_enabled(any_differs);
+    }
+
+    return conflict && max_item.IsEnabled();
+}
+
+void ScreenFilamentDetail::restore_chamber_defaults() {
+    const auto preset = std::get_if<PresetFilamentType>(&filament_type_);
+    if (!preset || MsgBoxQuestion(_("Restore the built-in chamber values of this filament?"), Responses_YesNo) != Response::Yes) {
+        return;
+    }
+
+    const FilamentTypeParameters built_in = preset_filament_parameters(*preset);
+    stdext::visit_tuple(container.menu_items, [&]<typename T>(T &item) {
+        if constexpr (is_preset_customizable_row<T>) {
+            item.set_value(built_in.*(T::parameter_ptr));
+        }
+    });
+}
+#endif

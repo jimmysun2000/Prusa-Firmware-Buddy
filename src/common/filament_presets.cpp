@@ -6,6 +6,7 @@
 #include <hotend_detect.hpp>
 #include <option/has_indx.h>
 #include <option/has_loadcell.h>
+#include <option/xl_enclosure_support.h>
 
 #include "../../include/printers.h"
 
@@ -359,6 +360,11 @@ consteval void sanity_check_preset() {
         check(*params.chamber_min_temperature <= *params.chamber_target_temperature);
         check(*params.chamber_target_temperature <= *params.chamber_max_temperature);
     }
+    #endif
+
+    #if XL_ENCLOSURE_SUPPORT()
+    // The filament detail screen saves None as 0, so a preset without chamber values would read as changed by the user
+    check(params.chamber_min_temperature.has_value());
     #endif
 }
 
