@@ -61,6 +61,9 @@ static constexpr EnumArray<Message::Type, const char *, Message::Type::_cnt> mes
 #if HAS_NOZZLE_CLEANER_LITE()
         { Message::Type::nozzle_cleaner_lite, N_("Nozzle cleaning") },
 #endif
+#if XL_ENCLOSURE_SUPPORT()
+        { Message::Type::bed_cooldown, N_("Cooldown") },
+#endif
 };
 
 void PrintStatusMessageFormatterBuddy::format(StringBuilder &target, const Message &msg) {
@@ -165,6 +168,17 @@ void PrintStatusMessageFormatterBuddy::format(StringBuilder &target, const Messa
     case Message::Type::tool_offset_calibrating: {
         const auto d = std::get<PrintStatusMessageDataToolProgress>(msg.data);
         target.append_printf("\nT%i (%i/%i)", (int)(d.tool + 1), (int)d.progress.current, (int)d.progress.target);
+        break;
+    }
+#endif
+
+#if XL_ENCLOSURE_SUPPORT()
+    case Message::Type::bed_cooldown: {
+        const auto d = std::get<PrintStatusMessageDataTimedProgress>(msg.data);
+        target.append_printf("\n%i/%i °C", (int)std::round(d.progress.current), (int)std::round(d.progress.target));
+        if (d.minutes_left > 0) {
+            target.append_printf(", %i min", (int)d.minutes_left);
+        }
         break;
     }
 #endif

@@ -120,6 +120,14 @@ void ChamberFiltration::step() {
         last_filtration_need_s_ = std::nullopt;
     }
 
+    if (post_print_hold_) {
+        output_pwm_ = {};
+        if (last_filtration_need_s_.has_value()) {
+            // Post-print filtration counts from the release of the hold
+            last_filtration_need_s_ = now_s;
+        }
+    }
+
     const auto commit_unaccounted_filter_usage = [&](int min_s = 1) {
         const auto unnacounted_usage_s = ticks_diff(now_s, unaccounted_filter_time_used_start_s_);
         if (unnacounted_usage_s < min_s) {
@@ -270,6 +278,11 @@ bool ChamberFiltration::needs_filtration() const {
 void ChamberFiltration::set_needs_filtration_override(Tristate set) {
     std::lock_guard _lg(mutex_);
     needs_filtration_override_ = set;
+}
+
+void ChamberFiltration::set_post_print_hold(bool set) {
+    std::lock_guard _lg(mutex_);
+    post_print_hold_ = set;
 }
 
 } // namespace buddy

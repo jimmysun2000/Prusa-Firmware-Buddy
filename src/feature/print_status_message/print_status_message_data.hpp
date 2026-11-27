@@ -39,4 +39,13 @@ struct PrintStatusMessageDataToolProgress {
     bool operator==(const PrintStatusMessageDataToolProgress &) const = default;
 };
 
-using PrintStatusMessageData = std::variant<std::monostate, PrintStatusMessageDataCustom, PrintStatusMessageDataProgress, PrintStatusMessageDataAxisProgress, PrintStatusMessageDataToolProgress>;
+struct PrintStatusMessageDataTimedProgress {
+    PrintStatusMessageDataProgress progress;
+
+    /// 0 = not shown
+    uint16_t minutes_left;
+
+    bool operator==(const PrintStatusMessageDataTimedProgress &) const = default;
+};
+
+using PrintStatusMessageData = std::variant<std::monostate, PrintStatusMessageDataCustom, PrintStatusMessageDataProgress, PrintStatusMessageDataAxisProgress, PrintStatusMessageDataToolProgress, PrintStatusMessageDataTimedProgress>;

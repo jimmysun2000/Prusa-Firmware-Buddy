@@ -50,6 +50,11 @@ public:
     /// \param set Tristate::yes if the filtration should be forced on (ignore filament needs), Tristate::no if it should be forced off. Tristate::other will disable the override.
     void set_needs_filtration_override(Tristate set);
 
+    /// While held, the filtration fan is off and post-print filtration waits;
+    /// it runs for its usual duration from the release of the hold.
+    /// An override for cooling the electronics still drives the fan.
+    void set_post_print_hold(bool set);
+
 public:
     /// \returns rated lifetime of the HEPA filter in seconds. 0 if not unknown/not specified
     uint32_t filter_lifetime_s() const;
@@ -73,6 +78,8 @@ private:
 
     /// A print can explicitly request that it wants/doesn't want filtration
     Tristate needs_filtration_override_ = Tristate::other;
+
+    bool post_print_hold_ = false;
 
     /// ticks_s() of the time where we last needed the filtration (were printing)
     std::optional<uint32_t> last_filtration_need_s_ = std::nullopt;

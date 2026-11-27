@@ -199,6 +199,7 @@
     #include <feature/chamber/chamber.hpp>
 #endif
 #if XL_ENCLOSURE_SUPPORT()
+    #include <feature/chamber/bed_cooldown_ramp.hpp>
     #include <feature/chamber/chamber_requirements.hpp>
 #endif
 #if HAS_E2EE_SUPPORT()
@@ -2354,6 +2355,35 @@ static void resuming_reheating() {
     server.print_state = State::Resuming_ExecutingGCodeInterrupt;
 }
 
+#if XL_ENCLOSURE_SUPPORT()
+namespace {
+
+    /// Last non-zero bed target while printing; the bed cool-down never starts above it
+    int16_t print_bed_target = 0;
+
+    /// \returns the rate of the controlled bed cool-down the finished print gets, if it
+    /// heated the enclosure through the bed. Must be called before finalize_print(),
+    /// which clears the chamber target that arms it.
+    std::optional<uint8_t> bed_cooldown_rate() {
+        const uint8_t rate = config_store().xl_enclosure_cooldown_rate.get();
+        if (server.print_is_serial
+            || rate == 0
+            || !buddy::chamber().is_heating_through_bed()
+            || print_bed_target <= buddy::BedCooldownRamp::end_temperature
+            || !(thermalManager.degBed() > buddy::BedCooldownRamp::end_temperature)) {
+            return std::nullopt;
+        }
+        return rate;
+    }
+
+    void start_bed_cooldown(uint8_t rate) {
+        thermalManager.disable_hotend();
+        enqueue_gcode_printf("M9160 S%i R%u", static_cast<int>(print_bed_target), static_cast<unsigned>(rate));
+    }
+
+} // namespace
+#endif
+
 static void _server_print_loop(void) {
     static bool did_not_start_print = true, abort_resuming = false;
     switch (server.print_state) {
@@ -2565,6 +2595,7 @@ static void _server_print_loop(void) {
         }
 #endif
 #if XL_ENCLOSURE_SUPPORT()
+        print_bed_target = 0;
         if (config_store().xl_enclosure_bed_heating.get()) {
             // Arm heating the enclosure through the bed for the filaments the print uses.
             // Prints streamed by a host are left out; any target left over from a preheat is dropped.
@@ -2632,6 +2663,12 @@ static void _server_print_loop(void) {
 
     case State::Printing:
         print_state.resume_pending = false;
+
+#if XL_ENCLOSURE_SUPPORT()
+        if (const auto bed_target = thermalManager.degTargetBed(); bed_target > 0) {
+            print_bed_target = bed_target;
+        }
+#endif
 
 #if HAS_SERIAL_PRINT()
         if (server.print_is_serial) {
@@ -2981,8 +3018,16 @@ static void _server_print_loop(void) {
     case State::Finishing_ParkHead:
         if (!is_processing()) {
             server.print_state = State::Finished;
+#if XL_ENCLOSURE_SUPPORT()
+            const auto cooldown_rate = bed_cooldown_rate();
+#endif
             // Don't clean up here - it will be done in State::Exit
             finalize_print(true);
+#if XL_ENCLOSURE_SUPPORT()
+            if (cooldown_rate.has_value()) {
+                start_bed_cooldown(*cooldown_rate);
+            }
+#endif
         }
         break;
     case State::Exit:

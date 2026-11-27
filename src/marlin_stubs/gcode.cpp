@@ -371,6 +371,12 @@ bool GcodeSuite::process_parsed_command_custom(bool no_ok) {
             PrusaGcodeSuite::M9150();
             break;
 
+#if XL_ENCLOSURE_SUPPORT()
+        case 9160:
+            PrusaGcodeSuite::M9160();
+            break;
+#endif
+
         case 9200:
             PrusaGcodeSuite::M9200();
             break;

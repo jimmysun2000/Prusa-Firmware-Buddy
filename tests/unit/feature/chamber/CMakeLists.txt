@@ -1,3 +1,7 @@
 add_executable(chamber_requirements_tests chamber_requirements_tests.cpp)
 target_include_directories(chamber_requirements_tests PRIVATE ${CMAKE_SOURCE_DIR}/src)
 add_catch_test(chamber_requirements_tests)
+
+add_executable(bed_cooldown_ramp_tests bed_cooldown_ramp_tests.cpp)
+target_include_directories(bed_cooldown_ramp_tests PRIVATE ${CMAKE_SOURCE_DIR}/src)
+add_catch_test(bed_cooldown_ramp_tests)

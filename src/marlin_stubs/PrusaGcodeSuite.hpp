@@ -24,6 +24,7 @@
 #include <option/has_indx.h>
 #include <option/has_wastebin_fill_tracking.h>
 #include <option/has_tool_offset_sensor.h>
+#include <option/xl_enclosure_support.h>
 
 #include <gcode/gcode_parser.hpp>
 
@@ -195,6 +196,10 @@ void M1987(); //< Heater selftest
 void M9140(); //< Set normal (non-stealth) mode
 void M9141(); //< Get stealth mode status
 void M9150(); //< Set stealth mode
+
+#if XL_ENCLOSURE_SUPPORT()
+void M9160(); ///< Bed cool-down in the XL enclosure after a print
+#endif
 
 void M9200(); //< Re-load IS settings from config store
 void M9201(); //< Reset to default motion parameters (accelerations, feedrates, ...)

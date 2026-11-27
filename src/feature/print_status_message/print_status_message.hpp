@@ -9,6 +9,7 @@
 #include <option/has_indx.h>
 #include <option/has_nozzle_cleaner.h>
 #include <option/has_nozzle_cleaner_lite.h>
+#include <option/xl_enclosure_support.h>
 
 #include "print_status_message_data.hpp"
 #include <inc/MarlinConfigPre.h>
@@ -65,6 +66,10 @@ struct PrintStatusMessage {
 #endif
 #if HAS_NOZZLE_CLEANER_LITE()
         nozzle_cleaner_lite,
+#endif
+#if XL_ENCLOSURE_SUPPORT()
+        /// Controlled bed cool-down after a print
+        bed_cooldown,
 #endif
         _cnt
     };
@@ -143,6 +148,9 @@ struct PrintStatusMessage {
 #endif
 #if HAS_NOZZLE_CLEANER_LITE()
         TypeRecord<Type::nozzle_cleaner_lite, std::monostate>,
+#endif
+#if XL_ENCLOSURE_SUPPORT()
+        TypeRecord<Type::bed_cooldown, PrintStatusMessageDataTimedProgress>,
 #endif
 
         TypeRecord<Type::none, std::monostate>>;

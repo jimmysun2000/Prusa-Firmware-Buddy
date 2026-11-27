@@ -73,6 +73,12 @@ static bool is_waiting_for_connect_set_ready() {
 #endif
 }
 
+/// \returns whether a skippable operation runs after the print has finished (the bed cool-down)
+static bool is_skippable_after_print(printing_state_t state) {
+    const State print_state = marlin_vars().print_state;
+    return state == printing_state_t::SKIPPABLE_OPERATION && (print_state == State::Finished || print_state == State::Exit);
+}
+
 void screen_printing_data_t::tuneAction() {
     if (buttons[std::to_underlying(BtnSocket::Left)].IsShadowed()) {
         return;
@@ -134,6 +140,13 @@ void screen_printing_data_t::stopAction() {
     case printing_state_t::PAUSING:
     case printing_state_t::RESUMING:
         return;
+    case printing_state_t::SKIPPABLE_OPERATION:
+        if (is_skippable_after_print(GetState())) {
+            // Nothing to abort after the print, stop the operation instead
+            skippable_gcode().request_skip();
+            return;
+        }
+        [[fallthrough]];
     default: {
         if (MsgBoxWarning(_("Are you sure to stop this printing?"), Responses_YesNo, 1)
             == Response::Yes) {
@@ -371,6 +384,11 @@ void screen_printing_data_t::windowEvent(window_t *sender, GUI_event_t event, vo
 #elif HAS_LARGE_DISPLAY()
         rotating_circles.set_visible(!stoppedOrPrinted);
         [&] {
+            if (is_skippable_after_print(p_state)) {
+                // Keep the progress screen out of the way of the status message
+                print_progress.Pause();
+                return;
+            }
             switch (p_state) {
             case printing_state_t::PRINTED:
                 print_progress.Pause();
@@ -777,6 +795,9 @@ void screen_printing_data_t::set_pause_icon_and_label() {
     case printing_state_t::PRINTED:
         header.SetText(_("FINISHED"));
         break;
+    case printing_state_t::SKIPPABLE_OPERATION:
+        header.SetText(is_skippable_after_print(GetState()) ? _("FINISHED") : _(caption));
+        break;
     default: // else printing
         header.SetText(_(caption));
         break;
@@ -787,8 +808,14 @@ void screen_printing_data_t::set_tune_icon_and_label() {
     SetButtonIconAndLabel(BtnSocket::Left, BtnRes::Settings, LabelRes::Settings);
 
     switch (GetState()) {
-    case printing_state_t::PRINTING:
     case printing_state_t::SKIPPABLE_OPERATION:
+        if (is_skippable_after_print(GetState())) {
+            // Nothing to tune after the print
+            DisableButton(BtnSocket::Left);
+            break;
+        }
+        [[fallthrough]];
+    case printing_state_t::PRINTING:
     case printing_state_t::PAUSED:
         EnableButton(BtnSocket::Left);
         break;
