@@ -15,6 +15,7 @@
 #include <option/has_chamber_api.h>
 #include <option/has_filament_heatbreak_param.h>
 #include <option/has_filament_base_preset_param.h>
+#include <option/has_filament_cooldown_rate_param.h>
 
 #include <option/has_anfc.h>
 #if HAS_ANFC()
@@ -130,6 +131,20 @@ public:
 };
 #endif
 
+#if HAS_FILAMENT_COOLDOWN_RATE_PARAM()
+class MI_FILAMENT_COOLDOWN_RATE final : public WiSpin {
+public:
+    static constexpr auto parameter_ptr = &FilamentTypeParameters::cooldown_rate;
+    static constexpr bool is_chamber_item = true;
+
+    MI_FILAMENT_COOLDOWN_RATE();
+
+    /// [0.1 °C/min], nullopt = the Cooldown Rate setting
+    std::optional<uint8_t> value() const;
+    void set_value(std::optional<uint8_t> set);
+};
+#endif
+
 #if HAS_CHAMBER_FILTRATION_API()
 class MI_FILAMENT_REQUIRES_FILTRATION final : public WI_ICON_SWITCH_OFF_ON_t {
 public:
@@ -232,6 +247,9 @@ using ScreenFilamentDetail_ = ScreenMenu<EFooter::Off,
     MI_FILAMENT_MIN_CHAMBER_TEMPERATURE,
     MI_FILAMENT_MAX_CHAMBER_TEMPERATURE,
 #endif
+#if HAS_FILAMENT_COOLDOWN_RATE_PARAM()
+    MI_FILAMENT_COOLDOWN_RATE,
+#endif
     MI_FILAMENT_IS_ABRASIVE,
     MI_FILAMENT_IS_FLEXIBLE,
 #if HAS_CHAMBER_FILTRATION_API()
@@ -251,6 +269,7 @@ static_assert(
         == 7
             + HAS_FILAMENT_HEATBREAK_PARAM() * 1
             + HAS_CHAMBER_API() * 4
+            + HAS_FILAMENT_COOLDOWN_RATE_PARAM() * 1
             + HAS_FILAMENT_BASE_PRESET_PARAM() * 1
             + HAS_ANFC() * 4
             // requires_ht_idler_door - preset-only hack

@@ -4,6 +4,7 @@
 #include <crc32.h>
 #include <option/has_mmu2.h>
 #include <option/has_filament_tracker.h>
+#include <option/has_filament_cooldown_rate_param.h>
 
 #include <cstring>
 
@@ -49,11 +50,13 @@ static_assert(aggregate_arity<Printer::PhysicalToolInfo>() == 7 + 3 * PRINTER_IS
 static_assert(aggregate_arity<Printer::VirtualToolInfo>() == 2 * HAS_FILAMENT_TRACKER() + 3 * HAS_ANFC());
 
 // A new filament parameter needs a decision whether INFO reports it
+// (the cool-down rate is not reported)
 static_assert(
     aggregate_arity<FilamentTypeParameters>()
     == 7
         + HAS_FILAMENT_HEATBREAK_PARAM() * 1
         + HAS_CHAMBER_API() * 3
+        + HAS_FILAMENT_COOLDOWN_RATE_PARAM() * 1
         + HAS_CHAMBER_FILTRATION_API() * 1
         + HAS_FILAMENT_BASE_PRESET_PARAM() * 1
         + HAS_ANFC() * 4

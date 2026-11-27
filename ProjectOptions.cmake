@@ -491,6 +491,8 @@ set_feature_for_printers_master_board(HAS_FILAMENT_HEATBREAK_PARAM "iX")
 set_feature_for_printers_master_board(
   HAS_FILAMENT_BASE_PRESET_PARAM "COREONE_INDX" "COREONEL_INDX" "iX"
   )
+# Per-filament rate of the bed cool-down after a print in the XL enclosure
+set_feature_for_printers_master_board(HAS_FILAMENT_COOLDOWN_RATE_PARAM "XL")
 set(PRINTERS_WITH_RESOURCES
     "MINI"
     "MK4"

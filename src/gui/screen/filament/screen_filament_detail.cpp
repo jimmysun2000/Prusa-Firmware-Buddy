@@ -14,6 +14,11 @@
     #include <feature/chamber/chamber.hpp>
 #endif
 
+#if HAS_FILAMENT_COOLDOWN_RATE_PARAM()
+    #include <feature/chamber/bed_cooldown_ramp.hpp>
+    #include <cmath>
+#endif
+
 using namespace buddy;
 using namespace screen_filament_detail;
 
@@ -144,6 +149,35 @@ MI_FILAMENT_MAX_CHAMBER_TEMPERATURE::MI_FILAMENT_MAX_CHAMBER_TEMPERATURE()
 // * MI_FILAMENT_TARGET_CHAMBER_TEMPERATURE
 MI_FILAMENT_TARGET_CHAMBER_TEMPERATURE::MI_FILAMENT_TARGET_CHAMBER_TEMPERATURE()
     : WiSpin(0, numeric_input_config::chamber_temp_with_none(), _("Nominal Chamber Temperature")) {
+}
+#endif
+
+#if HAS_FILAMENT_COOLDOWN_RATE_PARAM()
+// * MI_FILAMENT_COOLDOWN_RATE
+static constexpr NumericInputConfig cooldown_rate_config {
+    .min_value = BedCooldownRamp::min_rate / 10.0f,
+    .max_value = BedCooldownRamp::max_rate / 10.0f,
+    .step = 0.1f,
+    .special_value = 0,
+    .special_value_str = N_("Global"),
+    .max_decimal_places = 1,
+    .unit = Unit::celsius_per_minute,
+};
+
+MI_FILAMENT_COOLDOWN_RATE::MI_FILAMENT_COOLDOWN_RATE()
+    : WiSpin(0, cooldown_rate_config, _("Bed Cooldown Rate")) {
+}
+
+std::optional<uint8_t> MI_FILAMENT_COOLDOWN_RATE::value() const {
+    return value_opt().transform([](float rate) {
+        return static_cast<uint8_t>(std::lround(rate * 10));
+    });
+}
+
+void MI_FILAMENT_COOLDOWN_RATE::set_value(std::optional<uint8_t> set) {
+    WiSpin::set_value(set.transform([](uint8_t rate) {
+        return rate / 10.0f;
+    }));
 }
 #endif
 

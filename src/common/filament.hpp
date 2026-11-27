@@ -22,6 +22,7 @@
 #include <option/has_chamber_filtration_api.h>
 #include <option/has_filament_heatbreak_param.h>
 #include <option/has_filament_base_preset_param.h>
+#include <option/has_filament_cooldown_rate_param.h>
 #include <option/has_anfc.h>
 #include <option/has_ht_hotend.h>
 
@@ -140,6 +141,11 @@ public:
 
     /// Ideal chamber temperature we would like to keep during printing
     std::optional<uint8_t> chamber_target_temperature = std::nullopt;
+#endif
+
+#if HAS_FILAMENT_COOLDOWN_RATE_PARAM()
+    /// Rate of the bed cool-down after a print in the XL enclosure [0.1 °C/min]; nullopt = the Cooldown Rate setting
+    std::optional<uint8_t> cooldown_rate = std::nullopt;
 #endif
 
 #if HAS_CHAMBER_FILTRATION_API()

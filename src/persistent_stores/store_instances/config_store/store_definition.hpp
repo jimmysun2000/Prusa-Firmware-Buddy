@@ -46,6 +46,7 @@
 #include <option/has_expansion_joints_gen_2.h>
 #include <option/has_side_leds.h>
 #include <option/xl_enclosure_support.h>
+#include <option/has_filament_cooldown_rate_param.h>
 #include <option/has_cpu_fan.h>
 #include <option/has_xl_can.h>
 #include <option/has_precise_homing_corexy.h>
@@ -1115,6 +1116,11 @@ struct CurrentStore
     StoreItem<bool, false, ItemFlag::features, journal::hash("XL Enclosure Overtemp Venting")> xl_enclosure_overtemp_venting;
     /// Print fan power during the enclosure soak [%], 0 = off
     StoreItem<uint8_t, 0, ItemFlag::features, journal::hash("XL Enclosure Soak Fan")> xl_enclosure_soak_fan_percent;
+#endif
+
+#if HAS_FILAMENT_COOLDOWN_RATE_PARAM()
+    StoreItemArray<FilamentTypeParameters_EEPROM7, FilamentTypeParameters_EEPROM7 {}, ItemFlag::user_presets, journal::hash("User Filament Parameters 7"), 32, user_filament_type_count> user_filament_parameters_7;
+    StoreItemArray<FilamentTypeParameters_EEPROM7, FilamentTypeParameters_EEPROM7 {}, ItemFlag::printer_state, journal::hash("Adhoc Filament Parameters 7d"), 16, adhoc_filament_type_count> adhoc_filament_parameters_7;
 #endif
 
 private:

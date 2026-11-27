@@ -177,6 +177,9 @@ FilamentTypeParameters FilamentType::parameters() const {
                                          buddy::openprinttag::ToolTag::UIDHash openprinttag_uid_hash,
                                          const FilamentTypeParameters_EEPROM6 &e6,
 #endif
+#if HAS_FILAMENT_COOLDOWN_RATE_PARAM()
+                                         const FilamentTypeParameters_EEPROM7 &e7,
+#endif
                                          std::monostate) {
         return FilamentTypeParameters {
             .name = e1.name,
@@ -201,6 +204,9 @@ FilamentTypeParameters FilamentType::parameters() const {
             .chamber_max_temperature = e2.decode_chamber_temp(e2.chamber_max_temperature),
             .chamber_target_temperature = e2.decode_chamber_temp(e2.chamber_target_temperature),
 #endif
+#if HAS_FILAMENT_COOLDOWN_RATE_PARAM()
+            .cooldown_rate = e7.decode_cooldown_rate(e7.cooldown_rate),
+#endif
 #if HAS_CHAMBER_FILTRATION_API()
             .requires_filtration = e1.requires_filtration,
 #endif
@@ -212,6 +218,7 @@ FilamentTypeParameters FilamentType::parameters() const {
                 == 7
                     + HAS_FILAMENT_HEATBREAK_PARAM() * 1
                     + HAS_CHAMBER_API() * 3
+                    + HAS_FILAMENT_COOLDOWN_RATE_PARAM() * 1
                     + HAS_CHAMBER_FILTRATION_API() * 1
                     + HAS_FILAMENT_BASE_PRESET_PARAM() * 1
                     + HAS_ANFC() * 4
@@ -246,6 +253,9 @@ FilamentTypeParameters FilamentType::parameters() const {
                 // EEPROM6 (UUIDs) is adhoc-only
                 FilamentTypeParameters_EEPROM6 {},
 #endif
+#if HAS_FILAMENT_COOLDOWN_RATE_PARAM()
+                config_store().user_filament_parameters_7.get(v.index),
+#endif
                 std::monostate());
 
         } else if constexpr (std::is_same_v<T, AdHocFilamentType>) {
@@ -273,6 +283,9 @@ FilamentTypeParameters FilamentType::parameters() const {
                 // Silently don't get for i > 0 - only first slot UUIDs are stored in EEPROM
                 i == 0 ? config_store().adhoc_filament_parameters_6.get(i) : FilamentTypeParameters_EEPROM6 {},
 #endif
+#if HAS_FILAMENT_COOLDOWN_RATE_PARAM()
+                config_store().adhoc_filament_parameters_7.get(i),
+#endif
                 std::monostate());
 
         } else if constexpr (std::is_same_v<T, PendingAdHocFilamentType>) {
@@ -292,6 +305,7 @@ void FilamentType::set_parameters(const FilamentTypeParameters &set) const {
             == 7
                 + HAS_FILAMENT_HEATBREAK_PARAM() * 1
                 + HAS_CHAMBER_API() * 3
+                + HAS_FILAMENT_COOLDOWN_RATE_PARAM() * 1
                 + HAS_CHAMBER_FILTRATION_API() * 1
                 + HAS_FILAMENT_BASE_PRESET_PARAM() * 1
                 + HAS_ANFC() * 4
@@ -351,6 +365,13 @@ void FilamentType::set_parameters(const FilamentTypeParameters &set) const {
     };
 #endif
 
+#if HAS_FILAMENT_COOLDOWN_RATE_PARAM()
+    const FilamentTypeParameters_EEPROM7 e7 {
+        .cooldown_rate = FilamentTypeParameters_EEPROM7::encode_cooldown_rate(set.cooldown_rate),
+    };
+    static_assert(aggregate_arity<FilamentTypeParameters_EEPROM7>() == 1, "Revise the initializer");
+#endif
+
     std::visit([&]<typename T>(const T &v) {
         if constexpr (std::is_same_v<T, PresetFilamentType>) {
             debug_assert(false);
@@ -365,6 +386,9 @@ void FilamentType::set_parameters(const FilamentTypeParameters &set) const {
 #endif
 #if HAS_FILAMENT_BASE_PRESET_PARAM()
             config_store().user_filament_parameters_4.set(v.index, e4);
+#endif
+#if HAS_FILAMENT_COOLDOWN_RATE_PARAM()
+            config_store().user_filament_parameters_7.set(v.index, e7);
 #endif
             // EEPROM5 (color) is adhoc-only
             debug_assert(set.color == std::nullopt);
@@ -390,6 +414,9 @@ void FilamentType::set_parameters(const FilamentTypeParameters &set) const {
             config_store().adhoc_filament_parameters_4.set(i, e4);
 #endif
             config_store().adhoc_filament_parameters_5.set(i, e5);
+#if HAS_FILAMENT_COOLDOWN_RATE_PARAM()
+            config_store().adhoc_filament_parameters_7.set(i, e7);
+#endif
 #if HAS_ANFC()
             config_store().adhoc_filament_assigned_openprinttag.set(i, set.openprinttag_uid_hash);
 

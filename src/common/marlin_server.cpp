@@ -2365,7 +2365,7 @@ namespace {
     /// heated the enclosure through the bed. Must be called before finalize_print(),
     /// which clears the chamber target that arms it.
     std::optional<uint8_t> bed_cooldown_rate() {
-        const uint8_t rate = config_store().xl_enclosure_cooldown_rate.get();
+        const uint8_t rate = buddy::print_chamber_requirements().effective_cooldown_rate(config_store().xl_enclosure_cooldown_rate.get());
         if (server.print_is_serial
             || rate == 0
             || !buddy::chamber().is_heating_through_bed()

@@ -121,6 +121,48 @@ TEST_CASE("chamber_requirements::zero_places_no_requirement") {
     CHECK(requirements.arms_heating(threshold));
 }
 
+TEST_CASE("chamber_requirements::cooldown_rate_global_only") {
+    ChamberRequirements requirements;
+    CHECK(requirements.effective_cooldown_rate(10) == 10);
+
+    requirements.add_cooldown_rate(std::nullopt);
+    requirements.add_cooldown_rate(0);
+    CHECK(!requirements.cooldown_rate.has_value());
+    CHECK(requirements.uses_global_cooldown_rate);
+    CHECK(requirements.effective_cooldown_rate(10) == 10);
+    CHECK(requirements.effective_cooldown_rate(25) == 25);
+}
+
+TEST_CASE("chamber_requirements::cooldown_rate_slowest_wins") {
+    ChamberRequirements requirements;
+    requirements.add_cooldown_rate(20);
+    requirements.add_cooldown_rate(8);
+    requirements.add_cooldown_rate(15);
+    CHECK(requirements.cooldown_rate == 8);
+    CHECK(!requirements.uses_global_cooldown_rate);
+
+    // All filaments have their own rate, the setting does not matter
+    CHECK(requirements.effective_cooldown_rate(5) == 8);
+    CHECK(requirements.effective_cooldown_rate(30) == 8);
+
+    // A filament using the setting brings it in
+    requirements.add_cooldown_rate(std::nullopt);
+    CHECK(requirements.effective_cooldown_rate(5) == 5);
+    CHECK(requirements.effective_cooldown_rate(10) == 8);
+}
+
+TEST_CASE("chamber_requirements::cooldown_rate_off") {
+    // Cooldown Rate Off turns the cool-down off, whatever the filaments say
+    ChamberRequirements requirements;
+    CHECK(requirements.effective_cooldown_rate(0) == 0);
+
+    requirements.add_cooldown_rate(12);
+    CHECK(requirements.effective_cooldown_rate(0) == 0);
+
+    requirements.add_cooldown_rate(std::nullopt);
+    CHECK(requirements.effective_cooldown_rate(0) == 0);
+}
+
 TEST_CASE("chamber_requirements::target_without_minimum_arms") {
     ChamberRequirements requirements;
     requirements.add(std::nullopt, 60, 55);

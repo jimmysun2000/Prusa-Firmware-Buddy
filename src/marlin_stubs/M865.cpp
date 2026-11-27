@@ -1,6 +1,10 @@
 #include "PrusaGcodeSuite.hpp"
 
 #include <option/has_filament_heatbreak_param.h>
+#include <option/has_filament_cooldown_rate_param.h>
+#if HAS_FILAMENT_COOLDOWN_RATE_PARAM()
+    #include <feature/chamber/bed_cooldown_ramp.hpp>
+#endif
 
 #include <common/aggregate_arity.hpp>
 #include <filament.hpp>
@@ -42,6 +46,7 @@
  * - `D<val>` - Set minimum chamber temperature
  * - `E<val>` - Set maximum chamber temperature
  * - `F<val>` - Set requires filtration
+ * - `K<val>` - Set bed cool-down rate after a print in the XL enclosure, in 0.1 °C/min (5-30, 0 = the Cooldown Rate setting)
  *
  * - `J"<preset>"` - Set base preset (empty "" = no base preset)
  *
@@ -128,6 +133,17 @@ void PrusaGcodeSuite::M865() {
 #if HAS_CHAMBER_FILTRATION_API()
         p.store_option_if_present('F', params.requires_filtration);
 #endif
+#if HAS_FILAMENT_COOLDOWN_RATE_PARAM()
+        if (const auto rate = p.option<uint8_t>('K', uint8_t { 0 }, buddy::BedCooldownRamp::max_rate)) {
+            if (*rate == 0) {
+                params.cooldown_rate = std::nullopt;
+            } else if (*rate < buddy::BedCooldownRamp::min_rate) {
+                p.report_option_error('K', "Needs to be 0 or 5-30");
+            } else {
+                params.cooldown_rate = *rate;
+            }
+        }
+#endif
 
         std::array<char, filament_name_buffer_size - 1> name_buf;
         if (const auto opt = p.option<std::string_view>('N', name_buf)) {
@@ -178,6 +194,7 @@ void PrusaGcodeSuite::M865() {
             == 7
                 + HAS_FILAMENT_HEATBREAK_PARAM() * 1
                 + HAS_CHAMBER_API() * 3
+                + HAS_FILAMENT_COOLDOWN_RATE_PARAM() * 1
                 + HAS_CHAMBER_FILTRATION_API() * 1
                 + HAS_FILAMENT_BASE_PRESET_PARAM() * 1
                 + HAS_ANFC() * 4 // OpenPrintTag Hash ID not configurable from the gcode, it's an internal thing

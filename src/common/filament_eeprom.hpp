@@ -10,6 +10,7 @@
 #include <option/has_chamber_api.h>
 #include <option/has_filament_heatbreak_param.h>
 #include <option/has_filament_base_preset_param.h>
+#include <option/has_filament_cooldown_rate_param.h>
 
 // For historic reasons, the FilamentTypeParameters is split across multiple structures in the EEPROM
 
@@ -137,3 +138,25 @@ public:
 public:
     constexpr bool operator==(const FilamentTypeParameters_EEPROM6 &) const = default;
 };
+
+#if HAS_FILAMENT_COOLDOWN_RATE_PARAM()
+// !!! DO NOT CHANGE - this is used in config store
+struct __attribute__((packed)) FilamentTypeParameters_EEPROM7 {
+
+public:
+    static constexpr uint8_t cooldown_rate_global = 0;
+
+    /// [0.1 °C/min], cooldown_rate_global = the Cooldown Rate setting
+    uint8_t cooldown_rate = cooldown_rate_global;
+
+public:
+    static constexpr std::optional<uint8_t> decode_cooldown_rate(uint8_t val) {
+        return val == cooldown_rate_global ? std::optional<uint8_t>() : val;
+    }
+    static constexpr uint8_t encode_cooldown_rate(std::optional<uint8_t> val) {
+        return val.value_or(cooldown_rate_global);
+    }
+
+    constexpr bool operator==(const FilamentTypeParameters_EEPROM7 &) const = default;
+};
+#endif
