@@ -23,6 +23,10 @@
 #if HAS_MMU2()
     #include <Marlin/src/feature/prusa/MMU2/mmu2_mk4.h>
 #endif
+#if HAS_TOOLCHANGER() && PRINTER_IS_PRUSA_XL()
+    #include <module/prusa/toolchanger.h>
+    #include <module/tool_change.h>
+#endif
 
 LOG_COMPONENT_REF(MarlinServer);
 
@@ -173,6 +177,69 @@ void AutoRetract::maybe_retract_from_nozzle(const RetractFromNozzleParams &param
     debug_assert(!supports_cold_unload || sequence.retracted_distance() >= full_retract_distance);
     set_retracted_distance(physical_tool, sequence.retracted_distance());
 }
+
+#if HAS_TOOLCHANGER() && PRINTER_IS_PRUSA_XL()
+bool AutoRetract::parked_tool_needs_retract(PhysicalToolIndex tool) const {
+    // Anything that needs the dock position redscreens on an uncalibrated dock
+    if (!tool.is_enabled() || !prusa_toolchanger.is_tool_info_valid(tool)) {
+        return false;
+    }
+
+    const auto virtual_tool = stdext::get_optional<VirtualToolIndex>(tool.currently_selected_virtual_tool());
+    if (!virtual_tool.has_value()) {
+        return false;
+    }
+    const auto filament = FilamentType::for_tool_heuristic(*virtual_tool);
+    return filament && !filament.parameters().is_flexible && !is_fully_retracted(tool);
+}
+
+void AutoRetract::retract_parked_tool(PhysicalToolIndex tool) {
+    if (!prusa_toolchanger.is_toolchanger_enabled()
+        || !std::holds_alternative<NoTool>(PhysicalToolIndex::currently_selected())
+        || prusa_toolchanger.detect_tool_nr() != PrusaToolChanger::MARLIN_NO_TOOL_PICKED
+        || DEBUGGING(DRYRUN)
+        || planner.draining()) {
+        return;
+    }
+
+    #if HAS_SWITCHABLE_AUTO_RETRACT()
+    if (!config_store().auto_retract_enabled.get()) {
+        return;
+    }
+    #endif
+
+    if (!parked_tool_needs_retract(tool)) {
+        return;
+    }
+
+    log_info(MarlinServer, "Auto retract: picking parked tool %u", tool.to_raw());
+
+    if (!mapi::park(mapi::ParkingPosition { .z = mapi::ParkingPosition::AtLeast { .above_print = TOOLCHANGE_ZRAISE } })) {
+        return;
+    }
+
+    Hotend &hotend = Hotend::for_tool(tool);
+    const auto original_target_temp = hotend.nozzle_target_temp();
+    ScopeGuard target_temp_restorer = [&] {
+        hotend.set_nozzle_target_temp(original_target_temp);
+    };
+
+    if (!tool_change(tool, tool_return_t::no_return, tool_change_lift_t::no_lift, false)
+        || !stdext::holds_value(PhysicalToolIndex::currently_selected(), tool)) {
+        log_warning(MarlinServer, "Auto retract: failed to pick tool %u", tool.to_raw());
+        return;
+    }
+
+    const xy_pos_t purge_position = prusa_toolchanger.tool_purge_position(tool);
+    PrusaToolChanger::move(purge_position.x, purge_position.y, feedrate_mm_s);
+
+    maybe_retract_from_nozzle();
+
+    if (!tool_change(NoTool {}, tool_return_t::no_return, tool_change_lift_t::no_lift, false)) {
+        log_warning(MarlinServer, "Auto retract: failed to park tool %u", tool.to_raw());
+    }
+}
+#endif
 
 void AutoRetract::maybe_deretract_to_nozzle() {
     // Prevent deretract nesting

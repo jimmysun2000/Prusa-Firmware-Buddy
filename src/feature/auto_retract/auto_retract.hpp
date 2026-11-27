@@ -8,6 +8,8 @@
 #include <option/has_indx.h>
 #include <option/has_wastebin.h>
 #include <option/has_nextruder.h>
+#include <option/has_toolchanger.h>
+#include <printers.h>
 
 namespace buddy {
 
@@ -73,8 +75,22 @@ public:
     /// Save values to persistent storage
     void set_retracted_distance(PhysicalToolIndex tool, std::optional<float> distance);
 
+#if HAS_TOOLCHANGER() && PRINTER_IS_PRUSA_XL()
+    /// Picks the parked \param tool, runs maybe_retract_from_nozzle() in front of its dock and parks the tool again.
+    /// Does nothing if a tool is picked, the toolchanger is disabled, the Auto Retract switch is off, in dry run,
+    /// while the planner is draining, or if the tool is disabled, its dock is not calibrated, or its filament
+    /// (FilamentType::for_tool_heuristic()) is none, flexible or already fully retracted.
+    /// The tool's nozzle target temperature is restored on every exit path.
+    void retract_parked_tool(PhysicalToolIndex tool);
+#endif
+
 private:
     AutoRetract();
+
+#if HAS_TOOLCHANGER() && PRINTER_IS_PRUSA_XL()
+    /// @returns whether the tool-specific conditions of retract_parked_tool() allow retracting \param tool
+    bool parked_tool_needs_retract(PhysicalToolIndex tool) const;
+#endif
 
     /// Shadows the config_store variable to reduce mutex locking
     std::bitset<PhysicalToolIndex::count> retracted_hotends_bitset_ = 0;

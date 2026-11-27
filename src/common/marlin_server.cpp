@@ -1052,78 +1052,6 @@ static void cycle() {
     commit_fsm_states();
 }
 
-#if HAS_AUTO_RETRACT() && HAS_TOOLCHANGER() && PRINTER_IS_PRUSA_XL()
-namespace {
-
-    /// The stock end G-code parks the tool before the print is finalized, leaving the in-place
-    /// auto retract without a tool to work on. This picks the last parked tool back up, runs the
-    /// standard auto retract in front of its dock and parks the tool again.
-    void retract_last_parked_tool() {
-        if (!prusa_toolchanger.is_toolchanger_enabled()
-            || !std::holds_alternative<NoTool>(PhysicalToolIndex::currently_selected())
-            || prusa_toolchanger.detect_tool_nr() != PrusaToolChanger::MARLIN_NO_TOOL_PICKED
-            || DEBUGGING(DRYRUN)
-            || planner.draining()) {
-            return;
-        }
-
-    #if HAS_SWITCHABLE_AUTO_RETRACT()
-        if (!config_store().auto_retract_enabled.get()) {
-            return;
-        }
-    #endif
-
-        const auto last_parked_tool = prusa_toolchanger.last_parked_tool();
-        if (!last_parked_tool.has_value()) {
-            return;
-        }
-        const PhysicalToolIndex tool = *last_parked_tool;
-
-        // Anything that needs the dock position redscreens on an uncalibrated dock
-        if (!tool.is_enabled() || !prusa_toolchanger.is_tool_info_valid(tool)) {
-            return;
-        }
-
-        const auto virtual_tool = stdext::get_optional<VirtualToolIndex>(tool.currently_selected_virtual_tool());
-        if (!virtual_tool.has_value()) {
-            return;
-        }
-        const auto filament = FilamentType::for_tool_heuristic(*virtual_tool);
-        if (!filament || filament.parameters().is_flexible || buddy::auto_retract().is_fully_retracted(tool)) {
-            return;
-        }
-
-        log_info(MarlinServer, "Auto retract: picking parked tool %u", tool.to_raw());
-
-        if (!mapi::park(mapi::ParkingPosition { .z = mapi::ParkingPosition::AtLeast { .above_print = TOOLCHANGE_ZRAISE } })) {
-            return;
-        }
-
-        Hotend &hotend = Hotend::for_tool(tool);
-        const auto original_target_temp = hotend.nozzle_target_temp();
-        ScopeGuard target_temp_restorer = [&] {
-            hotend.set_nozzle_target_temp(original_target_temp);
-        };
-
-        if (!tool_change(tool, tool_return_t::no_return, tool_change_lift_t::no_lift, false)
-            || !stdext::holds_value(PhysicalToolIndex::currently_selected(), tool)) {
-            log_warning(MarlinServer, "Auto retract: failed to pick tool %u", tool.to_raw());
-            return;
-        }
-
-        const xy_pos_t purge_position = prusa_toolchanger.tool_purge_position(tool);
-        PrusaToolChanger::move(purge_position.x, purge_position.y, feedrate_mm_s);
-
-        buddy::auto_retract().maybe_retract_from_nozzle();
-
-        if (!tool_change(NoTool {}, tool_return_t::no_return, tool_change_lift_t::no_lift, false)) {
-            log_warning(MarlinServer, "Auto retract: failed to park tool %u", tool.to_raw());
-        }
-    }
-
-} // namespace
-#endif
-
 /// Function that is called just before finalize_print, before the steppers are possibly disabled
 /// \retval true the function did its job and we can continue with the state machine
 /// \retval false the function is not ready yet, we need to call it later again (loop in the same state)
@@ -1162,8 +1090,12 @@ static bool pre_finalize_print([[maybe_unused]] bool finished) {
 #if HAS_AUTO_RETRACT()
         if (true) {
     #if HAS_TOOLCHANGER() && PRINTER_IS_PRUSA_XL()
+        // The stock end G-code parks the tool before the print is finalized,
+        // leaving the in-place auto retract below without a tool to work on
         if (finished) {
-            retract_last_parked_tool();
+            if (const auto last_parked_tool = prusa_toolchanger.last_parked_tool()) {
+                buddy::auto_retract().retract_parked_tool(*last_parked_tool);
+            }
         }
     #endif
         buddy::auto_retract().maybe_retract_from_nozzle();
