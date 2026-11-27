@@ -237,12 +237,19 @@ void start_measurement() {
 
     const unsigned tool_number = tool->to_raw() + 1;
     const int nozzle_temperature = bed_mesh_measurement::nozzle_temperature;
+    const unsigned soak_minutes = bed_mesh_measurement::soak_minutes_max(static_cast<int16_t>(bed_temperature));
     StringViewUtf8Parameters<32> params;
-    const string_view_utf8 question = (bed_temperature > 0)
-        ? _("The bed will be heated to %d °C and the nozzle of tool %u to %d °C. Then the nozzle travels just above the whole bed and taps it %u times. Remove any print and check the steel sheet. Continue?")
-              .formatted(params, bed_temperature, tool_number, nozzle_temperature, whole_bed_point_count())
-        : _("The bed heater will be off and the nozzle of tool %u heated to %d °C. Then the nozzle travels just above the whole bed and taps it %u times. Remove any print and check the steel sheet. Continue?")
-              .formatted(params, tool_number, nozzle_temperature, whole_bed_point_count());
+    string_view_utf8 question;
+    if (soak_minutes > 0) {
+        question = _("The bed will be heated to %d °C and the nozzle of tool %u to %d °C, then the frame absorbs heat for up to about %u min. Then the nozzle travels just above the whole bed and taps it %u times. Remove any print and check the steel sheet. Continue?")
+                       .formatted(params, bed_temperature, tool_number, nozzle_temperature, soak_minutes, whole_bed_point_count());
+    } else if (bed_temperature > 0) {
+        question = _("The bed will be heated to %d °C and the nozzle of tool %u to %d °C. Then the nozzle travels just above the whole bed and taps it %u times. Remove any print and check the steel sheet. Continue?")
+                       .formatted(params, bed_temperature, tool_number, nozzle_temperature, whole_bed_point_count());
+    } else {
+        question = _("The bed heater will be off and the nozzle of tool %u heated to %d °C. Then the nozzle travels just above the whole bed and taps it %u times. Remove any print and check the steel sheet. Continue?")
+                       .formatted(params, tool_number, nozzle_temperature, whole_bed_point_count());
+    }
     if (MsgBoxWarning(question, Responses_YesNo, 1) != Response::Yes) {
         return;
     }
