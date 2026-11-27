@@ -37,16 +37,42 @@ Rect16 tile_rect(uint8_t column, uint8_t row) {
     return Rect16(grid_left + column * (tile_width + gap), grid_top + (Y_HBL_COUNT - 1 - row) * (tile_height + gap), tile_width, tile_height);
 }
 
+/// Right end of the number row of a tile, wide enough for "100%"
+Rect16 duty_rect(Rect16 tile) {
+    constexpr uint16_t duty_width = 4 * width(Font::small);
+    return Rect16(tile.Left() + tile.Width() - 2 - padding - duty_width, tile.Top() + 2, duty_width, height(Font::small));
+}
+
 } // namespace
 
 void WindowBedTile::set_values(const Values &values) {
     if (values != values_) {
+        Values same_duty = values_;
+        same_duty.duty = values.duty;
+        // The duty changes every second while heating and a full redraw would make the temperature flicker,
+        // so a valid background marks that only the duty is to be redrawn
+        const bool duty_only = HasValidBackground() && values == same_duty;
         values_ = values;
         Invalidate();
+        if (duty_only) {
+            ValidateBackground();
+        }
     }
 }
 
+void WindowBedTile::draw_duty() {
+    std::array<char, 8> buffer;
+    snprintf(buffer.data(), buffer.size(), "%u%%", static_cast<unsigned>(values_.duty));
+    render_text_align(duty_rect(GetRect()), string_view_utf8::MakeRAM(buffer.data()), Font::small, COLOR_BLACK, values_.duty > 0 ? COLOR_WHITE : COLOR_GRAY, {}, text_flags(Align_t::RightCenter()));
+}
+
 void WindowBedTile::unconditionalDraw() {
+    if (HasValidBackground()) {
+        // Only the duty changed
+        draw_duty();
+        return;
+    }
+
     const Rect16 rect = GetRect();
     const Rect16 inner = Rect16(rect.Left() + 2, rect.Top() + 2, rect.Width() - 4, rect.Height() - 4);
 
@@ -82,6 +108,8 @@ void WindowBedTile::unconditionalDraw() {
     } else {
         render_text_align(target_rect, _("Off"), Font::small, COLOR_BLACK, COLOR_GRAY, {}, text_flags(Align_t::Center()));
     }
+
+    draw_duty();
 }
 
 ScreenBedTiles::ScreenBedTiles()
@@ -116,8 +144,9 @@ void ScreenBedTiles::update() {
             const uint16_t idx = advanced_modular_bed->idx(column, row);
             tiles[row * X_HBL_COUNT + column].set_values({
                 .temp = static_cast<int16_t>(std::lround(advanced_modular_bed->get_temp(column, row))),
-                .target = static_cast<int16_t>(std::lround(advanced_modular_bed->get_target(column, row))),
+                .target = static_cast<int16_t>(std::lround(buddy::puppies::modular_bed.get_written_target(column, row))),
                 .enabled = (enabled_mask & (1 << idx)) != 0,
+                .duty = buddy::puppies::modular_bed.get_heater_duty_percent(column, row),
             });
         }
     }

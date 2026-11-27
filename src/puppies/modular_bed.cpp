@@ -188,6 +188,7 @@ CommunicationStatus ModularBed::read_bedlet_data(PuppyModbus &bus) {
 
     for (uint16_t i = 0; i < BEDLET_COUNT; ++i) {
         bedlet_temp[i].store(block.value.measured_temperature[i]);
+        bedlet_pwm[i].store(block.value.pwm_state[i]);
     }
 
     for (uint16_t i = 0; i < BEDLET_COUNT; ++i) {
@@ -277,6 +278,7 @@ CommunicationStatus ModularBed::write_bedlet_target_temp(PuppyModbus &bus) {
     }
 
     for (uint16_t i = 0; i < BEDLET_COUNT; ++i) {
+        bedlet_written_target[i].store(block.value[i]);
         metric_record_custom(
             &metric_targets,
             ",n=%d v=%.2f",
@@ -326,6 +328,14 @@ void ModularBed::clear_fault() {
 
 float ModularBed::get_temp(const uint16_t idx) {
     return static_cast<float>(bedlet_temp[idx].load()) / MODBUS_TEMPERATURE_REGISTERS_SCALE;
+}
+
+uint8_t ModularBed::get_heater_duty_percent(const uint8_t column, const uint8_t row) {
+    return std::min<uint16_t>(100, (bedlet_pwm[idx(column, row)].load() + 5) / 10);
+}
+
+float ModularBed::get_written_target(const uint8_t column, const uint8_t row) {
+    return static_cast<float>(bedlet_written_target[idx(column, row)].load()) / MODBUS_TEMPERATURE_REGISTERS_SCALE;
 }
 
 void ModularBed::set_print_fan_active(bool value) {

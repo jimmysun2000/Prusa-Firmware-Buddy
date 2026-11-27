@@ -26,6 +26,9 @@ public:
         /// The bedlet is in the heated area of the current job
         bool enabled = false;
 
+        /// Heater duty applied by the bed, percent
+        uint8_t duty = 0;
+
         bool operator==(const Values &) const = default;
     };
 
@@ -33,18 +36,20 @@ public:
 
     void set_number(uint8_t number) { number_ = number; }
 
-    /// Redraws the tile if the values differ from the shown ones
+    /// Redraws the tile if the values differ from the shown ones; only the duty text if nothing else changed
     void set_values(const Values &values);
 
 protected:
     void unconditionalDraw() override;
 
 private:
+    void draw_duty();
+
     Values values_;
     uint8_t number_ = 0;
 };
 
-/// Temperatures, targets and enabled state of the individual heatbedlets, and the total heater current.
+/// Temperatures, targets, heater duties and enabled state of the individual heatbedlets, and the total heater current.
 class ScreenBedTiles final : public screen_t {
 public:
     ScreenBedTiles();

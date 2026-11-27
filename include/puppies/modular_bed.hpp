@@ -89,6 +89,14 @@ public:
     // Combined heater current [A]
     float get_heater_current();
 
+    /// Heater duty the bedlet applies after the bed's own current limiting [%], about 1 s old.
+    /// Lock-free, 0 until the first read. It is not a measured power.
+    uint8_t get_heater_duty_percent(const uint8_t column, const uint8_t row);
+
+    /// Target temperature last written to the bedlet [°C], 0 until the first write.
+    /// Lock-free, unlike get_target(), which also includes a target not written yet.
+    float get_written_target(const uint8_t column, const uint8_t row);
+
     uint16_t get_mcu_temperature();
 
     void safe_state();
@@ -159,6 +167,8 @@ private:
 
     // Read-side state — populated under mutex by puppy task, read lock-free by Marlin.
     std::array<std::atomic<uint16_t>, BEDLET_COUNT> bedlet_temp {};
+    std::array<std::atomic<uint16_t>, BEDLET_COUNT> bedlet_pwm {}; ///< 0-1000 for 0-100 %
+    std::array<std::atomic<uint16_t>, BEDLET_COUNT> bedlet_written_target {}; ///< Scaled as bedlet_target_temps
     std::atomic<int16_t> heater_current_a { 0 };
     std::atomic<int16_t> heater_current_b { 0 };
     std::atomic<uint16_t> mcu_temperature { 0 };
