@@ -44,6 +44,17 @@ enum class Kind : uint8_t {
     change_all,
     tool_settings,
     input_shaper,
+    cooldown,
+    retract_all,
+    load_filament,
+    unload_filament,
+    change_filament,
+    purge_filament,
+    shape_tip,
+    cleaning_filament,
+    set_ready,
+    export_settings,
+    cold_pull,
 };
 
 struct Action {
@@ -65,9 +76,18 @@ inline constexpr std::array actions {
     Action { 5, Kind::wipe_nozzle },
     Action { 33, Kind::move_z },
     Action { 32, Kind::temperature },
+    Action { 64, Kind::cooldown },
+    Action { 66, Kind::load_filament },
+    Action { 67, Kind::unload_filament },
+    Action { 68, Kind::change_filament },
+    Action { 69, Kind::purge_filament },
+    Action { 65, Kind::retract_all },
     Action { 48, Kind::load_all },
     Action { 49, Kind::unload_all },
     Action { 50, Kind::change_all },
+    Action { 70, Kind::shape_tip },
+    Action { 71, Kind::cleaning_filament },
+    Action { 74, Kind::cold_pull },
     Action { 34, Kind::bed_mesh },
     Action { 35, Kind::bed_tiles },
     Action { 36, Kind::tools_overview },
@@ -83,6 +103,8 @@ inline constexpr std::array actions {
     Action { 51, Kind::tool_settings },
     Action { 52, Kind::input_shaper },
     Action { 41, Kind::prusalink },
+    Action { 72, Kind::set_ready },
+    Action { 73, Kind::export_settings },
     Action { 47, Kind::macros_screen },
     Action { 16, Kind::macro, 1 },
     Action { 17, Kind::macro, 2 },
@@ -120,7 +142,9 @@ inline constexpr size_t label_buffer_size = user_macro::label_buffer_size;
 /// @param max_length longest macro name shown; the fixed labels fit home_label_length
 string_view_utf8 label(const Action &action, StringViewUtf8ParamBase &params, size_t max_length = user_macro::max_name_length);
 
-/// Runs the action of @p id. The ones that act at once ask Yes/No first.
+/// Runs the action of @p id. Before anything heats or moves, it asks Yes/No with No focused or
+/// shows the list of the tools with Return on top, and drops the action if a print started meanwhile.
+/// The screens open without a question.
 void run(uint8_t id);
 
 } // namespace home_shortcut

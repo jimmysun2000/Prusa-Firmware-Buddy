@@ -10,6 +10,7 @@
 #include "screen_menu_maintenance.hpp"
 #include "screen_menu_move.hpp"
 #include "screen_menu_statistics.hpp"
+#include "screen_menu_temperature_and_fans.hpp"
 #include "screen_move_z.hpp"
 #include "user_macro.hpp"
 
@@ -18,6 +19,11 @@
 #include <i18n.h>
 #include <marlin_client.hpp>
 #include <window_msgbox.hpp>
+
+#include <option/buddy_enable_connect.h>
+#if BUDDY_ENABLE_CONNECT()
+    #include <connect/marlin_printer.hpp>
+#endif
 
 #include <algorithm>
 #include <string_view>
@@ -88,6 +94,28 @@ namespace {
             return N_("Tool Setup");
         case Kind::input_shaper:
             return N_("Inp Shaper");
+        case Kind::cooldown:
+            return N_("Cooldown");
+        case Kind::retract_all:
+            return N_("Retract");
+        case Kind::load_filament:
+            return N_("Load Fil");
+        case Kind::unload_filament:
+            return N_("Unload Fil");
+        case Kind::change_filament:
+            return N_("Change Fil");
+        case Kind::purge_filament:
+            return N_("Purge Fil");
+        case Kind::shape_tip:
+            return N_("Shape Tip");
+        case Kind::cleaning_filament:
+            return N_("Clean Fil");
+        case Kind::set_ready:
+            return N_("Set Ready");
+        case Kind::export_settings:
+            return N_("Backup USB");
+        case Kind::cold_pull:
+            return N_("Cold Pull");
         }
         return nullptr;
     }
@@ -237,6 +265,65 @@ void run(uint8_t id) {
 
     case Kind::input_shaper:
         Screens::Access()->Open(MI_SCREEN_CTOR<ScreenMenuInputShaper>::get());
+        return;
+
+    case Kind::cooldown:
+        ScreenMenuTemperatureAndFans::cooldown();
+        return;
+
+    case Kind::retract_all:
+        if (!MI_RETRACT_ALL::available()) {
+            MsgBoxWarning(_("Retract All needs a loaded tool and Auto Retract switched on."), Responses_Ok);
+            return;
+        }
+        if (confirmed(_(MI_RETRACT_ALL::question))) {
+            MI_RETRACT_ALL::run();
+        }
+        return;
+
+    // The tool list is the question; with only one tool that fits, it is skipped and Yes/No asked instead
+    case Kind::load_filament:
+        MI_LOAD::run(N_("Load the filament?"));
+        return;
+
+    case Kind::unload_filament:
+        MI_UNLOAD::run(N_("Unload the filament?"));
+        return;
+
+    case Kind::change_filament:
+        MI_CHANGE::run(N_("Change the filament?"));
+        return;
+
+    case Kind::purge_filament:
+        MI_PURGE::run(N_("Purge the filament?"));
+        return;
+
+    case Kind::shape_tip:
+        MI_SHAPE_TIP::run(N_("Shape the filament tip?"));
+        return;
+
+    case Kind::cleaning_filament:
+        MI_CLEANING_FILAMENT::run(N_("Clean the nozzle with cleaning filament?"));
+        return;
+
+    case Kind::set_ready:
+#if BUDDY_ENABLE_CONNECT()
+        // Prusa Connect may start a queued print at once
+        if (confirmed(_("Is the bed clear? Set the printer ready for Prusa Connect?")) && !connect_client::MarlinPrinter::set_printer_ready(true)) {
+            MsgBoxWarning(_(printer_busy_text), Responses_Ok);
+        }
+#endif
+        return;
+
+    case Kind::export_settings:
+        MI_EXPORT_SETTINGS::run();
+        return;
+
+    case Kind::cold_pull:
+        // The first page of the wizard has Continue focused, and the tool list after it has no Return
+        if (confirmed(_("Start the Cold Pull wizard?"))) {
+            MI_COLD_PULL::run();
+        }
         return;
     }
 }

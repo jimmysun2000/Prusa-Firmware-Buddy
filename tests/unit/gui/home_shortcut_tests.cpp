@@ -52,6 +52,20 @@ TEST_CASE("home_shortcut::actions") {
         CHECK(find(52).kind == Kind::input_shaper);
     }
 
+    SECTION("stored action IDs keep their meaning") {
+        CHECK(find(64).kind == Kind::cooldown);
+        CHECK(find(65).kind == Kind::retract_all);
+        CHECK(find(66).kind == Kind::load_filament);
+        CHECK(find(67).kind == Kind::unload_filament);
+        CHECK(find(68).kind == Kind::change_filament);
+        CHECK(find(69).kind == Kind::purge_filament);
+        CHECK(find(70).kind == Kind::shape_tip);
+        CHECK(find(71).kind == Kind::cleaning_filament);
+        CHECK(find(72).kind == Kind::set_ready);
+        CHECK(find(73).kind == Kind::export_settings);
+        CHECK(find(74).kind == Kind::cold_pull);
+    }
+
     SECTION("each macro has one entry") {
         std::set<uint8_t> macros;
         for (const Action &action : actions) {
@@ -84,6 +98,8 @@ TEST_CASE("home_shortcut::actions") {
         CHECK(find(24).kind == Kind::none);
         CHECK(find(31).kind == Kind::none);
         CHECK(find(53).kind == Kind::none);
+        CHECK(find(63).kind == Kind::none);
+        CHECK(find(75).kind == Kind::none);
         CHECK(find(255).kind == Kind::none);
     }
 

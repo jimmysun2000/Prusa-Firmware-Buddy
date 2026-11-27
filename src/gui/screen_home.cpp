@@ -243,6 +243,7 @@ constexpr WindowMultiIconButton::Pngs shortcut_icon_reprint GEN_ICON_NAMES(repri
 constexpr WindowMultiIconButton::Pngs shortcut_icon_spools GEN_ICON_NAMES(spools);
 constexpr WindowMultiIconButton::Pngs shortcut_icon_info GEN_ICON_NAMES(info);
 constexpr WindowMultiIconButton::Pngs shortcut_icon_settings GEN_ICON_NAMES(settings);
+constexpr WindowMultiIconButton::Pngs shortcut_icon_spool GEN_ICON_NAMES(spool);
 
 const WindowMultiIconButton::Pngs &macro_icon(user_macro::Icon icon) {
     using Icon = user_macro::Icon;
@@ -307,13 +308,27 @@ const WindowMultiIconButton::Pngs &shortcut_icon(const home_shortcut::Action &ac
     case Kind::filament_sensors:
     case Kind::tool_settings:
     case Kind::input_shaper:
+    case Kind::export_settings:
         return shortcut_icon_settings;
     case Kind::macros_screen:
         return shortcut_icon_resume;
     case Kind::load_all:
     case Kind::unload_all:
     case Kind::change_all:
+    case Kind::retract_all:
         return shortcut_icon_spools;
+    case Kind::cooldown:
+        return shortcut_icon_disconnect;
+    case Kind::load_filament:
+    case Kind::unload_filament:
+    case Kind::change_filament:
+    case Kind::purge_filament:
+    case Kind::shape_tip:
+    case Kind::cleaning_filament:
+    case Kind::cold_pull:
+        return shortcut_icon_spool;
+    case Kind::set_ready:
+        return shortcut_icon_set_ready;
     }
     return shortcut_icon_home;
 }
