@@ -22,7 +22,7 @@ protected:
 
 private:
     const uint8_t n_;
-    StringViewUtf8Parameters<4> label_params_;
+    StringViewUtf8Parameters<user_macro::label_buffer_size> label_params_;
 };
 
 constexpr screen_menu_virtual::Configuration macros_menu {

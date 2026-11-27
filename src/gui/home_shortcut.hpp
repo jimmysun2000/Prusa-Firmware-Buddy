@@ -1,5 +1,7 @@
 #pragma once
 
+#include "user_macro.hpp"
+
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -64,8 +66,15 @@ constexpr const Action &find(uint8_t id) {
     return actions[index_of(id)];
 }
 
+/// Characters the home screen label fits: 99 px at 9 px per character
+inline constexpr size_t home_label_length = 11;
+
+/// Size of the parameter buffer a label needs
+inline constexpr size_t label_buffer_size = user_macro::label_buffer_size;
+
 /// @returns the label of @p action, formatted into @p params if needed
-string_view_utf8 label(const Action &action, StringViewUtf8ParamBase &params);
+/// @param max_length longest macro name shown; the fixed labels fit home_label_length
+string_view_utf8 label(const Action &action, StringViewUtf8ParamBase &params, size_t max_length = user_macro::max_name_length);
 
 /// Runs the action of @p id. The ones that act at once ask Yes/No first.
 void run(uint8_t id);

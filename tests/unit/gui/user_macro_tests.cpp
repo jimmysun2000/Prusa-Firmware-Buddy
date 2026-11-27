@@ -2,6 +2,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <string>
 
 using namespace user_macro;
@@ -25,7 +26,61 @@ std::string file_of(size_t size, size_t line_length, std::string_view line_end =
     return content;
 }
 
+/// A name with the bytes of @p text, the rest filled with @p fill
+Name name_of(std::string_view text, char fill = '\0') {
+    Name name;
+    name.fill(fill);
+    std::copy(text.begin(), text.end(), name.begin());
+    return name;
+}
+
+std::string text_of(const Name &name) {
+    return std::string(name.data());
+}
+
 } // namespace
+
+TEST_CASE("user_macro::trimmed") {
+    CHECK(text_of(trimmed(name_of("Park"))) == "Park");
+    CHECK(text_of(trimmed(name_of("  Park  "))) == "Park");
+    CHECK(text_of(trimmed(name_of("Purge T1"))) == "Purge T1");
+    CHECK(text_of(trimmed(name_of(" a  b "))) == "a  b");
+    CHECK(text_of(trimmed(name_of(""))) == "");
+    CHECK(text_of(trimmed(name_of("   "))) == "");
+    CHECK(text_of(trimmed(name_of(std::string(max_name_length, ' ')))) == "");
+    CHECK(text_of(trimmed(name_of(std::string(max_name_length, 'W')))) == std::string(max_name_length, 'W'));
+
+    SECTION("zero-padded") {
+        const Name name = trimmed(name_of("  Park"));
+        CHECK(std::all_of(name.begin() + 4, name.end(), [](char c) { return c == '\0'; }));
+    }
+
+    SECTION("only up to the terminator") {
+        Name name = name_of("ab");
+        name[5] = 'x';
+        CHECK(text_of(trimmed(name)) == "ab");
+        CHECK(trimmed(name)[5] == '\0');
+    }
+}
+
+TEST_CASE("user_macro::sanitized") {
+    CHECK(text_of(sanitized(name_of("Park 100%"))) == "Park 100%");
+    CHECK(text_of(sanitized(name_of(" !~{}"))) == " !~{}");
+    CHECK(text_of(sanitized(name_of("a\tb\x7f"))) == "a?b?");
+    CHECK(text_of(sanitized(name_of("\xc3\xa9"))) == "??");
+
+    SECTION("a missing terminator is forced") {
+        const Name name = sanitized(name_of("", 'W'));
+        CHECK(name.back() == '\0');
+        CHECK(text_of(name) == std::string(max_name_length, 'W'));
+    }
+
+    SECTION("bytes after the terminator stay") {
+        Name name = name_of("ab");
+        name[5] = '\x01';
+        CHECK(sanitized(name)[5] == '\x01');
+    }
+}
 
 TEST_CASE("user_macro::FileCheck file size") {
     CHECK(check("") == Fault::none);

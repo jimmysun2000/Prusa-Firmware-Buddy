@@ -20,13 +20,27 @@ namespace {
     };
 
     /// String items that are written in clear text; any other string item is redacted
-    constexpr std::array allowed_string_ids {
-        decltype(CurrentStore::hostname)::hashed_id,
-        decltype(CurrentStore::wifi_ap_ssid)::hashed_id,
-        decltype(CurrentStore::connect_host)::hashed_id,
-        decltype(CurrentStore::connect_proxy_host)::hashed_id,
-        decltype(CurrentStore::metrics_host)::hashed_id,
-    };
+    constexpr auto allowed_string_ids = []() {
+        constexpr std::array item_ids {
+            decltype(CurrentStore::hostname)::hashed_id,
+            decltype(CurrentStore::wifi_ap_ssid)::hashed_id,
+            decltype(CurrentStore::connect_host)::hashed_id,
+            decltype(CurrentStore::connect_proxy_host)::hashed_id,
+            decltype(CurrentStore::metrics_host)::hashed_id,
+        };
+#if PRINTER_IS_PRUSA_XL()
+        // Each element of an array item has an id of its own
+        using MacroNames = decltype(CurrentStore::macro_names);
+        std::array<uint16_t, item_ids.size() + MacroNames::item_count> ids {};
+        std::ranges::copy(item_ids, ids.begin());
+        for (size_t i = 0; i < MacroNames::item_count; i++) {
+            ids[item_ids.size() + i] = static_cast<uint16_t>(MacroNames::hashed_id_first + i);
+        }
+        return ids;
+#else
+        return item_ids;
+#endif
+    }();
 
     template <typename Item>
     struct LegacyArrayIds {

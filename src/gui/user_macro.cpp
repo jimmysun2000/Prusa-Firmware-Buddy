@@ -1,6 +1,7 @@
 #include "user_macro.hpp"
 
 #include <common/marlin_vars.hpp>
+#include <config_store/store_instance.hpp>
 #include <gcode/gcode_buffer.hpp>
 #include <gcode/gcode_loader.hpp>
 #include <gcode/inject_queue_actions.hpp>
@@ -13,9 +14,16 @@
 #include <optional>
 #include <sys/unistd.h>
 #include <tuple>
+#include <type_traits>
 
 static_assert(user_macro::max_file_size == GCodeLoader::gcode_stream_buffer_size - 1);
 static_assert(user_macro::max_line_length == std::tuple_size_v<GcodeBuffer::Container> - 1);
+
+static_assert(std::is_same_v<decltype(config_store().macro_names)::value_type, user_macro::Name>);
+static_assert(decltype(config_store().macro_names)::item_count == user_macro::count);
+
+// The select menu and its popup format the labels into 16-byte parameter buffers
+static_assert(user_macro::label_buffer_size <= 16);
 
 namespace user_macro {
 
@@ -52,8 +60,22 @@ namespace {
 
 } // namespace
 
-string_view_utf8 label(uint8_t n, StringViewUtf8ParamBase &params) {
-    return _("Macro %u").formatted(params, static_cast<unsigned>(n));
+Name name(uint8_t n) {
+    return trimmed(sanitized(config_store().macro_names.get(n - 1)));
+}
+
+void set_name(uint8_t n, const Name &name) {
+    config_store().macro_names.set(n - 1, trimmed(sanitized(name)));
+}
+
+string_view_utf8 label(uint8_t n, StringViewUtf8ParamBase &params, size_t max_length) {
+    const Name macro_name = name(n);
+    const std::string_view text = std::string_view(macro_name.data()).substr(0, max_length);
+    if (text.empty()) {
+        return _("Macro %u").formatted(params, static_cast<unsigned>(n));
+    }
+    // The name is a parameter, never the format
+    return string_view_utf8::MakeCPUFLASH("%.*s").formatted(params, text);
 }
 
 Path file_path(uint8_t n) {
@@ -93,8 +115,13 @@ void run(uint8_t n, bool confirm) {
         return;
     }
 
-    if (confirm && MsgBoxQuestion(_("Run Macro %u?").formatted(params, static_cast<unsigned>(n)), Responses_YesNo, 1) != Response::Yes) {
-        return;
+    if (confirm) {
+        StringViewUtf8Parameters<label_buffer_size> label_params;
+        std::array<char, label_buffer_size> label_text;
+        label(n, label_params).copyToRAM(label_text.data(), label_text.size());
+        if (MsgBoxQuestion(_("Run %s?").formatted(params, label_text.data()), Responses_YesNo, 1) != Response::Yes) {
+            return;
+        }
     }
 
     // The server refuses it too if the printer stopped being idle meanwhile

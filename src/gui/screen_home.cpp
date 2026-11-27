@@ -439,7 +439,7 @@ void screen_home_data_t::setup_shortcuts() {
         label.set_font(Font::small);
         label.SetAlignment(Align_t::Center());
         label.SetPadding({ 0, 0, 0, 0 });
-        label.SetText(home_shortcut::label(action, shortcut_label_params[slot]));
+        label.SetText(home_shortcut::label(action, shortcut_label_params[slot], home_shortcut::home_label_length));
 
         RegisterSubWin(button);
         RegisterSubWin(label);

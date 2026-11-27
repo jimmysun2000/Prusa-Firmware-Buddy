@@ -61,7 +61,7 @@ private:
 #if PRINTER_IS_PRUSA_XL()
     WindowMultiIconButton w_shortcut_buttons[home_shortcut::slot_count];
     window_text_t w_shortcut_labels[home_shortcut::slot_count];
-    std::array<StringViewUtf8Parameters<4>, home_shortcut::slot_count> shortcut_label_params;
+    std::array<StringViewUtf8Parameters<home_shortcut::label_buffer_size>, home_shortcut::slot_count> shortcut_label_params;
 #endif
 
 #if HAS_NFC()

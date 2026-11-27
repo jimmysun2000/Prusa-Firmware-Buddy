@@ -1150,6 +1150,11 @@ struct CurrentStore
     StoreItem<uint8_t, purge_speed_default, ItemFlag::features, journal::hash("Filament Purge Speed")> purge_speed;
 #endif
 
+#if PRINTER_IS_PRUSA_XL()
+    /// Owner-set name of each macro; empty for the default label, see user_macro
+    StoreItemArray<std::array<char, 16>, std::array<std::array<char, 16>, 8> {}, ItemFlag::user_interface, journal::hash("Macro Name"), 16, 8> macro_names;
+#endif
+
 private:
     void perform_config_migrations();
 };

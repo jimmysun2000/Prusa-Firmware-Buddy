@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -54,8 +55,50 @@ private:
     Fault fault_ = Fault::none;
 };
 
-/// @returns "Macro <n>", formatted into @p params
-string_view_utf8 label(uint8_t n, StringViewUtf8ParamBase &params);
+/// Longest name the owner can give a macro
+inline constexpr size_t max_name_length = 15;
+
+/// A name, zero-terminated and zero-padded; empty for the default label
+using Name = std::array<char, max_name_length + 1>;
+
+/// Size of the parameter buffer a label needs: the longest name and its terminator
+inline constexpr size_t label_buffer_size = max_name_length + 1;
+
+/// @returns @p name ending in its terminator, every character before it outside ' ' to '~' replaced by '?'
+constexpr Name sanitized(Name name) {
+    name.back() = '\0';
+    for (char &c : name) {
+        if (c == '\0') {
+            break;
+        }
+        if (c < ' ' || c > '~') {
+            c = '?';
+        }
+    }
+    return name;
+}
+
+/// @returns @p name without leading and trailing spaces, zero-padded; empty if it has only spaces
+constexpr Name trimmed(const Name &name) {
+    std::string_view text { name.data(), static_cast<size_t>(std::find(name.begin(), name.end(), '\0') - name.begin()) };
+    const size_t first = text.find_first_not_of(' ');
+    text = (first == std::string_view::npos) ? std::string_view {} : text.substr(first, text.find_last_not_of(' ') - first + 1);
+
+    Name result {};
+    std::copy(text.begin(), text.end(), result.begin());
+    return result;
+}
+
+/// @returns the owner-set name of macro @p n; empty if it has none
+Name name(uint8_t n);
+
+/// Stores @p name for macro @p n, trimmed; an empty name brings back the default label
+void set_name(uint8_t n, const Name &name);
+
+/// @returns the name of macro @p n cut to @p max_length characters, or "Macro <n>" if it has none, formatted into @p params.
+/// The name is shown as it is, whatever characters it has.
+/// @param params needs label_buffer_size bytes
+string_view_utf8 label(uint8_t n, StringViewUtf8ParamBase &params, size_t max_length = max_name_length);
 
 using Path = std::array<char, 32>;
 

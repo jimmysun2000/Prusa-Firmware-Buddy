@@ -20,9 +20,6 @@ static_assert(slot_count == decltype(config_store().home_shortcuts)::item_count)
 
 namespace {
 
-    /// The home screen label is 99 px wide, 9 px per character
-    constexpr size_t max_label_length = 11;
-
     constexpr const char *printer_busy_text = N_("Printer is busy. Please try repeating the action later.");
 
     constexpr const char *fixed_label(Kind kind) {
@@ -46,7 +43,7 @@ namespace {
     }
 
     static_assert(std::ranges::all_of(actions, [](const Action &action) {
-        return action.kind == Kind::macro || std::string_view { fixed_label(action.kind) }.size() <= max_label_length;
+        return action.kind == Kind::macro || std::string_view { fixed_label(action.kind) }.size() <= home_label_length;
     }));
 
     /// A print can start remotely while a question is shown
@@ -64,9 +61,9 @@ namespace {
 
 } // namespace
 
-string_view_utf8 label(const Action &action, StringViewUtf8ParamBase &params) {
+string_view_utf8 label(const Action &action, StringViewUtf8ParamBase &params, size_t max_length) {
     if (action.kind == Kind::macro) {
-        return user_macro::label(action.macro, params);
+        return user_macro::label(action.macro, params, max_length);
     }
     return _(fixed_label(action.kind));
 }
