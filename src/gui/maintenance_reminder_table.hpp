@@ -59,6 +59,57 @@ inline constexpr uint8_t nozzle_wear_item = 3;
 static_assert(items[nozzle_wear_item].scope == Scope::per_tool);
 static_assert(std::ranges::count(items, Scope::per_tool, &Item::scope) == 1);
 
+/// Nozzle fitted on a tool, as the user picked it for the nozzle wear reminder.
+/// Only the reminder uses it; it is unrelated to the nozzle settings of the tool.
+/// Stored: append values only, never reorder or remove them.
+enum class NozzleType : uint8_t {
+    not_set,
+    brass,
+    brass_high_flow,
+    stainless_steel,
+    hardened_steel,
+    obxidian,
+    obxidian_high_flow,
+    tungsten_carbide,
+    diamond_tipped,
+    ruby_tipped,
+    custom, ///< No preset: the tool keeps its interval
+};
+
+struct NozzleTypeInfo {
+    NozzleType type;
+
+    /// Translatable name
+    const char *name;
+
+    /// Nozzle wear interval the type fills in [m]; 0 = none
+    uint32_t preset;
+};
+
+/// Every type the user can pick, in the stored order.
+/// The presets are the owner's rough estimates, not Prusa's figures and not measured.
+inline constexpr std::array nozzle_types {
+    NozzleTypeInfo { NozzleType::brass, N_("Brass"), 5'000 },
+    NozzleTypeInfo { NozzleType::brass_high_flow, N_("Brass high-flow"), 5'000 },
+    NozzleTypeInfo { NozzleType::stainless_steel, N_("Stainless steel"), 8'000 },
+    NozzleTypeInfo { NozzleType::hardened_steel, N_("Hardened steel"), 30'000 },
+    NozzleTypeInfo { NozzleType::obxidian, N_("ObXidian"), 30'000 },
+    NozzleTypeInfo { NozzleType::obxidian_high_flow, N_("ObXidian high-flow"), 30'000 },
+    NozzleTypeInfo { NozzleType::tungsten_carbide, N_("Tungsten carbide"), 100'000 },
+    NozzleTypeInfo { NozzleType::diamond_tipped, N_("Diamond-tipped"), 100'000 },
+    NozzleTypeInfo { NozzleType::ruby_tipped, N_("Ruby-tipped"), 100'000 },
+    NozzleTypeInfo { NozzleType::custom, N_("Custom"), 0 },
+};
+
+static_assert([] {
+    for (size_t i = 0; i < nozzle_types.size(); ++i) {
+        if (nozzle_types[i].type != static_cast<NozzleType>(i + 1)) {
+            return false;
+        }
+    }
+    return true;
+}());
+
 constexpr size_t slot_span(Scope scope) {
     return (scope == Scope::per_tool) ? PhysicalToolIndex::count : 1;
 }

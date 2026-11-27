@@ -1096,6 +1096,8 @@ struct CurrentStore
     StoreItem<uint8_t, 0, ItemFlag::features, journal::hash("Maintenance Defaults Applied")> maintenance_defaults_applied;
     /// Nozzle wear reminder interval per tool [m], 0 = Off; replaces the nozzle wear row of maintenance_interval. Use maintenance_reminders.
     StoreItemArray<uint32_t, uint32_t { 0 }, ItemFlag::features, journal::hash("Maintenance Nozzle Interval"), 16, PhysicalToolIndex::count> maintenance_nozzle_interval;
+    /// Nozzle type per tool for the nozzle wear reminder only, unrelated to the nozzle settings. Use maintenance_reminders.
+    StoreItemArray<maintenance_reminders::NozzleType, maintenance_reminders::NozzleType::not_set, ItemFlag::features, journal::hash("Maintenance Nozzle Wear Type"), 16, PhysicalToolIndex::count> maintenance_nozzle_type;
 #endif
 
 #if HAS_CUSTOM_NOZZLE_WIPER()

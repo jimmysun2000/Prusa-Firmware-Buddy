@@ -224,6 +224,29 @@ void apply_defaults() {
     store.maintenance_defaults_applied.set(static_cast<uint8_t>(item_count));
 }
 
+NozzleType nozzle_type(PhysicalToolIndex tool) {
+    const NozzleType stored = config_store().maintenance_nozzle_type.get(tool.to_raw());
+    if (stored == NozzleType::not_set) {
+        return (interval(Slot { nozzle_wear_item, tool }) != 0) ? NozzleType::custom : NozzleType::not_set;
+    }
+    const bool is_known = std::ranges::find(nozzle_types, stored, &NozzleTypeInfo::type) != nozzle_types.end();
+    return is_known ? stored : NozzleType::custom;
+}
+
+void set_nozzle_type(PhysicalToolIndex tool, NozzleType type, bool reset_counter) {
+    auto &store = config_store();
+    const Slot slot { nozzle_wear_item, tool };
+
+    auto transaction = store.get_backend().transaction_guard();
+    store.maintenance_nozzle_type.set(tool.to_raw(), type);
+    if (const auto info = std::ranges::find(nozzle_types, type, &NozzleTypeInfo::type); info != nozzle_types.end() && info->preset != 0) {
+        set_interval(slot, info->preset);
+    }
+    if (reset_counter) {
+        reset(slot);
+    }
+}
+
 uint32_t usage(const Slot &slot) {
     return usage_in_counts(slot, counter(slot)) / metric_info(items[slot.item].metric).unit_size;
 }

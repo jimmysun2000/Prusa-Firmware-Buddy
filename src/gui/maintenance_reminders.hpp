@@ -50,6 +50,15 @@ void set_interval(const Slot &slot, uint32_t interval);
 /// Writes the config store if anything changed.
 void apply_defaults();
 
+/// @returns the nozzle type of @p tool for its nozzle wear reminder: Custom for an unknown stored
+/// value or for an interval set without a type, not_set if neither a type nor an interval is set
+NozzleType nozzle_type(PhysicalToolIndex tool);
+
+/// Stores the nozzle type of @p tool for its nozzle wear reminder. The preset of the type, if it
+/// has one, becomes the tool's interval: turning it from Off on starts the counting.
+/// @p reset_counter starts the counting anew in any case. Writes the config store.
+void set_nozzle_type(PhysicalToolIndex tool, NozzleType type, bool reset_counter);
+
 /// @returns the usage since the last reset, in the setting unit (h, m, picks, months);
 /// 0 for a calendar row while the clock is unknown or its counting has not started
 uint32_t usage(const Slot &slot);
