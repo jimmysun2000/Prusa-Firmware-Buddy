@@ -189,3 +189,15 @@ target_include_directories(
                                ${CMAKE_SOURCE_DIR}/src
   )
 add_catch_test(tools_renderer_tests)
+
+add_executable(
+  bed_tiles_renderer_tests
+  ${CMAKE_CURRENT_SOURCE_DIR}/bed_tiles_renderer_tests.cpp
+  ${CMAKE_SOURCE_DIR}/lib/WUI/nhttp/bed_tiles_renderer.cpp
+  ${CMAKE_SOURCE_DIR}/src/common/segmented_json.cpp ${CMAKE_SOURCE_DIR}/src/common/json_encode.cpp
+  )
+target_include_directories(
+  bed_tiles_renderer_tests PRIVATE ${CMAKE_SOURCE_DIR}/lib/WUI/nhttp ${CMAKE_SOURCE_DIR}/src/common
+                                   ${CMAKE_SOURCE_DIR}/src
+  )
+add_catch_test(bed_tiles_renderer_tests)

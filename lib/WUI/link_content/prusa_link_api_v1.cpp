@@ -12,6 +12,7 @@
 #if PRINTER_IS_PRUSA_XL()
     #include "../nhttp/mesh_renderer.h"
     #include "../nhttp/tools_renderer.h"
+    #include "../nhttp/bed_tiles_renderer.h"
 #endif
 #include "prusa_api_helpers.hpp"
 
@@ -132,6 +133,9 @@ Selector::Accepted PrusaLinkApiV1::accept(const RequestParser &parser, handler::
         return Accepted::Accepted;
     } else if (suffix == "tools") {
         get_only(SendJson(ToolsRenderer(), parser.can_keep_alive()), parser, out);
+        return Accepted::Accepted;
+    } else if (suffix == "bed_tiles") {
+        get_only(SendJson(BedTilesRenderer(), parser.can_keep_alive()), parser, out);
         return Accepted::Accepted;
 #endif
     } else if (auto job_suffix_opt = remove_prefix(suffix, "job/"); job_suffix_opt.has_value()) {

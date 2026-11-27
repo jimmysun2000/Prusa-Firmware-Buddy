@@ -51,6 +51,13 @@ tr.active td:first-child { color: var(--accent); font-weight: 600; }
 .legend span { flex: 1; }
 .legend-labels { display: flex; justify-content: space-between; max-width: 260px; font-size: 13px; font-variant-numeric: tabular-nums; }
 .actions { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; margin-top: 14px; }
+.tiles { display: grid; gap: 6px; max-width: 520px; }
+.tiles-front { max-width: 520px; margin-bottom: 10px; }
+.tile { background: #000; border: 2px solid #4a4f54; border-radius: 6px; padding: 3px 8px 5px; min-width: 0; font-variant-numeric: tabular-nums; }
+.tile.on { border-color: var(--accent); }
+.tile-top { display: flex; justify-content: space-between; font-size: 13px; }
+.tile-temp { text-align: center; font-size: clamp(15px, 4.5vw, 22px); font-weight: 600; white-space: nowrap; }
+.tile-target { text-align: center; font-size: 13px; white-space: nowrap; }
 </style>
 </head>
 <body>
@@ -120,6 +127,15 @@ tr.active td:first-child { color: var(--accent); font-weight: 600; }
 <dt>Bed</dt><dd id="bed">–</dd>
 </dl>
 </section>
+
+<section>
+<h2>Bed tiles</h2>
+<div id="bed-tiles" class="tiles" role="list" aria-label="Bed tiles, front of the bed at the bottom"></div>
+<div class="front tiles-front">FRONT</div>
+<dl>
+<dt>Heater current</dt><dd id="bed-current">–</dd>
+</dl>
+</section>
 </main>
 
 <script>
@@ -149,6 +165,17 @@ function fixed(value, digits, unit = '') {
 
 function signed(value, digits, unit = '') {
     return isNumber(value) ? (value >= 0 ? '+' : '') + value.toFixed(digits) + unit : '–';
+}
+
+function element(tag, className, text) {
+    const node = document.createElement(tag);
+    if (className) {
+        node.className = className;
+    }
+    if (text !== undefined) {
+        node.textContent = text;
+    }
+    return node;
 }
 
 function tableRow(cells) {
@@ -458,12 +485,45 @@ function renderTools() {
     setText('bed', `${fixed(printer.temp_bed, 1)} / ${fixed(printer.target_bed, 0)} °C`);
 }
 
+// Bed tiles
+
+function tileElement(tile) {
+    const box = element('div', tile.enabled ? 'tile on' : 'tile');
+    box.setAttribute('role', 'listitem');
+    const top = element('div', 'tile-top');
+    top.append(
+        element('span', 'muted', isNumber(tile.number) ? `#${tile.number}` : '#?'),
+        element('span', tile.duty > 0 ? '' : 'muted', fixed(tile.duty, 0, '%')));
+    const heating = tile.target > 0;
+    box.append(
+        top,
+        element('div', 'tile-temp', fixed(tile.temp, 0, ' °C')),
+        element('div', heating ? 'tile-target' : 'tile-target muted', heating ? `Target ${fixed(tile.target, 0)}` : 'Off'));
+    return box;
+}
+
+function renderBedTiles(bed) {
+    const columns = bed.grid.x;
+    const tiles = [];
+    // The front of the bed (row 0) is at the bottom
+    for (let row = bed.grid.y - 1; row >= 0; row--) {
+        for (let column = 0; column < columns; column++) {
+            tiles.push(tileElement((bed.tiles[row] || [])[column] || {}));
+        }
+    }
+    const container = $('bed-tiles');
+    container.style.gridTemplateColumns = `repeat(${columns}, minmax(0, 1fr))`;
+    container.replaceChildren(...tiles);
+    setText('bed-current', isNumber(bed.heater_current) ? fixed(Math.max(0, bed.heater_current), 1, ' A') : '–');
+}
+
 // Polling
 
 const sources = [
     { path: '/api/version', period: Infinity, render: renderVersion },
     { path: '/api/v1/status', period: 5000, render: renderStatus },
     { path: '/api/v1/tools', period: 5000, render: renderToolList },
+    { path: '/api/v1/bed_tiles', period: 5000, render: renderBedTiles },
     { path: '/api/v1/mesh', period: 30000, render: drawMesh },
 ];
 for (const source of sources) {

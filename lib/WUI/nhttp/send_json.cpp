@@ -105,6 +105,9 @@ static_assert(alignof(SendJson<MeshRenderer>) <= alignof(SendJson<StatusRenderer
 template class SendJson<ToolsRenderer>;
 static_assert(sizeof(SendJson<ToolsRenderer>) <= sizeof(SendJson<StatusRenderer>));
 static_assert(alignof(SendJson<ToolsRenderer>) <= alignof(SendJson<StatusRenderer>));
+template class SendJson<BedTilesRenderer>;
+static_assert(sizeof(SendJson<BedTilesRenderer>) <= sizeof(SendJson<StatusRenderer>));
+static_assert(alignof(SendJson<BedTilesRenderer>) <= alignof(SendJson<StatusRenderer>));
 #endif
 
 } // namespace nhttp::handler
