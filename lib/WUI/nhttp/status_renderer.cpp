@@ -11,6 +11,13 @@
     #include <connect/connect.hpp>
 #endif
 
+#include <printers.h>
+#if PRINTER_IS_PRUSA_XL()
+    #include <config_store/store_instance.hpp>
+    #include <feature/auto_retract/auto_retract.hpp>
+    #include <utils/string_builder.hpp>
+#endif
+
 using namespace marlin_server;
 using transfers::Monitor;
 
@@ -28,6 +35,24 @@ json::JsonResult StatusRenderer::renderState(size_t resume_point, json::JsonOutp
     uint32_t time_to_end = marlin_vars().time_to_end;
     uint32_t time_to_pause = marlin_vars().time_to_pause;
     auto link_state = printer_state::get_state(false);
+
+#if PRINTER_IS_PRUSA_XL()
+    // Rebuilt on every call and output in one piece, so a resume needs no extra state
+    ArrayStringBuilder<2 + PhysicalToolIndex::count * sizeof("false,")> tools_retracted;
+    tools_retracted.append_char('[');
+    for (auto tool : PhysicalToolIndex::all()) {
+        if (tool.to_raw() > 0) {
+            tools_retracted.append_char(',');
+        }
+        const auto distance = config_store().get_filament_retracted_distance(tool);
+        if (!tool.is_enabled() || !distance.has_value()) {
+            tools_retracted.append_string("null");
+        } else {
+            tools_retracted.append_string(*distance >= buddy::AutoRetract::full_retract_distance ? "true" : "false");
+        }
+    }
+    tools_retracted.append_char(']');
+#endif
 
     // Keep the indentation of the JSON in here!
     // clang-format off
@@ -73,6 +98,9 @@ json::JsonResult StatusRenderer::renderState(size_t resume_point, json::JsonOutp
             }
             JSON_FIELD_INT("flow", VirtualToolIndex::currently_selected_opt().transform([] (auto tool) { return marlin_vars().virtual_tools[tool].flow_factor.get(); }).value_or(0)) JSON_COMMA;
             JSON_FIELD_INT("speed", marlin_vars().print_speed) JSON_COMMA;
+#if PRINTER_IS_PRUSA_XL()
+            JSON_CUSTOM("\"tools_retracted\":%s", tools_retracted.str()) JSON_COMMA;
+#endif
             JSON_FIELD_INT("fan_hotend", marlin_vars().active_hotend().heatbreak_fan_rpm) JSON_COMMA;
             JSON_FIELD_INT("fan_print", marlin_vars().active_hotend().print_fan_rpm);
         JSON_OBJ_END;
