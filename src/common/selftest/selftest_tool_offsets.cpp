@@ -212,20 +212,12 @@ LoopResult CSelftestPart_ToolOffsets::state_wait_review() {
         return fail_with_nozzles_off();
     }
 
-    switch (failure->reason) {
-
-    case pin_tool_offset::FailureReason::center_not_found:
-    case pin_tool_offset::FailureReason::out_of_bounds:
+    if (pin_tool_offset::can_rerun_after(failure->reason)) {
         // The toolchanger is in a known state, park and guide the user through removing the pin
         return LoopResult::RunNext;
-
-    case pin_tool_offset::FailureReason::unknown:
-    case pin_tool_offset::FailureReason::not_homed:
-    case pin_tool_offset::FailureReason::invalid_request:
-    case pin_tool_offset::FailureReason::toolchange_failed:
-        // Do not move the tools any further
-        break;
     }
+
+    // Do not move the tools any further
     return fail_with_nozzles_off();
 }
 

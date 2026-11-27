@@ -34,6 +34,32 @@ enum class FailureReason : uint8_t {
     out_of_bounds,
 };
 
+/// @returns whether the calibration can be measured again right after failing for this reason,
+/// without homing again or touching the pin and the sheet, because the toolchanger is in a known
+/// state. Not after a failed tool change, nor when the cause is unknown or nothing was measured.
+constexpr bool can_rerun_after(FailureReason reason) {
+    switch (reason) {
+
+    case FailureReason::center_not_found:
+    case FailureReason::out_of_bounds:
+        return true;
+
+    case FailureReason::unknown:
+    case FailureReason::not_homed:
+    case FailureReason::invalid_request:
+    case FailureReason::toolchange_failed:
+        return false;
+    }
+    return false;
+}
+
+static_assert(can_rerun_after(FailureReason::center_not_found));
+static_assert(can_rerun_after(FailureReason::out_of_bounds));
+static_assert(!can_rerun_after(FailureReason::unknown));
+static_assert(!can_rerun_after(FailureReason::not_homed));
+static_assert(!can_rerun_after(FailureReason::invalid_request));
+static_assert(!can_rerun_after(FailureReason::toolchange_failed));
+
 struct Failure {
     FailureReason reason = FailureReason::unknown;
 
