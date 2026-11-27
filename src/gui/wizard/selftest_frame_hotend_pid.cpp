@@ -53,6 +53,8 @@ void SelftestFrameHotendPid::change() {
     if (phase_current == phase_previous && shown_data == data) {
         return;
     }
+    // Two result pages in a row can share a phase, then only the tool tells them apart
+    const bool new_page = phase_current != phase_previous || !shown_data.has_value() || shown_data->tool != data.tool;
     shown_data = data;
 
     const int tool = data.tool + 1;
@@ -76,6 +78,10 @@ void SelftestFrameHotendPid::change() {
         }
         text_detail.SetText(string_view_utf8::MakeRAM(target_temp_text));
         text_detail.Show();
+        if (new_page) {
+            // Nothing heats or moves unless the user picks Continue on purpose
+            radio.SetBtn(Response::Abort);
+        }
         break;
     }
 
@@ -123,6 +129,10 @@ void SelftestFrameHotendPid::change() {
                                    static_cast<double>(data.old_gains.kd), static_cast<double>(data.new_gains.kd)));
         text_detail.SetText(_("Store the new values?"));
         text_detail.Show();
+        if (new_page) {
+            // Nothing is stored unless the user picks Yes on purpose on this very page
+            radio.SetBtn(Response::No);
+        }
         break;
 
     case PhasesSelftest::HotendPid_result_rejected:
