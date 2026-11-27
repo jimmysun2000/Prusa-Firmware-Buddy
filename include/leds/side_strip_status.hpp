@@ -18,6 +18,8 @@ enum class Status : uint8_t {
     owner_present,
     /// Power panic recovery
     recovering,
+    /// A warning dialog is open
+    warning_dialog,
     /// The printer waits for the owner: a prompt or a paused print
     waiting,
     /// The printer works on its own outside a print: a wizard, a calibration, a filament load, G-code
@@ -27,6 +29,8 @@ enum class Status : uint8_t {
     /// A heater warms up outside a print
     preheating,
     printing,
+    /// A print is being stopped or is stopped, and its print screen is still open
+    stopped,
     /// A print has finished and its bed is still warm
     finished_warm,
     /// A print has finished and its end screen is still open
@@ -68,6 +72,7 @@ inline constexpr float warm_up_margin = 3.0f;
 /// @returns period of the pulsing states, 0 for the steady ones
 constexpr uint32_t pulse_period_ms(Status status) {
     switch (status) {
+    case Status::warning_dialog:
     case Status::busy:
     case Status::preheating:
     case Status::finished_warm:
@@ -91,7 +96,7 @@ struct Look {
 
 /// @returns whether the status lowers the white so that its colour stands out
 constexpr bool is_alert(Status status) {
-    return status == Status::waiting || status == Status::error;
+    return status == Status::warning_dialog || status == Status::waiting || status == Status::error;
 }
 
 /// Highest white under an alert, 25 % as the brightness settings count it
@@ -122,9 +127,11 @@ constexpr bool is_above(float temp, float on, float off, bool was_above) {
 
 /// What the printer does, as far as the side strip tells it apart
 enum class Activity : uint8_t {
-    /// Nothing runs, also while and after a print is stopped
+    /// Nothing runs, also while a print preview closes
     idle,
     printing,
+    /// A print is being stopped or is stopped, and its print screen is still open
+    stopped,
     /// A print has finished and its end screen is still open
     finished,
     /// Power panic recovery
@@ -138,11 +145,13 @@ struct Inputs {
     bool error = false;
     /// The owner has used the knob or the touch screen lately, the strip is a plain work light
     bool user_present = false;
-    /// The printer waits for the owner: a warning dialog, a paused print, a prompt
+    /// A warning dialog is open
+    bool warning_dialog = false;
+    /// The printer waits for the owner: a prompt or a paused print
     bool waits_for_owner = false;
     /// The printer works on its own outside a print
     bool busy = false;
-    /// A print waits for a temperature, or a heater warms up outside a print
+    /// A print waits for a temperature, or a heater warms up to a target outside a print
     bool heating = false;
     /// The print has extruded inside the print area, so its first layer has begun
     bool first_layer_started = false;
@@ -153,7 +162,8 @@ struct Inputs {
 };
 
 /// @returns the status to show, the first of these that applies: error, owner_present, recovering,
-/// waiting, busy, print_heating or preheating, printing, finished_warm or finished, hot, idle.
+/// warning_dialog, waiting, busy, print_heating or preheating, printing, stopped,
+/// finished_warm or finished, hot, idle.
 /// A print waiting for a temperature after its first layer has begun shows as printing.
 Status resolve(const Inputs &inputs);
 

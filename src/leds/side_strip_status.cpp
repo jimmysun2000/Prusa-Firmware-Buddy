@@ -23,6 +23,8 @@ std::optional<Look> look(Status status, SideStripStatusMode mode) {
         return std::nullopt;
     case Status::recovering:
         return steady(orange_color);
+    case Status::warning_dialog:
+        return pulse(red_color, slow_pulse_dark_factor);
     case Status::waiting:
         return pulse(yellow_color, pulse_dark_factor);
     case Status::busy:
@@ -31,6 +33,8 @@ std::optional<Look> look(Status status, SideStripStatusMode mode) {
         return steady(blue_color);
     case Status::preheating:
         return pulse(blue_color, slow_pulse_dark_factor);
+    case Status::stopped:
+        return steady(red_color);
     case Status::finished_warm:
         return pulse(green_color, slow_pulse_dark_factor);
     case Status::finished:
@@ -51,6 +55,9 @@ Status resolve(const Inputs &inputs) {
     if (inputs.activity == Activity::recovering) {
         return Status::recovering;
     }
+    if (inputs.warning_dialog) {
+        return Status::warning_dialog;
+    }
     if (inputs.waits_for_owner) {
         return Status::waiting;
     }
@@ -70,6 +77,8 @@ Status resolve(const Inputs &inputs) {
     switch (inputs.activity) {
     case Activity::printing:
         return Status::printing;
+    case Activity::stopped:
+        return Status::stopped;
     case Activity::finished:
         return inputs.bed_warm ? Status::finished_warm : Status::finished;
     case Activity::idle:

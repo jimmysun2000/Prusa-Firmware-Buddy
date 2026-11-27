@@ -147,6 +147,10 @@ side_strip_status::Inputs SideStripHandler::read_inputs(uint32_t now_ms) {
         top = states.get_top();
     });
     const DeviceState device_state = printer_state::get_state();
+    const marlin_server::State print_state = vars.print_state;
+
+    // The warning dialog has the highest score, an open one is always on top
+    inputs.warning_dialog = top.has_value() && top->fsm_type == ClientFSM::Warning;
 
     was_hot = side_strip_status::is_above(hottest_heater(), side_strip_status::hot_temp, side_strip_status::hot_off_temp, was_hot);
     was_bed_warm = side_strip_status::is_above(vars.temp_bed, side_strip_status::bed_warm_temp, side_strip_status::bed_cool_temp, was_bed_warm);
@@ -158,7 +162,8 @@ side_strip_status::Inputs SideStripHandler::read_inputs(uint32_t now_ms) {
         break;
 
     case StateAnimation::Warning:
-        inputs.waits_for_owner = true;
+        // An open warning dialog shows this animation whatever else runs
+        inputs.waits_for_owner = !inputs.warning_dialog;
         break;
 
     case StateAnimation::Printing:
@@ -175,9 +180,20 @@ side_strip_status::Inputs SideStripHandler::read_inputs(uint32_t now_ms) {
         break;
 
     case StateAnimation::Idle:
-    case StateAnimation::Aborted:
         inputs.activity = Activity::idle;
         inputs.heating = any_heater_warming_up();
+        break;
+
+    case StateAnimation::Aborted:
+        if (print_state == marlin_server::State::Aborting_Preview) {
+            // A print preview closing, nothing was printed
+            inputs.activity = Activity::idle;
+            inputs.heating = any_heater_warming_up();
+        } else {
+            inputs.activity = Activity::stopped;
+            // Until the stop sequence switches the heaters off, their targets are the print's
+            inputs.heating = print_state == marlin_server::State::Aborted && any_heater_warming_up();
+        }
         break;
 
     case StateAnimation::PowerPanic:
@@ -187,7 +203,7 @@ side_strip_status::Inputs SideStripHandler::read_inputs(uint32_t now_ms) {
     }
 
     // The cold bed question of a power panic recovery shows the Warning animation
-    if (is_power_panic_recovery(vars.print_state)) {
+    if (is_power_panic_recovery(print_state)) {
         inputs.activity = Activity::recovering;
     }
 

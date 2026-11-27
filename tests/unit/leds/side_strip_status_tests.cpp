@@ -25,11 +25,13 @@ constexpr Status all_statuses[] = {
     Status::error,
     Status::owner_present,
     Status::recovering,
+    Status::warning_dialog,
     Status::waiting,
     Status::busy,
     Status::print_heating,
     Status::preheating,
     Status::printing,
+    Status::stopped,
     Status::finished_warm,
     Status::finished,
     Status::hot,
@@ -92,10 +94,12 @@ TEST_CASE("side_strip_status: looks") {
     const Expected expected[] = {
         { Status::error, red_color, ColorRGBW(38, 0, 0), 500 },
         { Status::recovering, orange_color, orange_color, 0 },
+        { Status::warning_dialog, red_color, ColorRGBW(25, 0, 0), 3000 },
         { Status::waiting, yellow_color, ColorRGBW(38, 38, 0), 1000 },
         { Status::busy, purple_color, ColorRGBW(16, 0, 25), 3000 },
         { Status::print_heating, blue_color, blue_color, 0 },
         { Status::preheating, blue_color, ColorRGBW(0, 15, 25), 3000 },
+        { Status::stopped, red_color, red_color, 0 },
         { Status::finished_warm, green_color, ColorRGBW(0, 25, 0), 3000 },
         { Status::finished, green_color, green_color, 0 },
         { Status::hot, purple_color, purple_color, 0 },
@@ -170,10 +174,11 @@ TEST_CASE("side_strip_status: pulse phase") {
 
     CHECK(pulse_period_ms(Status::error) == 500);
     CHECK(pulse_period_ms(Status::waiting) == 1000);
+    CHECK(pulse_period_ms(Status::warning_dialog) == 3000);
     CHECK(pulse_period_ms(Status::busy) == 3000);
     CHECK(pulse_period_ms(Status::preheating) == 3000);
     CHECK(pulse_period_ms(Status::finished_warm) == 3000);
-    for (const auto status : { Status::recovering, Status::print_heating, Status::finished, Status::hot }) {
+    for (const auto status : { Status::recovering, Status::print_heating, Status::stopped, Status::finished, Status::hot }) {
         CHECK(pulse_period_ms(status) == 0);
     }
 
@@ -201,7 +206,7 @@ TEST_CASE("side_strip_status: apply_tint") {
 TEST_CASE("side_strip_status: alerts") {
     for (const auto status : all_statuses) {
         CAPTURE(static_cast<int>(status));
-        CHECK(is_alert(status) == (status == Status::waiting || status == Status::error));
+        CHECK(is_alert(status) == (status == Status::warning_dialog || status == Status::waiting || status == Status::error));
     }
 }
 
@@ -247,7 +252,7 @@ TEST_CASE("side_strip_status: hysteresis") {
 
 namespace {
 
-constexpr Activity all_activities[] = { Activity::idle, Activity::printing, Activity::finished, Activity::recovering };
+constexpr Activity all_activities[] = { Activity::idle, Activity::printing, Activity::stopped, Activity::finished, Activity::recovering };
 
 /// The documented priority, highest first
 Status expected_status(const Inputs &in) {
@@ -256,11 +261,13 @@ Status expected_status(const Inputs &in) {
         { in.error, Status::error },
         { in.user_present, Status::owner_present },
         { in.activity == Activity::recovering, Status::recovering },
+        { in.warning_dialog, Status::warning_dialog },
         { in.waits_for_owner, Status::waiting },
         { in.busy, Status::busy },
         { in.heating && printing && !in.first_layer_started, Status::print_heating },
         { in.heating && !printing, Status::preheating },
         { printing, Status::printing },
+        { in.activity == Activity::stopped, Status::stopped },
         { in.activity == Activity::finished && in.bed_warm, Status::finished_warm },
         { in.activity == Activity::finished, Status::finished },
         { in.activity == Activity::idle && in.hot, Status::hot },
@@ -284,7 +291,7 @@ Inputs make(Activity activity) {
 TEST_CASE("side_strip_status: resolve priority") {
     // Every combination of the inputs
     for (const auto activity : all_activities) {
-        for (unsigned flags = 0; flags < (1u << 8); ++flags) {
+        for (unsigned flags = 0; flags < (1u << 9); ++flags) {
             Inputs in;
             in.activity = activity;
             in.error = flags & (1u << 0);
@@ -295,6 +302,7 @@ TEST_CASE("side_strip_status: resolve priority") {
             in.first_layer_started = flags & (1u << 5);
             in.bed_warm = flags & (1u << 6);
             in.hot = flags & (1u << 7);
+            in.warning_dialog = flags & (1u << 8);
             CAPTURE(static_cast<int>(activity), flags);
             CHECK(resolve(in) == expected_status(in));
         }
@@ -360,10 +368,44 @@ TEST_CASE("side_strip_status: resolve cases") {
     in.error = true;
     CHECK(resolve(in) == Status::error);
 
+    // A warning dialog shows over prompts, pauses and everything below them, whatever runs
+    for (const auto activity : { Activity::idle, Activity::printing, Activity::stopped, Activity::finished }) {
+        in = make(activity);
+        in.warning_dialog = true;
+        CHECK(resolve(in) == Status::warning_dialog);
+        in.waits_for_owner = true;
+        in.busy = true;
+        in.heating = true;
+        in.bed_warm = true;
+        in.hot = true;
+        CHECK(resolve(in) == Status::warning_dialog);
+    }
+
+    // The cold bed question after a power cut belongs to the recovery
+    in = make(Activity::recovering);
+    in.warning_dialog = true;
+    in.waits_for_owner = true;
+    CHECK(resolve(in) == Status::recovering);
+
+    // A stopped print shows red until its screen closes, also with a hot bed
+    in = make(Activity::stopped);
+    CHECK(resolve(in) == Status::stopped);
+    in.hot = true;
+    in.bed_warm = true;
+    CHECK(resolve(in) == Status::stopped);
+    // A heater warming up to a target set after the stop
+    in.heating = true;
+    CHECK(resolve(in) == Status::preheating);
+    // Then the screen closes with the bed still hot
+    in = make(Activity::idle);
+    in.hot = true;
+    CHECK(resolve(in) == Status::hot);
+
     // An error beats everything
     for (const auto activity : all_activities) {
         in = make(activity);
         in.error = true;
+        in.warning_dialog = true;
         in.waits_for_owner = true;
         in.user_present = true;
         CHECK(resolve(in) == Status::error);
@@ -373,6 +415,7 @@ TEST_CASE("side_strip_status: resolve cases") {
     for (const auto activity : all_activities) {
         in = make(activity);
         in.user_present = true;
+        in.warning_dialog = true;
         in.waits_for_owner = true;
         in.busy = true;
         in.heating = true;
@@ -413,7 +456,7 @@ TEST_CASE("side_strip_status: first layer") {
 TEST_CASE("side_strip_status: white under alerts") {
     CHECK(alert_white == 63);
 
-    for (const auto status : { Status::waiting, Status::error }) {
+    for (const auto status : { Status::warning_dialog, Status::waiting, Status::error }) {
         CHECK(white_under(status, 255) == alert_white);
         CHECK(white_under(status, 102) == alert_white);
         // Never brighter than without the status colours
