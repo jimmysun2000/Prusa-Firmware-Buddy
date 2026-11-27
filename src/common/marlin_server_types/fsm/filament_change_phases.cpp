@@ -35,8 +35,16 @@ constinit const EnumArray<PhasesLoadUnload, PhaseResponses, CountPhases<PhasesLo
 #endif
         { PhasesLoadUnload::Loading_stoppable, { Response::Stop } },
         { PhasesLoadUnload::Loading_unstoppable, {} },
+#if PRINTER_IS_PRUSA_XL()
+        // Retry releases the cold-pushed filament so that it can be inserted again
+        { PhasesLoadUnload::LoadingToGears_stoppable, { Response::Stop, Response::Retry } },
+        { PhasesLoadUnload::LoadingToGears_unstoppable, { Response::Retry } },
+        { PhasesLoadUnload::LoadWaitingTemp_stoppable, { Response::Stop, Response::Retry } },
+        { PhasesLoadUnload::LoadWaitingTemp_unstoppable, { Response::Retry } },
+#else
         { PhasesLoadUnload::LoadingToGears_stoppable, { Response::Stop } },
         { PhasesLoadUnload::LoadingToGears_unstoppable, {} },
+#endif
         { PhasesLoadUnload::Purging_stoppable, { Response::Stop } },
         { PhasesLoadUnload::Purging_unstoppable, {} },
         { PhasesLoadUnload::AwaitingFilament_stoppable, { Response::Stop } },

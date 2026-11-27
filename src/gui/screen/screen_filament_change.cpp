@@ -463,6 +463,10 @@ using Frames = FrameDefinitionList<ScreenFilamentChange::FrameStorage,
     FrameDefinition<Phase::Loading_unstoppable, FrameProgress, txt_loading>,
     FrameDefinition<Phase::LoadingToGears_stoppable, FrameProgress, txt_inserting>,
     FrameDefinition<Phase::LoadingToGears_unstoppable, FrameProgress, txt_inserting>,
+#if PRINTER_IS_PRUSA_XL()
+    FrameDefinition<Phase::LoadWaitingTemp_stoppable, FrameProgress, txt_wait_temp>,
+    FrameDefinition<Phase::LoadWaitingTemp_unstoppable, FrameProgress, txt_wait_temp>,
+#endif
     FrameDefinition<Phase::Purging_stoppable, FrameProgress, txt_purging>,
     FrameDefinition<Phase::Purging_unstoppable, FrameProgress, txt_purging>,
     FrameDefinition<Phase::AwaitingFilament_stoppable, WithBeepAlertSound<FrameProgress>, txt_make_sure_inserted>,

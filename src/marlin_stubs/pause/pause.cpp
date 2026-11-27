@@ -357,14 +357,22 @@ bool Pause::ensureSafeTemperatureNotifyProgress() {
         return true;
     }
 
-    setPhase(is_unstoppable() ? PhasesLoadUnload::WaitingTemp_unstoppable : PhasesLoadUnload::WaitingTemp_stoppable);
+    PhasesLoadUnload wait_phase = is_unstoppable() ? PhasesLoadUnload::WaitingTemp_unstoppable : PhasesLoadUnload::WaitingTemp_stoppable;
+#if PRINTER_IS_PRUSA_XL()
+    // Within a load (not a purge) the filament has only been pushed cold so far
+    if (get_state() == LoadState::load_wait_temp && load_type != LoadType::load_purge) {
+        wait_phase = is_unstoppable() ? PhasesLoadUnload::LoadWaitingTemp_unstoppable : PhasesLoadUnload::LoadWaitingTemp_stoppable;
+    }
+#endif
+    setPhase(wait_phase);
 
     PauseFsmNotifier N(*this, Temperature::degHotend(active_extruder),
         Temperature::degTargetHotend(active_extruder) - heating_phase_min_hotend_diff, marlin_vars().hotend(settings.physical_tool()).temp_nozzle);
 
     // Wait until temperature is close
     while (!is_tempreature_reached()) {
-        if (check_user_stop(getResponse()) || gcode_exceptions().is_unwinding()) {
+        const Response response = getResponse();
+        if (check_user_stop(response) || check_user_retry(response) || gcode_exceptions().is_unwinding()) {
             return false;
         }
         idle(true);
@@ -746,7 +754,7 @@ void Pause::load_to_gears_process([[maybe_unused]] Response response) { // slow 
     setPhase(is_unstoppable() ? PhasesLoadUnload::LoadingToGears_unstoppable : PhasesLoadUnload::LoadingToGears_stoppable);
 
 #ifdef FILAMENT_CHANGE_SLOW_LOAD_PECK_START
-    const auto result = slow_load_notify_progress(StopConditions::All);
+    const auto result = slow_load_notify_progress(StopConditions::All | StopConditions::UserRetry);
 #else
     const auto result = do_e_move_notify_progress_coldextrude(
         settings.slow_load_length, standard_feedrates::extruder(standard_feedrates::Extruder::filament_slow_load, filament::get_type_to_load()), StopConditions::All);
@@ -762,6 +770,10 @@ void Pause::load_to_gears_process([[maybe_unused]] Response response) { // slow 
         return;
     }
 
+    if (result == StopConditions::UserRetry) {
+        return;
+    }
+
     // if filament is not present we want to break and not set loaded filament
     if (load_type == LoadType::load_to_gears) {
         set(LoadState::_finished);
@@ -771,14 +783,22 @@ void Pause::load_to_gears_process([[maybe_unused]] Response response) { // slow 
     handle_filament_removal(LoadState::filament_push_ask);
 }
 
-void Pause::move_to_purge_process([[maybe_unused]] Response response) {
+void Pause::move_to_purge_process(Response response) {
+    if (check_user_retry(response)) {
+        return;
+    }
+
     if constexpr (option::has_side_fsensor) {
         mapi::home_if_needed_and_park(mapi::get_parking_position(mapi::ParkPosition::purge).without_z_move());
     }
     set(LoadState::load_wait_temp);
 }
 
-void Pause::load_wait_temp_process([[maybe_unused]] Response response) {
+void Pause::load_wait_temp_process(Response response) {
+    if (check_user_retry(response)) {
+        return;
+    }
+
     if (ensureSafeTemperatureNotifyProgress()) {
         // blocking -> checks for user stop
 
@@ -826,7 +846,12 @@ void Pause::unload_wait_temp_process([[maybe_unused]] Response response) {
 #endif
 }
 
-void Pause::long_load_process([[maybe_unused]] Response response) {
+void Pause::long_load_process(Response response) {
+    // A Retry given just before the hot move still gets the cold release
+    if (check_user_retry(response)) {
+        return;
+    }
+
     setPhase(is_unstoppable() ? PhasesLoadUnload::Loading_unstoppable : PhasesLoadUnload::Loading_stoppable);
 
     const float saved_acceleration = planner.user_settings.retract_acceleration;
@@ -1411,12 +1436,21 @@ void Pause::unloaded_ask_process(Response response) {
 }
 
 void Pause::unload_from_gears_process([[maybe_unused]] Response response) {
-    setPhase(PhasesLoadUnload::Unloading_stoppable);
+    setPhase(is_unstoppable() ? PhasesLoadUnload::Unloading_unstoppable : PhasesLoadUnload::Unloading_stoppable);
 
-    // unload cannot cause a runout -> safe to ignore the result
-    std::ignore = do_e_move_notify_progress_coldextrude(
-        -settings.slow_load_length * (float)1.5, standard_feedrates::extruder(standard_feedrates::Extruder::filament_fast_load, FilamentType::for_tool_heuristic(settings.virtual_tool())), StopConditions::UserStopped);
-    set(LoadState::unload_finish_or_change);
+    // Any other load type gets here on Retry and releases the filament it is loading
+    const bool is_retry = load_type != LoadType::unload_from_gears;
+    const FilamentType filament = is_retry ? filament::get_type_to_load() : FilamentType::for_tool_heuristic(settings.virtual_tool());
+
+    // unload cannot cause a runout
+    const auto result = do_e_move_notify_progress_coldextrude(
+        -settings.slow_load_length * (float)1.5, standard_feedrates::extruder(standard_feedrates::Extruder::filament_fast_load, filament), StopConditions::UserStopped);
+
+    if (!is_retry) {
+        set(LoadState::unload_finish_or_change);
+    } else if (result != StopConditions::UserStopped) {
+        set(LoadState::filament_push_ask);
+    }
 }
 
 #if HAS_NOZZLE_CLEANER()
@@ -1657,8 +1691,15 @@ bool Pause::parkMoveXGreaterThanY(const xyz_pos_t &pos0, const xyz_pos_t &pos1) 
 
 [[nodiscard]] Pause::StopConditions Pause::wait_for_motion_finish_stoppable(StopConditions check_for /* = MotionStoppableConditions::UserStopped */) {
     while (planner.processing()) {
-        if (check4(check_for, StopConditions::UserStopped) && check_user_stop(getResponse())) {
-            return StopConditions::UserStopped;
+        if (check4(check_for, StopConditions::UserStopped | StopConditions::UserRetry)) {
+            const Response response = getResponse();
+            if (check4(check_for, StopConditions::UserStopped) && check_user_stop(response)) {
+                return StopConditions::UserStopped;
+            }
+            if (check4(check_for, StopConditions::UserRetry) && check_user_retry(response)) {
+                planner.quick_stop_and_resume();
+                return StopConditions::UserRetry;
+            }
         }
         if (check4(check_for, StopConditions::SideFilamentSensorRunout) && FSensors_instance().no_filament_surely(LogicalFilamentSensor::side)) {
             log_info(MarlinServer, "Pause::sideFS runout");
@@ -1967,6 +2008,29 @@ bool Pause::check_user_stop(Response response) {
     }
     set(LoadState::stop);
     return true;
+}
+
+bool Pause::check_user_retry([[maybe_unused]] Response response) {
+#if PRINTER_IS_PRUSA_XL()
+    if (response != Response::Retry) {
+        return false;
+    }
+
+    // Retry means something else in other phases (for example at the colour prompt)
+    switch (getPhase()) {
+    case PhasesLoadUnload::LoadingToGears_stoppable:
+    case PhasesLoadUnload::LoadingToGears_unstoppable:
+    case PhasesLoadUnload::LoadWaitingTemp_stoppable:
+    case PhasesLoadUnload::LoadWaitingTemp_unstoppable:
+        set(LoadState::unload_from_gears);
+        return true;
+
+    default:
+        return false;
+    }
+#else
+    return false;
+#endif
 }
 
 void Pause::handle_filament_removal(LoadState state_to_set) {

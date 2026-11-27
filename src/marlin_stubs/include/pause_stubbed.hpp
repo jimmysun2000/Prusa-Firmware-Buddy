@@ -352,6 +352,7 @@ private:
         UserStopped = 1 << 0, ///< user pressed a stop button on the screen
         SideFilamentSensorRunout = 1 << 1, ///< filament runout happened
         Failed = 1 << 2, ///< some failure, currently only used in \ref do_e_move_notify_progress_hotextrude
+        UserRetry = 1 << 3, ///< user asked to release the filament and insert it again, see \ref check_user_retry
         All = UserStopped | SideFilamentSensorRunout
     };
 
@@ -390,6 +391,11 @@ private:
 #endif
 
     bool check_user_stop(Response response); //< stops motion and fsm and returns true it user triggered stop
+
+    /// Switches to the cold release of the filament and returns true if \p response is Retry
+    /// given in a phase where the filament has only been pushed cold so far (XL only).
+    /// Does not stop motion.
+    bool check_user_retry(Response response);
 
     /// Waits until motion is finished
     /// Originally, only user stop was considered, hence the default value of check_for

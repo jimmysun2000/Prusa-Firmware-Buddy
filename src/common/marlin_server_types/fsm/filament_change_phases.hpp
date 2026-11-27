@@ -45,6 +45,11 @@ enum class PhasesLoadUnload : PhaseUnderlyingType {
     Loading_unstoppable,
     LoadingToGears_stoppable,
     LoadingToGears_unstoppable,
+#if PRINTER_IS_PRUSA_XL()
+    /// Heatup within a load, while the filament can still be released cold
+    LoadWaitingTemp_stoppable,
+    LoadWaitingTemp_unstoppable,
+#endif
     Purging_stoppable,
     Purging_unstoppable,
     AwaitingFilament_stoppable,
