@@ -241,6 +241,8 @@ constexpr WindowMultiIconButton::Pngs shortcut_icon_set_ready GEN_ICON_NAMES(set
 constexpr WindowMultiIconButton::Pngs shortcut_icon_disconnect GEN_ICON_NAMES(disconnect);
 constexpr WindowMultiIconButton::Pngs shortcut_icon_reprint GEN_ICON_NAMES(reprint);
 constexpr WindowMultiIconButton::Pngs shortcut_icon_spools GEN_ICON_NAMES(spools);
+constexpr WindowMultiIconButton::Pngs shortcut_icon_info GEN_ICON_NAMES(info);
+constexpr WindowMultiIconButton::Pngs shortcut_icon_settings GEN_ICON_NAMES(settings);
 
 const WindowMultiIconButton::Pngs &macro_icon(user_macro::Icon icon) {
     using Icon = user_macro::Icon;
@@ -285,6 +287,33 @@ const WindowMultiIconButton::Pngs &shortcut_icon(const home_shortcut::Action &ac
         return shortcut_icon_preheat;
     case Kind::macro:
         return macro_icon(user_macro::icon(action.macro));
+    case Kind::temperature:
+        return shortcut_icon_preheat;
+    case Kind::move_z:
+    case Kind::calibrations:
+        return shortcut_icon_calibrate;
+    case Kind::bed_mesh:
+    case Kind::bed_tiles:
+    case Kind::tools_overview:
+    case Kind::statistics:
+    case Kind::maintenance:
+    case Kind::sensor_info:
+    case Kind::network_status:
+    case Kind::prusalink:
+        return shortcut_icon_info;
+    case Kind::lights:
+    case Kind::enclosure:
+    case Kind::wiper_setup:
+    case Kind::filament_sensors:
+    case Kind::tool_settings:
+    case Kind::input_shaper:
+        return shortcut_icon_settings;
+    case Kind::macros_screen:
+        return shortcut_icon_resume;
+    case Kind::load_all:
+    case Kind::unload_all:
+    case Kind::change_all:
+        return shortcut_icon_spools;
     }
     return shortcut_icon_home;
 }

@@ -28,6 +28,30 @@ TEST_CASE("home_shortcut::actions") {
         }
     }
 
+    SECTION("stored screen IDs keep their meaning") {
+        CHECK(find(32).kind == Kind::temperature);
+        CHECK(find(33).kind == Kind::move_z);
+        CHECK(find(34).kind == Kind::bed_mesh);
+        CHECK(find(35).kind == Kind::bed_tiles);
+        CHECK(find(36).kind == Kind::tools_overview);
+        CHECK(find(37).kind == Kind::statistics);
+        CHECK(find(38).kind == Kind::maintenance);
+        CHECK(find(39).kind == Kind::sensor_info);
+        CHECK(find(40).kind == Kind::network_status);
+        CHECK(find(41).kind == Kind::prusalink);
+        CHECK(find(42).kind == Kind::lights);
+        CHECK(find(43).kind == Kind::enclosure);
+        CHECK(find(44).kind == Kind::wiper_setup);
+        CHECK(find(45).kind == Kind::calibrations);
+        CHECK(find(46).kind == Kind::filament_sensors);
+        CHECK(find(47).kind == Kind::macros_screen);
+        CHECK(find(48).kind == Kind::load_all);
+        CHECK(find(49).kind == Kind::unload_all);
+        CHECK(find(50).kind == Kind::change_all);
+        CHECK(find(51).kind == Kind::tool_settings);
+        CHECK(find(52).kind == Kind::input_shaper);
+    }
+
     SECTION("each macro has one entry") {
         std::set<uint8_t> macros;
         for (const Action &action : actions) {
@@ -58,6 +82,8 @@ TEST_CASE("home_shortcut::actions") {
         CHECK(find(6).kind == Kind::none);
         CHECK(find(15).kind == Kind::none);
         CHECK(find(24).kind == Kind::none);
+        CHECK(find(31).kind == Kind::none);
+        CHECK(find(53).kind == Kind::none);
         CHECK(find(255).kind == Kind::none);
     }
 

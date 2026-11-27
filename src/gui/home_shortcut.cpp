@@ -1,8 +1,16 @@
 #include "home_shortcut.hpp"
 
+#include "MItem_filament.hpp"
+#include "MItem_menus.hpp"
 #include "MItem_tools.hpp"
 #include "ScreenHandler.hpp"
+#include "screen_menu_enclosure.hpp"
+#include "screen_menu_info.hpp"
+#include "screen_menu_macros.hpp"
+#include "screen_menu_maintenance.hpp"
 #include "screen_menu_move.hpp"
+#include "screen_menu_statistics.hpp"
+#include "screen_move_z.hpp"
 #include "user_macro.hpp"
 
 #include <config_store/store_instance.hpp>
@@ -38,6 +46,48 @@ namespace {
             return N_("Wipe Now");
         case Kind::macro:
             break;
+        case Kind::temperature:
+            return N_("Temp/Fans");
+        case Kind::move_z:
+            return N_("Move Z");
+        case Kind::bed_mesh:
+            return N_("Bed Mesh");
+        case Kind::bed_tiles:
+            return N_("Bed Tiles");
+        case Kind::tools_overview:
+            return N_("Tools Info");
+        case Kind::statistics:
+            return N_("Statistics");
+        case Kind::maintenance:
+            return N_("Maintain");
+        case Kind::sensor_info:
+            return N_("Sensors");
+        case Kind::network_status:
+            return N_("Net Status");
+        case Kind::prusalink:
+            return N_("PrusaLink");
+        case Kind::lights:
+            return N_("Lights");
+        case Kind::enclosure:
+            return N_("Enclosure");
+        case Kind::wiper_setup:
+            return N_("Wiper");
+        case Kind::calibrations:
+            return N_("Calibrate");
+        case Kind::filament_sensors:
+            return N_("Fil Sensor");
+        case Kind::macros_screen:
+            return N_("Macros");
+        case Kind::load_all:
+            return N_("Load All");
+        case Kind::unload_all:
+            return N_("Unload All");
+        case Kind::change_all:
+            return N_("Change All");
+        case Kind::tool_settings:
+            return N_("Tool Setup");
+        case Kind::input_shaper:
+            return N_("Inp Shaper");
         }
         return nullptr;
     }
@@ -103,6 +153,90 @@ void run(uint8_t id) {
 
     case Kind::macro:
         user_macro::run(action.macro, true);
+        return;
+
+    case Kind::temperature:
+        Screens::Access()->Open(MI_SCREEN_CTOR<ScreenMenuTemperatureAndFans>::get());
+        return;
+
+    case Kind::move_z:
+        open_move_z_screen();
+        return;
+
+    case Kind::bed_mesh:
+        Screens::Access()->Open(MI_SCREEN_CTOR<ScreenBedMesh>::get());
+        return;
+
+    case Kind::bed_tiles:
+        Screens::Access()->Open(MI_SCREEN_CTOR<ScreenBedTiles>::get());
+        return;
+
+    case Kind::tools_overview:
+        Screens::Access()->Open(MI_TOOLS_OVERVIEW::creator());
+        return;
+
+    case Kind::statistics:
+        Screens::Access()->Open(screen_statistics_creator());
+        return;
+
+    case Kind::maintenance:
+        open_maintenance_screen();
+        return;
+
+    case Kind::sensor_info:
+        Screens::Access()->Open(MI_SCREEN_CTOR<ScreenMenuSensorInfo>::get());
+        return;
+
+    case Kind::network_status:
+        Screens::Access()->Open(MI_SCREEN_CTOR<ScreenMenuNetworkStatus>::get());
+        return;
+
+    case Kind::prusalink:
+        Screens::Access()->Open(MI_SCREEN_CTOR<ScreenMenuPrusaLink>::get());
+        return;
+
+    case Kind::lights:
+        Screens::Access()->Open(MI_SCREEN_CTOR<ScreenMenuLights>::get());
+        return;
+
+    case Kind::enclosure:
+        Screens::Access()->Open(ScreenFactory::Screen<ScreenMenuEnclosure>);
+        return;
+
+    case Kind::wiper_setup:
+        Screens::Access()->Open(MI_SCREEN_CTOR<ScreenMenuNozzleWiper>::get());
+        return;
+
+    case Kind::calibrations:
+        Screens::Access()->Open(MI_SCREEN_CTOR<ScreenMenuSTSCalibrations>::get());
+        return;
+
+    case Kind::filament_sensors:
+        Screens::Access()->Open(MI_SCREEN_CTOR<ScreenMenuFilamentSensors>::get());
+        return;
+
+    case Kind::macros_screen:
+        Screens::Access()->Open(screen_macros_creator());
+        return;
+
+    case Kind::load_all:
+        MI_LOAD_ALL::run();
+        return;
+
+    case Kind::unload_all:
+        MI_UNLOAD_ALL::run();
+        return;
+
+    case Kind::change_all:
+        MI_CHANGEALL::run();
+        return;
+
+    case Kind::tool_settings:
+        MI_TOOLHEAD_SETTINGS::run();
+        return;
+
+    case Kind::input_shaper:
+        Screens::Access()->Open(MI_SCREEN_CTOR<ScreenMenuInputShaper>::get());
         return;
     }
 }
