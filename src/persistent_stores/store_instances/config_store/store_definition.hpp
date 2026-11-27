@@ -130,6 +130,11 @@
     #include <gui/maintenance_reminder_table.hpp>
 #endif
 
+#include <option/has_custom_nozzle_wiper.h>
+#if HAS_CUSTOM_NOZZLE_WIPER()
+    #include <feature/nozzle_cleaner_lite/custom_wiper_geometry.hpp>
+#endif
+
 namespace config_store_ns {
 
 struct ItemFlag {
@@ -1080,6 +1085,21 @@ struct CurrentStore
     StoreItemArray<uint32_t, uint32_t { 0 }, ItemFlag::features, journal::hash("Maintenance Reminder Interval"), 16, maintenance_reminders::item_count> maintenance_interval;
     /// Odometer counter at the last maintenance reset, per reminder slot. Use maintenance_reminders.
     StoreItemArray<uint32_t, uint32_t { 0 }, ItemFlag::stats, journal::hash("Maintenance Reminder Baseline"), 32, maintenance_reminders::slot_count> maintenance_baseline;
+#endif
+
+#if HAS_CUSTOM_NOZZLE_WIPER()
+    /// The nozzle wiper is the user's taught one instead of Prusa's (only matters with nozzle_cleaner_lite_installed)
+    StoreItem<bool, false, ItemFlag::hw_config, journal::hash("Nozzle Wiper Custom")> nozzle_wiper_custom;
+    /// Taught position of the custom wiper
+    StoreItem<nozzle_cleaner_lite::custom_wiper::Geometry, nozzle_cleaner_lite::custom_wiper::Geometry {}, ItemFlag::hw_config, journal::hash("Nozzle Wiper Geometry")> nozzle_wiper_geometry;
+    /// Width of the band the zigzag covers across the stroke line [mm]
+    StoreItem<float, nozzle_cleaner_lite::custom_wiper::width_default, ItemFlag::features, journal::hash("Nozzle Wiper Width")> nozzle_wiper_width;
+    /// Speed of the fast strokes [mm/s]
+    StoreItem<uint8_t, nozzle_cleaner_lite::custom_wiper::speed_default, ItemFlag::features, journal::hash("Nozzle Wiper Speed")> nozzle_wiper_speed;
+    /// Descend onto the custom wiper with the loadcell watching for an obstruction
+    StoreItem<bool, true, ItemFlag::features, journal::hash("Nozzle Wiper Guarded Descent")> nozzle_wiper_guarded_descent;
+    /// Wipe on the custom wiper before the bed-tap nozzle check of G29 P9
+    StoreItem<bool, false, ItemFlag::features, journal::hash("Nozzle Wiper Auto Probing")> nozzle_wiper_auto_probing;
 #endif
 
 private:

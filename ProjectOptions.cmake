@@ -754,6 +754,8 @@ set_feature_for_printers(
 
 set_feature_for_printers(HAS_NOZZLE_CLEANER "iX" "COREONE_INDX" "COREONEL_INDX")
 set_feature_for_printers(HAS_NOZZLE_CLEANER_LITE "XL" "COREONE" "COREONEL")
+# A user-mounted wiper taught on the printer, as an alternative to Prusa's nozzle wiper
+set_feature_for_printers(HAS_CUSTOM_NOZZLE_WIPER "XL")
 set_feature_for_printers(
   HAS_MANUAL_BELT_TUNING "COREONE" "COREONE_INDX" "COREONEL" "COREONEL_INDX" "iX"
   )

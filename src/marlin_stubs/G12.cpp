@@ -22,6 +22,7 @@
 #endif
 #include <option/has_nozzle_cleaner.h>
 #include <option/has_nozzle_cleaner_lite.h>
+#include <option/has_custom_nozzle_wiper.h>
 #if HAS_NOZZLE_CLEANER()
     #include <nozzle_cleaner.hpp>
 #elif HAS_NOZZLE_CLEANER_LITE()
@@ -45,7 +46,7 @@ LOG_COMPONENT_REF(PRUSA_GCODE);
  *
  * #### Usage
  *
- *     G12 [ R ] [ S ] [ C ]
+ *     G12 [ R ] [ S ] [ C ] [ D ]
  *
  * #### Parameters
  *
@@ -56,7 +57,10 @@ LOG_COMPONENT_REF(PRUSA_GCODE);
  *         21 = power_panic_purge, 30 = eject_blob, 90 = enter_cleaner, 91 = exit_cleaner
  * - `C` - (nozzle cleaner lite only) Cool down on the touchpoint after cleaning
  *         (default: 1). `C0` leaves as soon as the rub is done.
+ * - `D` - (custom nozzle wiper only) Dry run: heater off, slow strokes only
  *
+ * With a custom nozzle wiper, `S` and `C` have no effect: the nozzle is
+ * brought to the wiper's own touch range and its target restored afterwards.
  */
 
 void PrusaGcodeSuite::G12() {
@@ -68,6 +72,13 @@ void PrusaGcodeSuite::G12() {
 #if HAS_AUTO_RETRACT()
     bool auto_retract = false;
     (void)parser.store_option_if_present('R', auto_retract);
+
+    #if HAS_CUSTOM_NOZZLE_WIPER()
+    // An unusable custom wiper must not move anything, the extruder included
+    if (nozzle_cleaner_lite::is_available() && nozzle_cleaner_lite::uses_custom_geometry() && !nozzle_cleaner_lite::custom_geometry_valid()) {
+        auto_retract = false;
+    }
+    #endif
 
     if (auto_retract) {
         buddy::auto_retract().maybe_retract_from_nozzle();
@@ -83,6 +94,7 @@ void PrusaGcodeSuite::G12() {
             .probe_temp = std::nullopt,
             .cooldown = parser.option<bool>('C').value_or(true),
             .keep_target = false,
+            .dry_run = parser.option<bool>('D').value_or(false),
         };
 
         // Unlike G29, G12 doesn't already have a print_status_message FSM open,

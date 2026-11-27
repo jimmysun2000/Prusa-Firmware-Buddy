@@ -57,6 +57,7 @@
   #endif
 
   #include <option/has_nozzle_cleaner_lite.h>
+  #include <option/has_custom_nozzle_wiper.h>
   #if HAS_NOZZLE_CLEANER_LITE()
     #include <feature/nozzle_cleaner_lite/include/nozzle_cleaner_lite.hpp>
   #endif
@@ -586,13 +587,18 @@
               // detecting it, and cleans at a fixed hardcoded location, so it
               // doesn't need the X/Y/W/H rectangle the loadcell tap-based
               // cleaning below scans.
-              if (nozzle_cleaner_lite::is_available()) {
+              if (nozzle_cleaner_lite::is_available() && !nozzle_cleaner_lite::uses_custom_geometry()) {
                 // The start gcode set the probing temperature; clean at it and
                 // keep the cooled-down default target for the probing that follows.
                 ubl.g29_nozzle_cleaning_failed |= !nozzle_cleaner_lite::clean(
                   { .cleaning_temp = thermalManager.degTargetHotend(active_extruder), .cooldown = true, .keep_target = true });
                 break;
               }
+              #if HAS_CUSTOM_NOZZLE_WIPER()
+                // A custom wiper has no touchpoint to tell whether the nozzle is
+                // clean, so the tap-based check below still runs after it.
+                ubl.g29_nozzle_cleaning_failed |= !nozzle_cleaner_lite::wipe_before_probing();
+              #endif
             #endif
             if (g29_size_seen && (xy_seen.x || xy_seen.y)) {
               ubl.g29_nozzle_cleaning_failed |= !cleanup_probe(g29_pos, g29_pos + g29_size);

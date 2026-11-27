@@ -237,8 +237,9 @@ std::expected<void, tool_offset::FailureReason> prepare_tool(PhysicalToolIndex t
     }
 #elif HAS_NOZZLE_CLEANER_LITE()
     // The lite cleaner self-locates and heats internally, so unlike the full
-    // cleaner it needs no separate Calibration-context handling.
-    if (nozzle_cleaner_lite::is_available()) {
+    // cleaner it needs no separate Calibration-context handling. A custom wiper
+    // is taught in the nozzle tip frame, which this calibration is redefining.
+    if (nozzle_cleaner_lite::is_available() && !nozzle_cleaner_lite::uses_custom_geometry()) {
         if (!nozzle_cleaner_lite::clean({ .cleaning_temp = temps.cleaning, .probe_temp = temps.z_probing, .cooldown = true, .keep_target = true })) {
             return std::unexpected(tool_offset::FailureReason::cleaning_failed);
         }
