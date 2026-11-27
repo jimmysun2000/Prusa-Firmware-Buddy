@@ -69,6 +69,13 @@ static_assert(HAS_PAUSE());
     #include <Marlin/src/module/prusa/toolchanger.h>
 #endif
 
+#if PRINTER_IS_PRUSA_XL()
+    #include <feature/auto_retract/auto_retract.hpp>
+    #include <feature/filament_tracker/filament_tracker.hpp>
+    #include <mapi/feedrates/standard_feedrates.hpp>
+    #include <mapi/motion.hpp>
+#endif
+
 #include <option/has_mmu2.h>
 #if HAS_MMU2()
     #include "Marlin/src/feature/prusa/MMU2/mmu2_mk4.h"
@@ -118,6 +125,7 @@ static void M600_manual(const GCodeParser2 &);
  *  Temperature that is currently set will be used for both unloading and loading.
  *
  *  On the XL, when `T` is not the picked tool and picking it fails, the filament change stops and the tool crash recovery takes over.
+ *  The picked tool is retracted by `E` before it is parked. After it is picked again and back at temperature, it is purged behind the bed and its retraction and E position are restored.
  */
 
 void GcodeSuite::M600() {
@@ -226,6 +234,15 @@ void M600_execute(mapi::ParkingPosition park_position, VirtualToolIndex target_t
 
     // Check if we need to do a toolchange
     std::optional<ToolChangeData> tool_change_data {};
+    #if PRINTER_IS_PRUSA_XL()
+    /// Filament and E position of the printing tool before its retract, put back after it is picked again
+    struct PrintingToolState {
+        PhysicalToolIndex tool;
+        float retracted_distance;
+        float e_position;
+    };
+    std::optional<PrintingToolState> printing_tool_state;
+    #endif
     if (!stdext::holds_value(VirtualToolIndex::currently_selected(), target_tool)) {
         // Since the native coordinates contain hotend_currently_applied_offset we need to store the logical
         // version of these coordinates to make it easier to convert to the target_extruder's native coordinates.
@@ -235,6 +252,25 @@ void M600_execute(mapi::ParkingPosition park_position, VirtualToolIndex target_t
             .target_extruder_original_temperature = Temperature::degTargetHotend(physical_target_tool),
             .original_extruder = VirtualToolIndex::currently_selected(),
         };
+
+    #if PRINTER_IS_PRUSA_XL()
+        // The printing tool waits hot in its dock for the whole change; retract it as the pause would, so it does not ooze there
+        if (const auto tool = PhysicalToolIndex::currently_selected_opt(); tool.has_value() && !thermalManager.tooColdToExtrude(*tool)) {
+            printing_tool_state = PrintingToolState {
+                .tool = *tool,
+                .retracted_distance = buddy::filament_tracker().get_retracted_distance(*tool).value_or(0),
+                .e_position = current_position.e,
+            };
+
+            const float retract_length = std::abs(retractLength.value_or(pause::Settings::GetDefaultRetractLength()));
+            mapi::retract_to(retract_length, buddy::standard_feedrates::extruder(buddy::standard_feedrates::Extruder::retract, FilamentType::for_current_tool_heuristic()));
+            if (current_position.e < printing_tool_state->e_position) {
+                // Auto retract undoes the retract on the next extrusion of the tool, also when the change stops before the tool is back
+                buddy::auto_retract().set_retracted_distance(*tool, retract_length);
+                sync_e_position_to(printing_tool_state->e_position);
+            }
+        }
+    #endif
 
         [[maybe_unused]] const bool target_picked = tool_change(target_tool, tool_return_t::no_return, tool_change_lift_t::mbl_only_lift, true);
     #if PRINTER_IS_PRUSA_XL()
@@ -354,9 +390,26 @@ void M600_execute(mapi::ParkingPosition park_position, VirtualToolIndex target_t
         Temperature::wait_for_hotend(original_tool->to_physical(), { .fan_cooling = true });
     }
 
+    #if PRINTER_IS_PRUSA_XL()
+    // Push out what the tool oozed in the dock behind the bed, as a spool join does
+    if (printing_tool_state.has_value() && !prusa_toolchanger.purge_tool(printing_tool_state->tool)) {
+        // Leave the head where the failed purge left it, the recovery deals with it from there.
+        log_error(PRUSA_GCODE, "M600 failed to purge the original tool");
+        return;
+    }
+    #endif
+
     auto return_position = resume_position();
     apply_motion_limits(return_position);
     mapi::park({ .x = return_position.x, .y = return_position.y, .z = return_position.z });
+
+    #if PRINTER_IS_PRUSA_XL()
+    if (printing_tool_state.has_value()) {
+        // Put the filament and the E position back to where the print left them
+        mapi::restore_retracted_distance(printing_tool_state->retracted_distance, buddy::standard_feedrates::current_extruder(buddy::standard_feedrates::Extruder::retract));
+        sync_e_position_to(printing_tool_state->e_position);
+    }
+    #endif
 #endif
 }
 
