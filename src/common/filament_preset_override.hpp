@@ -30,6 +30,9 @@ struct Adjustable {
     std::optional<uint8_t> chamber_max_temperature;
     std::optional<uint8_t> chamber_target_temperature;
 
+    /// Bed cool-down rate [0.1 °C/min], nullopt = the Cooldown Rate setting (also where filaments have no rate)
+    std::optional<uint8_t> cooldown_rate;
+
     constexpr bool operator==(const Adjustable &) const = default;
 };
 

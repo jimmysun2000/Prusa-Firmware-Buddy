@@ -56,17 +56,17 @@ TEST_CASE("filament_preset_override: round trip") {
 
 namespace {
 
-constexpr Adjustable asa_built_in {
-    .chamber_min_temperature = 40,
-    .chamber_max_temperature = 75,
-    .chamber_target_temperature = 70,
-};
+constexpr Adjustable values(uint8_t min, uint8_t max, uint8_t target, std::optional<uint8_t> cooldown_rate = std::nullopt) {
+    return Adjustable {
+        .chamber_min_temperature = min,
+        .chamber_max_temperature = max,
+        .chamber_target_temperature = target,
+        .cooldown_rate = cooldown_rate,
+    };
+}
 
-constexpr Adjustable asa_edited {
-    .chamber_min_temperature = 35,
-    .chamber_max_temperature = 75,
-    .chamber_target_temperature = 70,
-};
+constexpr Adjustable asa_built_in = values(40, 75, 70);
+constexpr Adjustable asa_edited = values(35, 75, 70);
 
 } // namespace
 
@@ -88,11 +88,7 @@ TEST_CASE("filament_preset_override: a copy of another name keeps its values") {
 }
 
 TEST_CASE("filament_preset_override: a copy the user changed keeps its values") {
-    for (const auto changed : {
-             Adjustable { .chamber_min_temperature = 45, .chamber_max_temperature = 75, .chamber_target_temperature = 70 },
-             Adjustable { .chamber_min_temperature = 40, .chamber_max_temperature = 80, .chamber_target_temperature = 70 },
-             Adjustable { .chamber_min_temperature = 40, .chamber_max_temperature = 75, .chamber_target_temperature = 0 },
-         }) {
+    for (const auto changed : { values(45, 75, 70), values(40, 80, 70), values(40, 75, 0) }) {
         CHECK(!copy_follows_edit("ASA", changed, "ASA", asa_built_in, asa_edited));
     }
 }
@@ -103,11 +99,17 @@ TEST_CASE("filament_preset_override: a copy made after the edit is left alone") 
 
 TEST_CASE("filament_preset_override: None counts as a value") {
     // The filament detail screen saves None as 0
-    constexpr Adjustable no_soak {
-        .chamber_min_temperature = 0,
-        .chamber_max_temperature = 75,
-        .chamber_target_temperature = 70,
-    };
+    constexpr Adjustable no_soak = values(0, 75, 70);
     CHECK(copy_follows_edit("ASA", no_soak, "ASA", no_soak, asa_built_in));
     CHECK(!copy_follows_edit("ASA", asa_built_in, "ASA", no_soak, asa_edited));
+}
+
+TEST_CASE("filament_preset_override: the bed cool-down rate counts as a value") {
+    constexpr Adjustable slow = values(40, 75, 70, 5);
+
+    // An edit of the rate alone is carried
+    CHECK(copy_follows_edit("ASA", asa_built_in, "ASA", asa_built_in, slow));
+
+    // A copy whose rate the user set keeps it, also when the chamber temperatures are edited
+    CHECK(!copy_follows_edit("ASA", slow, "ASA", asa_built_in, asa_edited));
 }

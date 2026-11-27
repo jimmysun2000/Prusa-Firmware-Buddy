@@ -456,7 +456,7 @@ void ScreenFilamentDetail::save_changes() {
 
 #if XL_ENCLOSURE_SUPPORT()
     if (preset_rows_editable_) {
-        // Of a preset, set_parameters() takes only the chamber values
+        // Of a preset, set_parameters() takes only the values of the preset customizable rows
         filament_type_.set_parameters(params);
     }
 #endif

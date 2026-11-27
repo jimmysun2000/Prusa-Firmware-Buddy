@@ -321,7 +321,7 @@ public:
     FilamentTypeParameters parameters() const;
 
     /// Sets parameters of the filament type, provided that the filament type is customizable.
-    /// Of a preset that is_chamber_adjustable_preset(), only the chamber temperatures are taken.
+    /// Of a preset that is_chamber_adjustable_preset(), only the chamber temperatures and the bed cool-down rate are taken.
     void set_parameters(const FilamentTypeParameters &set) const;
 
     /// \returns Modified parameters of the filament type (calls \p f(params) and stores the modified data)
@@ -339,7 +339,7 @@ public:
         return std::holds_alternative<UserFilamentType>(*this) || is_adhoc();
     }
 
-    /// \returns whether the filament is a preset whose chamber temperatures the user can change.
+    /// \returns whether the filament is a preset whose chamber temperatures and bed cool-down rate the user can change.
     /// Its other parameters always stay as built in.
     inline bool is_chamber_adjustable_preset() const {
 #if XL_ENCLOSURE_SUPPORT()

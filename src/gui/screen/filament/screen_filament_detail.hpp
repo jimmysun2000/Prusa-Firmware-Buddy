@@ -146,6 +146,7 @@ class MI_FILAMENT_COOLDOWN_RATE final : public WiSpin {
 public:
     static constexpr auto parameter_ptr = &FilamentTypeParameters::cooldown_rate;
     static constexpr bool is_chamber_item = true;
+    static constexpr bool is_preset_customizable = true;
 
     MI_FILAMENT_COOLDOWN_RATE();
 

@@ -1163,6 +1163,11 @@ struct CurrentStore
     /// Chamber temperatures of the preset filament types set by the user, indexed by PresetFilamentType.
     /// Each value is stored as filament_preset_override::encode() of the built-in one; the default reads as built in.
     StoreItemArray<FilamentTypeParameters_EEPROM2, FilamentTypeParameters_EEPROM2 {}, ItemFlag::user_presets, journal::hash("Preset Filament Chamber Parameters"), 32, std::to_underlying(PresetFilamentType::_count_sparse)> preset_filament_chamber_parameters;
+    #if HAS_FILAMENT_COOLDOWN_RATE_PARAM()
+    /// Bed cool-down rates of the preset filament types set by the user, indexed by PresetFilamentType.
+    /// The presets are built with the Cooldown Rate setting, which the default holds.
+    StoreItemArray<FilamentTypeParameters_EEPROM7, FilamentTypeParameters_EEPROM7 {}, ItemFlag::user_presets, journal::hash("Preset Filament Bed Cooldown Rate"), 32, std::to_underlying(PresetFilamentType::_count_sparse)> preset_filament_cooldown_rates;
+    #endif
 #endif
 
 private:

@@ -72,7 +72,7 @@ static_assert(filament_preset_override::as_built_in == FilamentTypeParameters_EE
 
 namespace {
 
-/// \returns the built-in parameters of \p type with the chamber temperatures set by the user
+/// \returns the built-in parameters of \p type with the chamber temperatures and the bed cool-down rate set by the user
 FilamentTypeParameters user_preset_parameters(PresetFilamentType type) {
     using filament_preset_override::decode;
 
@@ -81,6 +81,10 @@ FilamentTypeParameters user_preset_parameters(PresetFilamentType type) {
     result.chamber_min_temperature = decode(stored.chamber_min_temperature, result.chamber_min_temperature);
     result.chamber_max_temperature = decode(stored.chamber_max_temperature, result.chamber_max_temperature);
     result.chamber_target_temperature = decode(stored.chamber_target_temperature, result.chamber_target_temperature);
+    #if HAS_FILAMENT_COOLDOWN_RATE_PARAM()
+    // The built-in rate of every preset is the Cooldown Rate setting (nullopt), so the stored rate is the rate itself
+    result.cooldown_rate = FilamentTypeParameters_EEPROM7::decode_cooldown_rate(config_store().preset_filament_cooldown_rates.get(std::to_underlying(type)).cooldown_rate);
+    #endif
     return result;
 }
 
@@ -89,6 +93,9 @@ filament_preset_override::Adjustable adjustable_values(const FilamentTypeParamet
         .chamber_min_temperature = params.chamber_min_temperature,
         .chamber_max_temperature = params.chamber_max_temperature,
         .chamber_target_temperature = params.chamber_target_temperature,
+    #if HAS_FILAMENT_COOLDOWN_RATE_PARAM()
+        .cooldown_rate = params.cooldown_rate,
+    #endif
     };
 }
 
@@ -100,6 +107,15 @@ FilamentTypeParameters_EEPROM2 adhoc_chamber_record(const filament_preset_overri
         .chamber_target_temperature = FilamentTypeParameters_EEPROM2::encode_chamber_temp(values.chamber_target_temperature),
     };
 }
+
+    #if HAS_FILAMENT_COOLDOWN_RATE_PARAM()
+/// \returns the bed cool-down rate record of a custom filament holding \p values
+FilamentTypeParameters_EEPROM7 adhoc_cooldown_rate_record(const filament_preset_override::Adjustable &values) {
+    return {
+        .cooldown_rate = FilamentTypeParameters_EEPROM7::encode_cooldown_rate(values.cooldown_rate),
+    };
+}
+    #endif
 
 /// Gives the edit of a preset from \p before to \p after to the copies loaded in the tools that follow it,
 /// see filament_preset_override::copy_follows_edit()
@@ -125,6 +141,15 @@ void carry_to_loaded_copies(const FilamentTypeParameters &before, const Filament
         config_store().adhoc_filament_parameters_2.transform(tool.to_raw(), [&](const FilamentTypeParameters_EEPROM2 current) {
             return current == record_before ? record_after : current;
         });
+
+    #if HAS_FILAMENT_COOLDOWN_RATE_PARAM()
+        // The same for the bed cool-down rate record
+        const auto rate_before = adhoc_cooldown_rate_record(values_before);
+        const auto rate_after = adhoc_cooldown_rate_record(values_after);
+        config_store().adhoc_filament_parameters_7.transform(tool.to_raw(), [&](const FilamentTypeParameters_EEPROM7 current) {
+            return current == rate_before ? rate_after : current;
+        });
+    #endif
     }
 }
 
@@ -459,6 +484,10 @@ void FilamentType::set_parameters(const FilamentTypeParameters &set) const {
                     .chamber_max_temperature = encode(set.chamber_max_temperature, built_in.chamber_max_temperature),
                     .chamber_target_temperature = encode(set.chamber_target_temperature, built_in.chamber_target_temperature),
                 });
+    #if HAS_FILAMENT_COOLDOWN_RATE_PARAM()
+            // The built-in rate of every preset is the Cooldown Rate setting (nullopt), which e7 stores as the default
+            config_store().preset_filament_cooldown_rates.set(std::to_underlying(v), e7);
+    #endif
             carry_to_loaded_copies(before, parameters());
 #else
             debug_assert(false);

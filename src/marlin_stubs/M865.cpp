@@ -22,8 +22,8 @@
  * Allows changing filament parameters and force-setting the currently loaded filament.
  * Also print selected filament parameters to the serial.
  *
- * Of a preset filament type, only the chamber temperatures `C`, `D` and `E` can be set (XL with enclosure),
- * and `R` resets them to the built-in values. All its other parameters stay as built in.
+ * Of a preset filament type, only the chamber temperatures `C`, `D`, `E` and the bed cool-down rate `K` can be set
+ * (XL with enclosure), and `R` resets them to the built-in values. All its other parameters stay as built in.
  *
  *#### Parameters (Common)
  * - `S"<short_name>"` - Select filament with the specified name
