@@ -4,6 +4,7 @@
 #include <common/marlin_vars.hpp>
 #include <feature/gcode_exception/gcode_exception.hpp>
 #include <gcode/gcode_parser.hpp>
+#include <logging/log.hpp>
 #include <mapi/parking.hpp>
 #include <marlin_server.hpp>
 #include <marlin_stubs/skippable_gcode.hpp>
@@ -12,11 +13,14 @@
 #include <module/motion.h>
 #include <module/temperature.h>
 #include <raii/scope_guard.hpp>
+#include <timing.h>
 #include <tool_index.hpp>
 #include <utils/publisher.hpp>
 
 #include <limits>
 #include <optional>
+
+LOG_COMPONENT_REF(MarlinServer);
 
 namespace {
 
@@ -49,6 +53,39 @@ bool heat_up(int16_t bed_temperature, PhysicalToolIndex tool) {
     return thermalManager.wait_for_hotend(tool, { .no_wait_for_cooling = false, .fan_cooling = true }) && !interrupted();
 }
 
+constexpr int32_t soak_limit_ms = int32_t { bed_mesh_measurement::soak_limit_minutes } * 60 * 1000;
+
+/// Waits as a print start does until the bed frame has absorbed the heat of the bed; the probing
+/// would otherwise measure a bed that still changes its shape. A click on the wait screen or the
+/// time limit ends the wait early, and the measurement goes on.
+/// @returns false if the run is aborted
+bool soak() {
+    bool limit_reached = false;
+    bool absorbed = false;
+    {
+        const uint32_t start_ms = ticks_ms();
+        // Unbound as soon as the stock wait returns, so it cannot skip the homing or the probing
+        Subscriber limit_watcher(marlin_server::idle_publisher, [&limit_reached, start_ms] {
+            if (!limit_reached && ticks_diff(ticks_ms(), start_ms) >= soak_limit_ms) {
+                limit_reached = true;
+                skippable_gcode().request_skip();
+            }
+        });
+        absorbed = thermalManager.wait_for_frame_heatup();
+    }
+    if (absorbed) {
+        return true;
+    }
+
+    // The stock wait returns the same on a skip and on an abort
+    if (gcode_exceptions().is_unwinding()) {
+        return false;
+    }
+
+    log_info(MarlinServer, "M9170: heat absorption %s, measuring", limit_reached ? "time limit reached" : "skipped");
+    return true;
+}
+
 } // namespace
 
 /** \addtogroup G-Codes
@@ -72,7 +109,11 @@ bool heat_up(int16_t bed_temperature, PhysicalToolIndex tool) {
  * again before homing.
  *
  * With S above 0, all bed tiles are enabled before the heating and stay
- * enabled afterwards, as they are when idle after a print.
+ * enabled afterwards, as they are when idle after a print. Between the
+ * temperature waits and the homing, the run then waits as a print start does
+ * until the bed frame has absorbed the heat (no wait at 25 °C or less). A click
+ * during that wait ends it and the measurement starts at once, as it does after
+ * one hour of waiting.
  *
  * Every way out sets the bed target and the target of the measuring nozzle to
  * 0; the other nozzles are left alone. A click on the wait screen ends the run
@@ -125,6 +166,10 @@ void PrusaGcodeSuite::M9170() {
     }
 
     if (!heat_up(*bed_temperature, *tool)) {
+        return;
+    }
+
+    if (*bed_temperature > 0 && !soak()) {
         return;
     }
 
