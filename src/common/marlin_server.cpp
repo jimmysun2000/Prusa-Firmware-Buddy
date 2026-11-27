@@ -179,6 +179,10 @@
     #include "module/tool_change.h"
 #endif
 
+#if HAS_TOOLCHANGER() && !HAS_INDX()
+    #include <hotend_pid_gains.hpp>
+#endif
+
 #if HAS_MMU2()
     #include <mmu2/mmu2_fsm.hpp>
     #include <mmu2/maintenance.hpp>
@@ -1404,7 +1408,16 @@ static void settings_load() {
 #endif
 #if ENABLED(PIDTEMP)
     for (auto tool : PhysicalToolIndex::all()) {
-        Hotend::for_tool(tool).set_nozzle_pid_config(HotendPIDConfig {});
+        HotendPIDConfig pid {};
+    #if HAS_TOOLCHANGER() && !HAS_INDX()
+        if (const HotendPIDGains gains = config_store().hotend_pid_gains.get(tool.to_raw()); hotend_pid::is_valid(gains)) {
+            pid = hotend_pid::to_config<HotendPIDConfig>(gains, PID_dT);
+        } else {
+            log_error(MarlinServer, "Tool %d hotend PID %f %f %f out of range, using defaults", tool.display_index(),
+                static_cast<double>(gains.kp), static_cast<double>(gains.ki), static_cast<double>(gains.kd));
+        }
+    #endif
+        Hotend::for_tool(tool).set_nozzle_pid_config(pid);
     }
 #endif
 
