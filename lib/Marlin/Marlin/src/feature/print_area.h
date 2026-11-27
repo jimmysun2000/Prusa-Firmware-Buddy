@@ -99,6 +99,12 @@ class PrintArea {
     /// Set current bounding rect to max rect.
     static void reset_bounding_rect();
 
+    /// While set, the bounding rect no longer selects which bed tiles heat.
+    /// Whoever sets it sets the tile mask; after clearing it, set the bounding rect again to restore the mask.
+    static void set_whole_bed_override(bool set) { whole_bed_override = set; }
+
+    static bool is_whole_bed_override() { return whole_bed_override; }
+
   private:
 
     /// Return the bounding rect of the bed
@@ -106,6 +112,8 @@ class PrintArea {
 
     /// Currently set print area
     static rect_t bounding_rect;
+
+    static bool whole_bed_override;
 };
 
 extern PrintArea print_area;

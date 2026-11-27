@@ -11,6 +11,7 @@
 #include "print_area.h"
 
 PrintArea::rect_t PrintArea::bounding_rect = rect_t(X_MIN_POS, Y_MIN_POS, X_MAX_POS, Y_MAX_POS);
+bool PrintArea::whole_bed_override = false;
 PrintArea print_area;
 
 void PrintArea::set_bounding_rect(rect_t new_bounding_rect) {
@@ -21,7 +22,7 @@ void PrintArea::set_bounding_rect(rect_t new_bounding_rect) {
 
 #if HAS_MODULAR_BED()
 
-  if (get_print_area_based_heating_enabled()) {
+  if (get_print_area_based_heating_enabled() && !whole_bed_override) {
     uint16_t enabled_bedlet_mask = 0;
     for (int x = 0; x < X_HBL_COUNT; x++) {
       for (int y = 0; y < Y_HBL_COUNT; y++) {

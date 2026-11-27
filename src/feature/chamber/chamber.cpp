@@ -16,6 +16,10 @@
 
 #if XL_ENCLOSURE_SUPPORT()
     #include <hw/xl/xl_enclosure.hpp>
+    #include <feature/print_area.h>
+    #include <module/temperature.h>
+    #include <raii/scope_guard.hpp>
+    #include <limits>
 #endif
 
 #if HAS_XBUDDY_EXTENSION()
@@ -60,6 +64,10 @@ Chamber &chamber() {
 void Chamber::step() {
     debug_assert(osThreadGetId() == marlin_server::server_task);
 
+#if XL_ENCLOSURE_SUPPORT()
+    apply_whole_bed_heating(is_heating_through_bed());
+#endif
+
     std::lock_guard _lg(mutex_);
 
 #if XL_ENCLOSURE_SUPPORT()
@@ -85,6 +93,8 @@ Chamber::Capabilities Chamber::capabilities_nolock() const {
     case Backend::xl_enclosure:
         return Capabilities {
             .temperature_reporting = true,
+            // Heated through the bed, see is_heating_through_bed()
+            .heating = config_store().xl_enclosure_bed_heating.get() && xl_enclosure.is_active(),
         };
 #endif
 
@@ -174,6 +184,13 @@ std::optional<Temperature> Chamber::set_target_temperature(std::optional<Tempera
     // Wake up heaters if they are timed out
     buddy::safety_timer().reset_restore_nonblocking();
 
+#if XL_ENCLOSURE_SUPPORT()
+    // Declared before the lock, so that it runs after the lock is released
+    ScopeGuard apply_bed_heating = [this] {
+        apply_whole_bed_heating(is_heating_through_bed());
+    };
+#endif
+
     std::lock_guard _lg(mutex_);
     target_temperature_ = target;
 
@@ -187,6 +204,35 @@ std::optional<Temperature> Chamber::set_target_temperature(std::optional<Tempera
 
     return target_temperature_;
 }
+
+#if XL_ENCLOSURE_SUPPORT()
+bool Chamber::is_heating_through_bed() const {
+    std::lock_guard _lg(mutex_);
+    return is_heating_through_bed_nolock();
+}
+
+bool Chamber::is_heating_through_bed_nolock() const {
+    // Runs every marlin cycle; check the target first, the capabilities read the config store
+    return target_temperature_.has_value()
+        && *target_temperature_ > closed_chamber_target_threshold
+        && backend() == Backend::xl_enclosure
+        && capabilities_nolock().heating;
+}
+
+void Chamber::apply_whole_bed_heating(bool heat_through_bed) {
+    if (heat_through_bed == PrintArea::is_whole_bed_override()) {
+        return;
+    }
+
+    PrintArea::set_whole_bed_override(heat_through_bed);
+    if (heat_through_bed) {
+        thermalManager.setEnabledBedletMask(std::numeric_limits<uint16_t>::max());
+    } else {
+        // Setting the same rect again recomputes the tiles under the print area
+        print_area.set_bounding_rect(print_area.get_bounding_rect());
+    }
+}
+#endif
 
 void Chamber::reset() {
     std::lock_guard _lg(mutex_);
@@ -205,8 +251,7 @@ void Chamber::manage_ventilation_state(std::optional<Temperature> fil_target) {
         return;
     }
 
-    constexpr uint8_t temp_limit = 45; // Limit for closed grills is chamber max temperature of PETG
-    const auto target_state = (fil_target.value() > temp_limit) ? VentState::closed : VentState::open;
+    const auto target_state = (fil_target.value() > closed_chamber_target_threshold) ? VentState::closed : VentState::open;
 
     if (vent_state_ == target_state) {
         // Vents at the correct position

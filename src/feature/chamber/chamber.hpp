@@ -74,6 +74,9 @@ public: // Common/utilities
     void reset();
 
 public: // Temperature control
+    /// Chamber targets above this need a closed chamber (it is the chamber maximum of PETG)
+    static constexpr Temperature closed_chamber_target_threshold = 45;
+
     std::optional<Temperature> current_temperature() const;
 
     std::optional<Temperature> thermistor_temperature() const;
@@ -88,6 +91,13 @@ public: // Temperature control
     /// \returns the target temperature the chamber was actually set to - might differe because of capabilities().max_temp
     /// !!! MARLIN THREAD ONLY - we don't want to change it under g-code and thermal model hands
     std::optional<Temperature> set_target_temperature(std::optional<Temperature> target);
+
+#if XL_ENCLOSURE_SUPPORT()
+    /// \returns whether the XL enclosure is being heated through the bed: Chamber Heating is on,
+    /// the enclosure is active and the target is above closed_chamber_target_threshold.
+    /// While it is, all bed tiles are kept on, whatever area the print uses.
+    bool is_heating_through_bed() const;
+#endif
 
 #if HAS_CHAMBER_VENTS()
     /// Check the state of chamber grills (vents). Can be open/closed based on chamber target temperature
@@ -120,6 +130,14 @@ private:
 #endif
 
     Capabilities capabilities_nolock() const;
+
+#if XL_ENCLOSURE_SUPPORT()
+    bool is_heating_through_bed_nolock() const;
+
+    /// Switches all bed tiles on, or back to the tiles under the print area.
+    /// Must not be called with mutex_ held.
+    static void apply_whole_bed_heating(bool heat_through_bed);
+#endif
 };
 
 Chamber &chamber();

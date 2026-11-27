@@ -1104,6 +1104,11 @@ struct CurrentStore
     StoreItem<uint16_t, nozzle_cleaner_lite::custom_wiper::soak_time_default, ItemFlag::features, journal::hash("Nozzle Wiper Soak Time")> nozzle_wiper_soak_time;
 #endif
 
+#if XL_ENCLOSURE_SUPPORT()
+    /// Heat the enclosure through the whole bed for filaments that need a warm chamber
+    StoreItem<bool, false, ItemFlag::features, journal::hash("XL Enclosure Bed Heating")> xl_enclosure_bed_heating;
+#endif
+
 private:
     void perform_config_migrations();
 };

@@ -198,6 +198,9 @@
 #if HAS_CHAMBER_API()
     #include <feature/chamber/chamber.hpp>
 #endif
+#if XL_ENCLOSURE_SUPPORT()
+    #include <feature/chamber/chamber_requirements.hpp>
+#endif
 #if HAS_E2EE_SUPPORT()
     #include <e2ee/key.hpp>
 #endif
@@ -2559,6 +2562,20 @@ static void _server_print_loop(void) {
                 }
             });
             buddy::chamber().manage_ventilation_state(max_chamber_target_temp);
+        }
+#endif
+#if XL_ENCLOSURE_SUPPORT()
+        if (config_store().xl_enclosure_bed_heating.get()) {
+            // Arm heating the enclosure through the bed for the filaments the print uses.
+            // Prints streamed by a host are left out; any target left over from a preheat is dropped.
+            std::optional<buddy::Temperature> chamber_target;
+            if (!server.print_is_serial && xl_enclosure.is_active()) {
+                const auto requirements = buddy::print_chamber_requirements();
+                if (requirements.arms_heating(buddy::Chamber::closed_chamber_target_threshold)) {
+                    chamber_target = *requirements.target;
+                }
+            }
+            buddy::chamber().set_target_temperature(chamber_target);
         }
 #endif
 #if HAS_CHAMBER_FILTRATION_API()

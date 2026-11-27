@@ -1,0 +1,3 @@
+add_executable(chamber_requirements_tests chamber_requirements_tests.cpp)
+target_include_directories(chamber_requirements_tests PRIVATE ${CMAKE_SOURCE_DIR}/src)
+add_catch_test(chamber_requirements_tests)
