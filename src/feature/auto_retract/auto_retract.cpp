@@ -239,6 +239,87 @@ void AutoRetract::retract_parked_tool(PhysicalToolIndex tool) {
         log_warning(MarlinServer, "Auto retract: failed to park tool %u", tool.to_raw());
     }
 }
+
+void AutoRetract::retract_all_parked_tools() {
+    if (marlin_server::is_printing()
+        || !prusa_toolchanger.is_toolchanger_enabled()
+        || DEBUGGING(DRYRUN)
+        || planner.draining()
+        || gcode_exceptions().is_unwinding()) {
+        return;
+    }
+
+    #if HAS_SWITCHABLE_AUTO_RETRACT()
+    if (!config_store().auto_retract_enabled.get()) {
+        return;
+    }
+    #endif
+
+    std::bitset<PhysicalToolIndex::count> pending;
+    for (auto tool : PhysicalToolIndex::all()) {
+        pending.set(tool.to_raw(), FilamentType::for_tool(tool.currently_selected_virtual_tool()) && parked_tool_needs_retract(tool));
+    }
+    if (pending.none()) {
+        return;
+    }
+
+    safety_timer().reset_restore_nonblocking();
+
+    StrongIndexArray<Hotend::TargetTemperature, PhysicalToolIndex::count, PhysicalToolIndex, PhysicalToolIndex::to_raw_static> original_targets {};
+    for (auto tool : PhysicalToolIndex::all()) {
+        if (pending.test(tool.to_raw())) {
+            original_targets[tool] = Hotend::for_tool(tool).nozzle_target_temp();
+        }
+    }
+
+    const auto restore_target = [&](PhysicalToolIndex tool) {
+        Hotend::for_tool(tool).set_nozzle_target_temp(original_targets[tool]);
+        pending.reset(tool.to_raw());
+    };
+    ScopeGuard target_temp_restorer = [&] {
+        for (auto tool : PhysicalToolIndex::all()) {
+            if (pending.test(tool.to_raw())) {
+                restore_target(tool);
+            }
+        }
+    };
+
+    // The same target the retract of each tool sets, so the later tools are already hot when their turn comes
+    for (auto tool : PhysicalToolIndex::all()) {
+        if (pending.test(tool.to_raw())) {
+            const auto nozzle_temperature = FilamentType::for_tool_heuristic(tool.currently_selected_virtual_tool()).parameters().nozzle_temperature;
+            Hotend::for_tool(tool).set_nozzle_target_temp(std::max(original_targets[tool], nozzle_temperature));
+        }
+    }
+
+    marlin_server::FSM_Holder fsm { PhaseWait::print_status_message };
+
+    if (!mapi::park(mapi::ParkingPosition { .z = mapi::ParkingPosition::AtLeast { .above_print = TOOLCHANGE_ZRAISE } })) {
+        return;
+    }
+
+    if (!std::holds_alternative<NoTool>(PhysicalToolIndex::currently_selected())
+        && !tool_change(NoTool {}, tool_return_t::no_return, tool_change_lift_t::no_lift, false)) {
+        return;
+    }
+
+    for (auto tool : PhysicalToolIndex::all()) {
+        if (!pending.test(tool.to_raw())) {
+            continue;
+        }
+        if (planner.draining() || gcode_exceptions().is_unwinding()) {
+            return;
+        }
+
+        retract_parked_tool(tool);
+        restore_target(tool);
+
+        // A failed pick leaves the tool unretracted, a failed park leaves it picked
+        if (!is_fully_retracted(tool) || !std::holds_alternative<NoTool>(PhysicalToolIndex::currently_selected())) {
+            return;
+        }
+    }
+}
 #endif
 
 void AutoRetract::maybe_deretract_to_nozzle() {

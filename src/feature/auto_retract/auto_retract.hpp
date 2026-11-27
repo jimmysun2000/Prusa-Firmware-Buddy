@@ -82,6 +82,15 @@ public:
     /// (FilamentType::for_tool_heuristic()) is none, flexible or already fully retracted.
     /// The tool's nozzle target temperature is restored on every exit path.
     void retract_parked_tool(PhysicalToolIndex tool);
+
+    /// Parks the picked tool and runs retract_parked_tool() on every tool that has a filament loaded
+    /// (FilamentType::for_tool(); a record of a previously loaded filament does not count) and that it would retract.
+    /// Those tools are heated together up front to the target maybe_retract_from_nozzle() would set.
+    /// Each tool's nozzle target goes back to its value from before the call right after its retract, and on every exit path.
+    /// Stops at the first tool that is left unretracted or picked, or when the planner drains.
+    /// Does nothing (no heating, no motion) during a print, with the toolchanger disabled or the Auto Retract switch off,
+    /// in dry run, while the planner drains, or if no tool qualifies.
+    void retract_all_parked_tools();
 #endif
 
 private:
