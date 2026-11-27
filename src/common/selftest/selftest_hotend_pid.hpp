@@ -26,9 +26,11 @@ struct HotendPidConfig_t {
 
 /// Relay autotuning of the hotend PID, see hotend_pid_tuning.hpp, as a session that tunes the
 /// chosen tools one after another in ascending order with one target temperature and fan speed.
-/// Each tool in turn is picked and moved to the filament load position first; its heater is used
-/// only once it is there. The heater is driven by gains that make the regulator an on/off relay,
-/// as the heater selftest does, and gets its own gains back as soon as it is measured.
+/// Each tool in turn is picked and moved to the filament load position first; its heater gets
+/// the tuning target only once it is there. The heater is driven by gains that make the regulator
+/// an on/off relay, as the heater selftest does, and gets its own gains back as soon as it is
+/// measured. From the confirmation on, the tools waiting for their turn are pre-heated in their
+/// docks with their own gains, see hotend_pid::waiting_target.
 /// After the last tool, all heaters of the session are off and the tool is parked; then the
 /// result of each tool is shown on a page of its own. Computed gains are stored only when the
 /// user confirms them on their tool's page.
@@ -45,6 +47,7 @@ public:
 
     LoopResult state_check_request();
     LoopResult state_wait_confirm();
+    LoopResult state_start_session();
     LoopResult state_mark_tool();
     LoopResult state_announce_move();
     LoopResult state_move_to_load();
@@ -80,6 +83,10 @@ private:
     /// Switches the nozzle in relay mode off, restores its gains from before the relay and turns
     /// the print fan off
     void end_relay();
+
+    /// Sets the nozzle target of every tool of the session except the tool in turn by
+    /// hotend_pid::waiting_target; needed whenever the tool in turn changes or its relay starts
+    void apply_waiting_targets();
 
     /// Ends the relay mode and sets the nozzle target of every tool of the session to 0
     void switch_session_heaters_off();

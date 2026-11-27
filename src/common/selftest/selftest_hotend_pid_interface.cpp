@@ -16,6 +16,7 @@ TestReturn phaseHotendPid(IPartHandler *&part, const HotendPidConfig_t &config) 
             static_result,
             &CSelftestPart_HotendPid::state_check_request,
             &CSelftestPart_HotendPid::state_wait_confirm,
+            &CSelftestPart_HotendPid::state_start_session,
             &CSelftestPart_HotendPid::state_mark_tool,
             &CSelftestPart_HotendPid::state_announce_move,
             &CSelftestPart_HotendPid::state_move_to_load,

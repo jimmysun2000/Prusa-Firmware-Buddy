@@ -70,7 +70,7 @@ void SelftestFrameHotendPid::change() {
         const int fan_percent = (data.print_fan_pwm * 100 + 127) / 255;
         if (several_tools) {
             format_tool_list(tool_list_text, data.tool_mask);
-            text_phase.SetText(_("Tools %s are tuned one after another at the front. Each heater switches fully on and off for up to %d min, print fan at %d%%. Target:")
+            text_phase.SetText(_("Tools %s are tuned one after another at the front; the waiting ones heat up in their docks. Each heater switches fully on and off for up to %d min, print fan at %d%%. Target:")
                                    .formatted(text_phase_params, tool_list_text, relay_time_limit_min, fan_percent));
         } else {
             text_phase.SetText(_("Tool %d will be picked and moved to the front. Its heater then switches fully on and off for up to %d min, print fan at %d%%. New values are stored only after you confirm. Target:")

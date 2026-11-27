@@ -27,6 +27,9 @@ constexpr float relay_half_output = PID_MAX / 2.0f;
 static_assert(PhysicalToolIndex::count <= hotend_pid::TOOL_SET_CAPACITY);
 constexpr hotend_pid::ToolSet all_tools = (1u << PhysicalToolIndex::count) - 1;
 
+// A request below EXTRUDE_MINTEMP is refused, so no waiting tool is ever hotter than the tuning target
+static_assert(hotend_pid::WAITING_TEMP <= EXTRUDE_MINTEMP);
+
 /// [ms] Answers given earlier on a result page are ignored. Pages of the same kind follow each
 /// other on the same phase, so a quick second tap would answer a page nobody has read yet.
 constexpr uint32_t page_answer_delay_ms = 1000;
@@ -91,6 +94,16 @@ LoopResult CSelftestPart_HotendPid::state_wait_confirm() {
     if (state_machine.GetButtonPressed() != Response::Continue) {
         return LoopResult::RunCurrent;
     }
+    return LoopResult::RunNext;
+}
+
+LoopResult CSelftestPart_HotendPid::state_start_session() {
+    if (session_tools == 0) {
+        return LoopResult::RunNext;
+    }
+
+    // The first tool in turn is not heated before it is at the front, the waiting ones are
+    apply_waiting_targets();
     return LoopResult::RunNext;
 }
 
@@ -187,6 +200,10 @@ LoopResult CSelftestPart_HotendPid::state_start_relay() {
 
     log_info(Selftest, "Hotend PID: tool %d relay mode on, target %d C, print fan PWM %d",
         tool.display_index(), config.request.target_temp, config.request.print_fan_pwm);
+
+    // Raises the next tool in line
+    apply_waiting_targets();
+
     result.cycle_count = 0;
     IPartHandler::SetFsmPhase(PhasesSelftest::HotendPid_heating);
     return LoopResult::RunNext;
@@ -246,6 +263,7 @@ LoopResult CSelftestPart_HotendPid::state_next_tool() {
     // A failed measurement leaves the machine in a known state, so the session goes on
     if (const std::optional<uint8_t> next = hotend_pid::next_tool(session_tools, tool_in_turn)) {
         tool_in_turn = *next;
+        apply_waiting_targets();
         return LoopResult::GoToMark0;
     }
 
@@ -379,6 +397,19 @@ void CSelftestPart_HotendPid::end_relay() {
     thermalManager.apply_print_fan_speed();
 
     log_info(Selftest, "Hotend PID: tool %d relay mode off, gains restored", tool.display_index());
+}
+
+void CSelftestPart_HotendPid::apply_waiting_targets() {
+    const hotend_pid::TurnStage stage = relay_active ? hotend_pid::TurnStage::measuring : hotend_pid::TurnStage::moving_to_front;
+    for (const PhysicalToolIndex tool : PhysicalToolIndex::all()) {
+        const uint8_t raw_tool = tool.to_raw();
+        if (!hotend_pid::contains(session_tools, raw_tool) || raw_tool == tool_in_turn) {
+            continue;
+        }
+        const int16_t target = hotend_pid::waiting_target(session_tools, tool_in_turn, stage, raw_tool, config.request.target_temp);
+        config.heaters[raw_tool].setTargetTemp(target);
+        log_info(Selftest, "Hotend PID: tool %d target %d C while tool %d has its turn", tool.display_index(), target, tool_in_turn + 1);
+    }
 }
 
 void CSelftestPart_HotendPid::switch_session_heaters_off() {
