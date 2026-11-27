@@ -4,6 +4,7 @@
 #include <option/has_custom_nozzle_wiper.h>
 
 #include <gcode/inject_queue_actions.hpp>
+#include <cstdint>
 #include <optional>
 #include <string_view>
 #include <str_utils.hpp>
@@ -76,6 +77,66 @@ bool wipe_before_probing();
 /// changes the nozzle target before the wipe, the deep clean ends without
 /// wiping and keeps that target. Refuses without a temperature to soak at.
 bool deep_clean(uint16_t hold_s);
+
+/// How a custom wipe, deep clean or trial ended
+enum class CustomResult : uint8_t {
+    /// None has run since the start
+    none,
+    done,
+    no_tool,
+    /// The picked tool cannot wipe the position, or the deep clean cannot soak above it
+    geometry,
+    /// A trial was asked for during a print
+    printing,
+    /// The printed part reaches above the wipe height
+    print_in_the_way,
+    not_homed,
+    homing_failed,
+    /// Deep clean only: no filament loaded and no nozzle target
+    no_soak_temp,
+    temperature_timeout,
+    /// Something else, the user or the safety timer, changed the nozzle target while waiting
+    target_changed,
+    /// The guarded descent touched something above the wiper
+    obstruction,
+    aborted,
+};
+
+/// Result of the custom wipe, deep clean or trial that ended last; any thread
+CustomResult last_custom_result();
+
+/// A position to test without storing it
+struct Trial {
+    custom_wiper::Geometry geometry;
+    float width = 0;
+};
+
+/// GUI thread: hands \p trial to the next G12, without storing anything. That
+/// G12 takes it whatever its parameters. With D it dry-runs on the trial in
+/// place of the stored position, whatever Nozzle Wiper and Wiper Type say;
+/// without D it drops it. Queue the G12 D only once this returned true, and arm
+/// the next trial only after collect_trial() returned this one's result or
+/// withdraw_trial() succeeded.
+/// \returns false while an earlier trial is pending
+bool arm_trial(const Trial &trial);
+
+/// GUI thread: withdraws the armed trial if no G12 has taken it yet.
+/// \returns false if a G12 has taken it, so its result is still to come
+bool withdraw_trial();
+
+/// GUI thread: the result of the trial once its G12 is done with it, nullopt
+/// while it is still pending. Collecting it frees the slot for the next trial.
+std::optional<CustomResult> collect_trial();
+
+/// G12 only: takes the armed trial, if there is one
+std::optional<Trial> take_trial();
+
+/// G12 only: dry-runs the taken \p trial and hands its result to the GUI.
+/// Refuses during a print.
+bool run_trial(const Trial &trial);
+
+/// G12 only: hands the taken trial back to the GUI without running it
+void drop_trial();
 #else
 constexpr bool uses_custom_geometry() { return false; }
 #endif

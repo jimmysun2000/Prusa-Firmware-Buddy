@@ -62,7 +62,11 @@ LOG_COMPONENT_REF(PRUSA_GCODE);
  *         21 = power_panic_purge, 30 = eject_blob, 90 = enter_cleaner, 91 = exit_cleaner
  * - `C` - (nozzle cleaner lite only) Cool down on the touchpoint after cleaning
  *         (default: 1). `C0` leaves as soon as the rub is done.
- * - `D` - (custom nozzle wiper only) Dry run: heater off, slow strokes only
+ * - `D` - (custom nozzle wiper only) Dry run: heater off, slow strokes only.
+ *         Runs on the stored position with Nozzle Wiper On and Wiper Type
+ *         Custom. The guided setup arms a trial position for the one G12 D it
+ *         queues; that one dry-runs the trial instead, whatever Nozzle Wiper
+ *         and Wiper Type say.
  * - `H` - (custom nozzle wiper only) Deep clean: soak beside the wiper for
  *         `H` seconds (30 to 600; `H` alone: the Soak Time setting) at the
  *         loaded filament's temperature, else the current target, then cool
@@ -77,6 +81,20 @@ void PrusaGcodeSuite::G12() {
     if (!parser.parse_marlin_command()) {
         return;
     }
+
+#if HAS_CUSTOM_NOZZLE_WIPER()
+    // Any G12 takes an armed trial, so that only the G12 D the setup queued right after arming it can run it
+    if (const auto trial = nozzle_cleaner_lite::take_trial()) {
+        if (parser.option<bool>('D').value_or(false)) {
+            marlin_server::FSM_Holder fsm_holder(PhaseWait::print_status_message);
+            if (!nozzle_cleaner_lite::run_trial(*trial)) {
+                SERIAL_ERROR_MSG("G12: nozzle wiper trial failed");
+            }
+            return;
+        }
+        nozzle_cleaner_lite::drop_trial();
+    }
+#endif
 
 #if HAS_AUTO_RETRACT()
     bool auto_retract = false;

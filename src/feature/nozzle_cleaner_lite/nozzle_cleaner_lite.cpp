@@ -40,6 +40,7 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <bitset>
 #include <cmath>
 #include <cstdint>
@@ -230,6 +231,36 @@ namespace {
             static_cast<double>(problem.by), problem.beyond_max ? "max" : "min", static_cast<double>(problem.limit), static_cast<double>(problem.min_width));
     }
 
+    std::atomic<CustomResult> last_result { CustomResult::none };
+
+    void record_result(CustomResult result) {
+        last_result.store(result, std::memory_order_relaxed);
+    }
+
+    /// Who owns the trial slot: the GUI arms it while empty and collects it once
+    /// finished, a G12 takes it while armed and finishes it. Only the thread that
+    /// moved it into arming or taken touches the slot until it moves it on.
+    enum class TrialState : uint8_t {
+        empty,
+        /// The GUI is writing the slot
+        arming,
+        armed,
+        /// A G12 has taken it and runs it
+        taken,
+        /// The result waits for the GUI
+        finished,
+    };
+    static_assert(std::atomic<TrialState>::is_always_lock_free);
+
+    std::atomic<TrialState> trial_state { TrialState::empty };
+    Trial trial_slot;
+    CustomResult trial_result = CustomResult::none;
+
+    void finish_trial(CustomResult result) {
+        trial_result = result;
+        trial_state.store(TrialState::finished, std::memory_order_release);
+    }
+
     float tallest_tool_offset_z() {
         float tallest = hotend_currently_applied_offset.z;
         for (auto tool : PhysicalToolIndex::all().skip_all_disabled()) {
@@ -330,33 +361,33 @@ namespace {
 
     /// Checks that a custom wipe of \p geometry may run and homes if that is needed and allowed.
     /// Nothing else moves.
-    std::optional<Prepared> prepare(const cw::Geometry &geometry, float width) {
+    std::expected<Prepared, CustomResult> prepare(const cw::Geometry &geometry, float width) {
         const std::optional<PhysicalToolIndex> tool = PhysicalToolIndex::currently_selected_opt();
         if (!tool) {
             log_error(NozzleCleanerLite, "no tool selected");
-            return std::nullopt;
+            return std::unexpected(CustomResult::no_tool);
         }
 
         const auto plan = plan_custom_wipe(geometry, width);
         if (!plan.has_value()) {
             log_problem(plan.error());
-            return std::nullopt;
+            return std::unexpected(CustomResult::geometry);
         }
 
         if (!cw::print_clearance_ok(planner.max_printed_z, tallest_tool_offset_z(), geometry.wipe_z)) {
             log_error(NozzleCleanerLite, "printed part reaches above the custom wiper");
-            return std::nullopt;
+            return std::unexpected(CustomResult::print_in_the_way);
         }
 
         if (!all_axes_homed()) {
             // Homing Z mid-print would lower the nozzle onto the part
             if (marlin_server::is_printing()) {
                 log_error(NozzleCleanerLite, "not homed");
-                return std::nullopt;
+                return std::unexpected(CustomResult::not_homed);
             }
             if (!GcodeSuite::G28_no_parser(true, true, true, G28Flags { .only_if_needed = true })) {
                 log_error(NozzleCleanerLite, "homing failed");
-                return std::nullopt;
+                return std::unexpected(CustomResult::homing_failed);
             }
         }
 
@@ -370,7 +401,7 @@ namespace {
 
     /// Wipes from wherever the nozzle is and leaves the way it came.
     /// Sets the nozzle target to \p restore_target at the end, unless something else changed it meanwhile.
-    bool wipe(const Prepared &prepared, bool dry_run, int16_t restore_target, PrintStatusMessageGuard &status) {
+    CustomResult wipe(const Prepared &prepared, bool dry_run, int16_t restore_target, PrintStatusMessageGuard &status) {
         const cw::ToolPlan &plan = prepared.plan;
         const cw::Frame &frame = plan.frame;
         const Pad &pad = plan.pad;
@@ -410,7 +441,7 @@ namespace {
             move_to_machine_pos_z(approach_z, approach_feedrate);
         }
         if (planner.draining()) {
-            return false;
+            return CustomResult::aborted;
         }
 
         const int16_t gate_target = dry_run ? 0 : cw::wiper_target_temp;
@@ -424,12 +455,12 @@ namespace {
             // Whoever changed it (the user, the safety timer) decides the target from now on
             restore_nozzle_target.disarm();
             log_error(NozzleCleanerLite, "nozzle target changed while waiting");
-            return false;
+            return CustomResult::target_changed;
         case WaitResult::timed_out:
             log_error(NozzleCleanerLite, "nozzle did not reach the wiper touch range in time");
-            return false;
+            return CustomResult::temperature_timeout;
         case WaitResult::aborted:
-            return false;
+            return CustomResult::aborted;
         }
         status.update<PrintStatusMessage::nozzle_cleaner_lite>({});
 
@@ -443,13 +474,13 @@ namespace {
             const std::optional<float> touched_z = guarded_descent(wipe_z);
             if (touched_z.has_value() && *touched_z > wipe_z + cw::guard_allowance) {
                 log_error(NozzleCleanerLite, "obstruction at Z=%.2f, wiper expected at Z=%.2f", static_cast<double>(*touched_z), static_cast<double>(wipe_z));
-                return false;
+                return CustomResult::obstruction;
             }
         } else {
             move_to_machine_pos_z(wipe_z, homing_feedrate(Z_AXIS));
         }
         if (planner.draining()) {
-            return false;
+            return CustomResult::aborted;
         }
         log_info(NozzleCleanerLite, "Custom wiper: wiping at Z=%.3f", static_cast<double>(current_machine_position().z));
 
@@ -478,7 +509,16 @@ namespace {
             planner.apply_settings(s);
         }
 
-        return !planner.draining();
+        return planner.draining() ? CustomResult::aborted : CustomResult::done;
+    }
+
+    /// Plans, homes if needed and wipes \p geometry, restoring the nozzle target it found
+    CustomResult prepare_and_wipe(const cw::Geometry &geometry, float width, bool dry_run, PrintStatusMessageGuard &status) {
+        const auto prepared = prepare(geometry, width);
+        if (!prepared.has_value()) {
+            return prepared.error();
+        }
+        return wipe(*prepared, dry_run, Hotend::for_tool(prepared->tool).nozzle_target_temp(), status);
     }
 
     bool clean_custom(const CleanArgs &args) {
@@ -486,11 +526,9 @@ namespace {
         status_message.update<PrintStatusMessage::nozzle_cleaner_lite>({});
 
         auto &store = config_store();
-        const std::optional<Prepared> prepared = prepare(store.nozzle_wiper_geometry.get(), store.nozzle_wiper_width.get());
-        if (!prepared.has_value()) {
-            return false;
-        }
-        return wipe(*prepared, args.dry_run, Hotend::for_tool(prepared->tool).nozzle_target_temp(), status_message);
+        const CustomResult result = prepare_and_wipe(store.nozzle_wiper_geometry.get(), store.nozzle_wiper_width.get(), args.dry_run, status_message);
+        record_result(result);
+        return result == CustomResult::done;
     }
 
     /// Waits for the heater to settle on \p target
@@ -626,17 +664,22 @@ bool deep_clean(uint16_t hold_s) {
     PrintStatusMessageGuard status_message;
     status_message.update<PrintStatusMessage::nozzle_cleaner_lite>({});
 
+    const auto fail = [](CustomResult result) {
+        record_result(result);
+        return false;
+    };
+
     const std::optional<PhysicalToolIndex> tool = PhysicalToolIndex::currently_selected_opt();
     if (!tool) {
         log_error(NozzleCleanerLite, "no tool selected");
-        return false;
+        return fail(CustomResult::no_tool);
     }
     Hotend &hotend = Hotend::for_tool(*tool);
     const int16_t saved_nozzle_target = hotend.nozzle_target_temp();
     const int16_t soak_temp = loaded_filament_nozzle_temp().value_or(saved_nozzle_target);
     if (soak_temp <= 0) {
         log_error(NozzleCleanerLite, "no soak temperature: no filament loaded and no nozzle target");
-        return false;
+        return fail(CustomResult::no_soak_temp);
     }
 
     auto &store = config_store();
@@ -649,12 +692,15 @@ bool deep_clean(uint16_t hold_s) {
     };
     if (const auto plan = plan_custom_wipe(geometry, width); plan.has_value() && !soak_reachable(*plan)) {
         log_error(NozzleCleanerLite, "soak height out of Z travel");
-        return false;
+        return fail(CustomResult::geometry);
     }
 
-    const std::optional<Prepared> prepared = prepare(geometry, width);
-    if (!prepared.has_value() || !soak_reachable(prepared->plan)) {
-        return false;
+    const auto prepared = prepare(geometry, width);
+    if (!prepared.has_value()) {
+        return fail(prepared.error());
+    }
+    if (!soak_reachable(prepared->plan)) {
+        return fail(CustomResult::geometry);
     }
 
     const float soak_z = prepared->plan.wipe_z + cw::soak_clearance;
@@ -688,7 +734,7 @@ bool deep_clean(uint16_t hold_s) {
         move_to_machine_pos_z(soak_z, approach_feedrate);
     }
     if (planner.draining()) {
-        return false;
+        return fail(CustomResult::aborted);
     }
 
     // A target changed by anyone else (the user, the safety timer) ends the deep clean and is kept
@@ -701,12 +747,12 @@ bool deep_clean(uint16_t hold_s) {
     case WaitResult::target_changed:
         restore_nozzle_target.disarm();
         log_error(NozzleCleanerLite, "nozzle target changed while heating for the soak");
-        return false;
+        return fail(CustomResult::target_changed);
     case WaitResult::timed_out:
         log_error(NozzleCleanerLite, "nozzle did not reach the soak temperature in time");
-        return false;
+        return fail(CustomResult::temperature_timeout);
     case WaitResult::aborted:
-        return false;
+        return fail(CustomResult::aborted);
     }
 
     switch (hold(*tool, soak_target, hold_s, status_message)) {
@@ -715,9 +761,9 @@ bool deep_clean(uint16_t hold_s) {
     case HoldResult::target_changed:
         restore_nozzle_target.disarm();
         log_error(NozzleCleanerLite, "nozzle target changed during the soak");
-        return false;
+        return fail(CustomResult::target_changed);
     case HoldResult::aborted:
-        return false;
+        return fail(CustomResult::aborted);
     }
 
     // Cool down before going near the wiper
@@ -728,18 +774,79 @@ bool deep_clean(uint16_t hold_s) {
     case WaitResult::target_changed:
         restore_nozzle_target.disarm();
         log_error(NozzleCleanerLite, "nozzle target changed while cooling after the soak");
-        return false;
+        return fail(CustomResult::target_changed);
     case WaitResult::timed_out:
         log_error(NozzleCleanerLite, "nozzle did not cool to the wiper touch range in time");
-        return false;
+        return fail(CustomResult::temperature_timeout);
     case WaitResult::aborted:
-        return false;
+        return fail(CustomResult::aborted);
     }
     status_message.update<PrintStatusMessage::nozzle_cleaner_lite>({});
 
     // The wipe restores the target from here on
     restore_nozzle_target.disarm();
-    return wipe(*prepared, false, saved_nozzle_target, status_message);
+    const CustomResult result = wipe(*prepared, false, saved_nozzle_target, status_message);
+    record_result(result);
+    return result == CustomResult::done;
+}
+
+CustomResult last_custom_result() {
+    return last_result.load(std::memory_order_relaxed);
+}
+
+bool arm_trial(const Trial &trial) {
+    TrialState state = TrialState::empty;
+    if (!trial_state.compare_exchange_strong(state, TrialState::arming, std::memory_order_acquire)) {
+        return false;
+    }
+    trial_slot = trial;
+    trial_state.store(TrialState::armed, std::memory_order_release);
+    return true;
+}
+
+bool withdraw_trial() {
+    TrialState state = TrialState::armed;
+    return trial_state.compare_exchange_strong(state, TrialState::empty, std::memory_order_acq_rel);
+}
+
+std::optional<CustomResult> collect_trial() {
+    if (trial_state.load(std::memory_order_acquire) != TrialState::finished) {
+        return std::nullopt;
+    }
+    const CustomResult result = trial_result;
+    trial_state.store(TrialState::empty, std::memory_order_release);
+    return result;
+}
+
+std::optional<Trial> take_trial() {
+    TrialState state = TrialState::armed;
+    if (!trial_state.compare_exchange_strong(state, TrialState::taken, std::memory_order_acquire)) {
+        return std::nullopt;
+    }
+    return trial_slot;
+}
+
+bool run_trial(const Trial &trial) {
+    PrintStatusMessageGuard status_message;
+    status_message.update<PrintStatusMessage::nozzle_cleaner_lite>({});
+
+    CustomResult result;
+    if (marlin_server::is_printing()) {
+        log_error(NozzleCleanerLite, "no wiper trial during a print");
+        result = CustomResult::printing;
+    } else {
+        log_info(NozzleCleanerLite, "Custom wiper: trial of an unsaved position");
+        result = prepare_and_wipe(trial.geometry, trial.width, true, status_message);
+    }
+
+    record_result(result);
+    finish_trial(result);
+    return result == CustomResult::done;
+}
+
+void drop_trial() {
+    log_warning(NozzleCleanerLite, "wiper trial dropped by a G12 without D");
+    finish_trial(CustomResult::aborted);
 }
 #endif
 
