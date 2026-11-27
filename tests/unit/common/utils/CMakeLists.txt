@@ -53,3 +53,8 @@ add_catch_test(hotend_pid_gains_tests)
 add_executable(hotend_pid_tuning_tests hotend_pid_tuning_tests.cpp)
 target_include_directories(hotend_pid_tuning_tests PUBLIC ${CMAKE_SOURCE_DIR}/src/common)
 add_catch_test(hotend_pid_tuning_tests)
+
+# hotend_pid_session
+add_executable(hotend_pid_session_tests hotend_pid_session_tests.cpp)
+target_include_directories(hotend_pid_session_tests PUBLIC ${CMAKE_SOURCE_DIR}/src/common)
+add_catch_test(hotend_pid_session_tests)
