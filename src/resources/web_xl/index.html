@@ -34,6 +34,10 @@ a { color: var(--accent); }
 button { font: inherit; color: var(--text); background: var(--button); border: 1px solid var(--line); border-radius: 6px; padding: 4px 14px; cursor: pointer; }
 button:hover, button:focus-visible { border-color: var(--accent); }
 button:disabled { color: var(--muted); border-color: var(--line); cursor: default; }
+select { font: inherit; color: var(--text); background: var(--button); border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; max-width: 100%; }
+select:disabled { color: var(--muted); }
+input[type="radio"] { accent-color: var(--accent); margin: 0 6px 0 0; }
+label { cursor: pointer; }
 dl { display: grid; grid-template-columns: max-content 1fr; gap: 2px 16px; margin: 0; }
 dt { color: var(--muted); }
 dd { margin: 0; font-variant-numeric: tabular-nums; }
@@ -48,6 +52,9 @@ tr.active td:first-child { color: var(--accent); font-weight: 600; }
 .front { text-align: center; color: var(--muted); font-size: 13px; margin-top: 2px; }
 #mesh-point { min-height: 1.45em; margin-top: 6px; }
 .mesh-side { flex: 1 1 240px; }
+.mesh-source { margin: 0 0 8px; font-weight: 600; }
+.mesh.loading canvas, .mesh.loading dl { opacity: 0.4; }
+.compare { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; margin: 10px 0 16px; }
 .legend { display: flex; height: 14px; max-width: 260px; }
 .legend span { flex: 1; }
 .legend-labels { display: flex; justify-content: space-between; max-width: 260px; font-size: 13px; font-variant-numeric: tabular-nums; }
@@ -83,31 +90,43 @@ tr.active td:first-child { color: var(--accent); font-weight: 600; }
 
 <section>
 <h2>Bed mesh</h2>
-<div class="mesh">
+<div class="scroll">
+<table id="mesh-table">
+<thead><tr><th>Show</th><th>Measured</th><th>Age</th><th>Bed</th><th>Points</th><th>Range</th><th>Tool</th><th>During</th></tr></thead>
+<tbody><tr><td><label><input type="radio" name="mesh-show" value="0" checked>Live mesh</label></td><td id="live-state" colspan="7">–</td></tr></tbody>
+<tbody id="history-rows"></tbody>
+</table>
+</div>
+<div class="compare">
+<label for="mesh-compare">Compare with</label>
+<select id="mesh-compare" disabled><option value="0">Nothing</option></select>
+</div>
+<div id="mesh-body" class="mesh">
 <div class="mesh-plot">
 <canvas id="mesh-canvas" width="0" height="0" role="img" aria-label="Bed mesh, front of the bed at the bottom"></canvas>
 <div class="front">FRONT</div>
 <div id="mesh-point" class="muted">Hover or tap a point</div>
 </div>
 <div class="mesh-side">
+<p id="mesh-source" class="mesh-source">Live mesh</p>
 <dl>
 <dt>State</dt><dd id="mesh-state">–</dd>
 <dt>Min</dt><dd id="mesh-min">–</dd>
 <dt>Max</dt><dd id="mesh-max">–</dd>
 <dt>Range</dt><dd id="mesh-range">–</dd>
 <dt>Mean</dt><dd id="mesh-mean">–</dd>
-<dt>Probed points</dt><dd id="mesh-probed">–</dd>
+<dt id="mesh-probed-label">Probed points</dt><dd id="mesh-probed">–</dd>
 <dt>Grid</dt><dd id="mesh-grid">–</dd>
 <dt>Bed extent</dt><dd id="mesh-extent">–</dd>
 </dl>
-<h3>Deviation from mean</h3>
+<h3 id="legend-title">Deviation from mean</h3>
 <div id="mesh-legend" class="legend"></div>
 <div class="legend-labels"><span id="legend-low">–</span><span class="muted">mm</span><span id="legend-high">–</span></div>
 <div class="actions">
 <button id="mesh-refresh" type="button">Refresh</button>
 <button id="mesh-csv" type="button" disabled>Download CSV</button>
 <button id="mesh-json" type="button" disabled>Download JSON</button>
-<a href="/api/v1/mesh" target="_blank" rel="noopener">Raw JSON</a>
+<a id="mesh-raw" href="/api/v1/mesh" target="_blank" rel="noopener">Raw JSON</a>
 </div>
 </div>
 </div>
@@ -360,11 +379,16 @@ const MESH_STATES = {
 
 let meshView = null;
 
-function drawMesh(mesh) {
+const HOVER_HINT = 'Hover or tap a point';
+
+// Colours around the mean, or around the given centre (0 for a difference)
+function drawMesh(mesh, centre) {
     const nx = mesh.grid.x;
     const ny = mesh.grid.y;
     const hasData = mesh.state !== 'none';
     const stats = meshStats(mesh);
+    const middle = centre === undefined ? stats.mean : centre;
+    const fullScale = centre === undefined ? stats.fullScale : Math.max(MIN_FULL_SCALE, stats.max - centre, centre - stats.min);
     const palette = Array.from({ length: COLOR_STEPS }, (_, i) => colorOfStep(i));
 
     const canvas = $('mesh-canvas');
@@ -385,7 +409,7 @@ function drawMesh(mesh) {
         const top = (ny - 1 - iy) * cell;
         for (let ix = 0; ix < nx; ix++) {
             const v = meshValue(mesh, ix, iy);
-            ctx.fillStyle = hasData && isNumber(v) ? palette[colorStep(v - stats.mean, stats.fullScale)] : NO_DATA_COLOR;
+            ctx.fillStyle = hasData && isNumber(v) ? palette[colorStep(v - middle, fullScale)] : NO_DATA_COLOR;
             ctx.fillRect(ix * cell, top, cell, cell);
             // A dot tells a measured point from one the leveling filled in
             if (hasData && meshProbed(mesh, ix, iy)) {
@@ -394,7 +418,7 @@ function drawMesh(mesh) {
             }
         }
     }
-    meshView = { mesh, cell };
+    meshView = { mesh, cell, centre };
 
     const probed = probedCount(mesh);
     const hasStats = hasData && stats.count > 0;
@@ -406,8 +430,8 @@ function drawMesh(mesh) {
     setText('mesh-probed', probed > 0 ? String(probed) : '–');
     setText('mesh-grid', `${nx} × ${ny} points`);
     setText('mesh-extent', `X ${fixed(mesh.min.x, 1)} to ${fixed(mesh.max.x, 1)} mm, Y ${fixed(mesh.min.y, 1)} to ${fixed(mesh.max.y, 1)} mm`);
-    setText('legend-low', fixed(-stats.fullScale, 2));
-    setText('legend-high', signed(stats.fullScale, 2));
+    setText('legend-low', fixed(-fullScale, 2));
+    setText('legend-high', signed(fullScale, 2));
 }
 
 function pointPosition(first, last, index, count) {
@@ -431,6 +455,8 @@ function showMeshPoint(event) {
     let value = 'no value';
     if (mesh.state === 'none') {
         value = 'no mesh';
+    } else if (mesh.state === 'difference') {
+        value = isNumber(z) ? `difference ${signed(z, 3, ' mm')}` : 'not probed in both';
     } else if (isNumber(z)) {
         value = `Z ${signed(z, 3, ' mm')}${meshProbed(mesh, ix, iy) ? ', probed' : ''}`;
     }
@@ -486,9 +512,9 @@ function stateText(state) {
 
 const CSV_AXES = 'Rows: Y from the back of the bed (first row) to the front (last row). Columns: X from left to right.';
 
-// The head rows, then the heights and the probed marks. The grids look like the bed from above, front
-// left at the bottom left, as on the page and on the printer.
-function meshCsv(head, mesh) {
+// The head rows, then the heights and the probed marks, or only the differences. The grids look like the
+// bed from above, front left at the bottom left, as on the page and on the printer.
+function meshCsv(head, mesh, difference) {
     const nx = mesh.grid.x;
     const ny = mesh.grid.y;
     const header = [csvCell('Y \\ X [mm]')];
@@ -506,25 +532,63 @@ function meshCsv(head, mesh) {
         }
         return rows;
     };
-    const rows = [
-        [csvCell('XL bed mesh')],
-        ...head,
-        [],
-        ...grid(`Height [mm]. ${CSV_AXES}`, (ix, iy) => csvNumber(meshValue(mesh, ix, iy), 3)),
-        [],
-        ...grid('Probed: 1 = measured by the probe; 0 = filled in by the printer.', (ix, iy) => meshProbed(mesh, ix, iy) ? '1' : '0'),
-    ];
+    const heights = (ix, iy) => csvNumber(meshValue(mesh, ix, iy), 3);
+    const rows = [[csvCell('XL bed mesh')], ...head, []];
+    if (difference) {
+        rows.push(...grid(`Difference [mm]. ${CSV_AXES}`, heights));
+    } else {
+        rows.push(
+            ...grid(`Height [mm]. ${CSV_AXES}`, heights),
+            [],
+            ...grid('Probed: 1 = measured by the probe; 0 = filled in by the printer.', (ix, iy) => meshProbed(mesh, ix, iy) ? '1' : '0'));
+    }
     return rows.map(row => `${row.join(',')}\r\n`).join('');
 }
 
-function liveCsv(mesh, fetched) {
-    return meshCsv([
-        [csvCell('Source'), csvCell('Live mesh')],
-        [csvCell('Fetched'), csvCell(localDateTime(fetched))],
-        [csvCell('State'), csvCell(stateText(mesh.state))],
-        [csvCell('Probed points'), csvCell(probedText(mesh))],
-        [csvCell('Grid'), csvCell(`${mesh.grid.x} x ${mesh.grid.y} points`)],
-    ], mesh);
+// A difference has these rows once per entry, after a prefix
+function measurementRows(entry, prefix = '') {
+    const key = name => csvCell(`${prefix}${name}`);
+    const bed = entry.bed || {};
+    const measured = isNumber(entry.time) ? new Date(entry.time * 1000) : null;
+    return [
+        [key('Measured'), csvCell(measured ? localDateTime(measured) : 'unknown (printer clock not set)')],
+        [key('Measured (UTC)'), measured ? csvCell(measured.toISOString().replace(/\.\d{3}Z$/, 'Z')) : ''],
+        [key('Printer uptime at measurement [s]'), csvNumber(entry.uptime, 0)],
+        [key('Bed temperature [degC]'), csvNumber(bed.temp, 1)],
+        [key('Bed target [degC]'), csvNumber(bed.target, 0)],
+        [key('Tool'), isNumber(entry.tool) ? csvNumber(entry.tool + 1, 0) : csvCell('none')],
+        [key('During a print'), csvCell(entry.printing === true ? 'yes' : 'no')],
+    ];
+}
+
+function viewCsv(view) {
+    const head = [[csvCell('Source'), csvCell(view.title)]];
+    if (view.id === 0) {
+        head.push([csvCell('Fetched'), csvCell(localDateTime(view.fetched))], [csvCell('State'), csvCell(stateText(view.mesh.state))]);
+    } else if (view.reference) {
+        head.push(...measurementRows(view.shown, 'Shown '), ...measurementRows(view.reference, 'Reference '));
+    } else {
+        head.push(...measurementRows(view.shown));
+    }
+    head.push(
+        [csvCell('Probed points'), csvCell(probedText(view.mesh))],
+        [csvCell('Grid'), csvCell(`${view.mesh.grid.x} x ${view.mesh.grid.y} points`)]);
+    return meshCsv(head, view.mesh, Boolean(view.reference));
+}
+
+// The capture time, or the printer uptime when its clock was not set
+function entryStamp(entry) {
+    return isNumber(entry.time) ? fileStamp(new Date(entry.time * 1000)) : `uptime-${isNumber(entry.uptime) ? entry.uptime.toFixed(0) : 'unknown'}s`;
+}
+
+function viewFileName(view, extension) {
+    if (view.id === 0) {
+        return `xl-mesh_live_${fileStamp(view.fetched)}.${extension}`;
+    }
+    if (view.reference) {
+        return `xl-mesh-diff_${entryStamp(view.shown)}_minus_${entryStamp(view.reference)}.${extension}`;
+    }
+    return `xl-mesh_${entryStamp(view.shown)}.${extension}`;
 }
 
 function downloadText(name, text, type) {
@@ -538,18 +602,221 @@ function downloadText(name, text, type) {
     setTimeout(() => URL.revokeObjectURL(link.href), 10000);
 }
 
+// Bed mesh history
+
 // The last /api/v1/mesh answer and the PC time it came
 let live = null;
+// The last /api/v1/mesh/history answer, with only the entries that have a valid id
+let meshHistory = null;
+// /api/v1/mesh/history/<id> answers by id, kept while the list has them: an entry never changes
+const entryCache = new Map();
+// The row the user picked: null for none yet, 0 for the live mesh, else an entry id
+let pick = null;
+// The entry the shown one is compared with
+let referenceId = null;
+// What the mesh section shows, for the downloads; null while it loads
+let shownView = null;
+// The entry whose last request failed, and when it may be asked for again
+let failedEntry = { id: 0, due: 0 };
+
+const ENTRY_PATH = '/api/v1/mesh/history/';
+
+function historyEntries() {
+    return meshHistory ? meshHistory.entries : [];
+}
+
+function isListed(id) {
+    return historyEntries().some(entry => entry.id === id);
+}
+
+// Without a pick: the live mesh, or the newest entry while the live mesh is empty (as after a print)
+function shownId() {
+    if (pick !== null) {
+        return pick;
+    }
+    const newest = historyEntries()[0];
+    return newest && live && live.mesh.state === 'none' ? newest.id : 0;
+}
+
+function measuredText(entry) {
+    return isNumber(entry.time) ? new Date(entry.time * 1000).toLocaleString() : 'clock not set';
+}
+
+function entryRow(entry) {
+    const radio = element('input');
+    radio.type = 'radio';
+    radio.name = 'mesh-show';
+    radio.value = String(entry.id);
+    const label = element('label');
+    label.append(radio, `Entry ${entry.id}`);
+    const show = element('td');
+    show.append(label);
+
+    const bed = entry.bed || {};
+    const { uptime, points } = meshHistory;
+    const row = tableRow([
+        measuredText(entry),
+        isNumber(uptime) && isNumber(entry.uptime) ? `${durationText(Math.max(0, uptime - entry.uptime))} ago` : '–',
+        `${fixed(bed.temp, 1)} / ${fixed(bed.target, 0)} °C`,
+        isNumber(points) && entry.probed_points === points ? `Whole bed (${fixed(points, 0)})` : `${fixed(entry.probed_points, 0)} of ${fixed(points, 0)}`,
+        fixed(entry.z_max - entry.z_min, 3, ' mm'),
+        isNumber(entry.tool) ? `Tool ${entry.tool + 1}` : 'None',
+        entry.printing === true ? 'Print' : 'Idle',
+    ]);
+    row.prepend(show);
+    return row;
+}
+
+function renderHistory(list) {
+    if (!list || !Array.isArray(list.entries)) {
+        throw new Error('unexpected answer');
+    }
+    // An id goes into request paths, texts and file names
+    const entries = list.entries.filter(entry => entry && Number.isInteger(entry.id) && entry.id > 0);
+    meshHistory = { uptime: list.uptime, points: list.points, entries };
+    showHistory();
+}
+
+// Lets go of what left the list, then shows the list
+function showHistory() {
+    const entries = historyEntries();
+    for (const id of entryCache.keys()) {
+        if (!isListed(id)) {
+            entryCache.delete(id);
+        }
+    }
+    if (pick > 0 && !isListed(pick)) {
+        pick = null;
+        referenceId = null;
+    }
+    if (referenceId !== null && !isListed(referenceId)) {
+        referenceId = null;
+    }
+
+    const rows = entries.map(entryRow);
+    if (rows.length === 0) {
+        const empty = element('td', 'muted', 'No mesh measured since the printer was switched on.');
+        empty.colSpan = 8;
+        const row = element('tr');
+        row.append(empty);
+        rows.push(row);
+    }
+    $('history-rows').replaceChildren(...rows);
+    $('mesh-compare').replaceChildren(
+        new Option('Nothing', '0'),
+        ...entries.map(entry => new Option(`Entry ${entry.id} (${measuredText(entry)})`, String(entry.id))));
+    updateMesh();
+}
+
+function storeEntry(entry) {
+    // An answer that adds nothing counts as failed too, so a wrong answer cannot make the page ask again at once
+    if (!isMesh(entry) || !isListed(entry.id) || entryCache.has(entry.id)) {
+        throw new Error('unexpected answer');
+    }
+    entryCache.set(entry.id, entry);
+    updateMesh();
+}
+
+// The printer closes the connection when an entry is replaced while it is sent, so any failed entry request
+// counts as the entry being gone, like a 404: it leaves the list until the list, read again, says otherwise.
+// Its next request waits the retry delay, so an entry that keeps failing is not asked for in a loop.
+function entryFailed(path) {
+    const id = Number(path.slice(ENTRY_PATH.length));
+    failedEntry = { id, due: Date.now() + RETRY_MS };
+    if (meshHistory) {
+        meshHistory.entries = meshHistory.entries.filter(entry => entry.id !== id);
+        showHistory();
+    }
+    historySource.due = 0;
+}
+
+// Asks for the first entry the view needs and does not have
+function requestEntry() {
+    const id = [shownId(), referenceId].find(wanted => wanted > 0 && !entryCache.has(wanted)) || 0;
+    if (id !== entrySource.id || (id > 0 && entrySource.due === Infinity)) {
+        entrySource.id = id;
+        entrySource.path = `${ENTRY_PATH}${id}`;
+        entrySource.due = id === 0 ? Infinity : id === failedEntry.id ? failedEntry.due : 0;
+    }
+}
+
+// Shown minus reference where both were probed, shaped like a mesh answer for drawing, hover and download
+function diffMesh(shown, reference) {
+    const sameGrid = shown.grid.x === reference.grid.x && shown.grid.y === reference.grid.y;
+    const z = [];
+    const probed = [];
+    for (let iy = 0; iy < shown.grid.y; iy++) {
+        z.push([]);
+        probed.push([]);
+        for (let ix = 0; ix < shown.grid.x; ix++) {
+            const a = meshValue(shown, ix, iy);
+            const b = meshValue(reference, ix, iy);
+            const both = sameGrid && meshProbed(shown, ix, iy) && meshProbed(reference, ix, iy) && isNumber(a) && isNumber(b);
+            z[iy].push(both ? a - b : null);
+            probed[iy].push(both ? 1 : 0);
+        }
+    }
+    return { grid: shown.grid, min: shown.min, max: shown.max, major: shown.major, state: 'difference', z, probed };
+}
+
+function updateMesh() {
+    const id = shownId();
+    // Only two different entries are compared
+    if (id === 0 || referenceId === id) {
+        referenceId = null;
+    }
+    requestEntry();
+    const comparing = referenceId !== null;
+    const shown = id > 0 ? entryCache.get(id) : live && live.mesh;
+    const reference = comparing ? entryCache.get(referenceId) : null;
+    const title = id === 0 ? 'Live mesh' : comparing ? `Difference: entry ${id} minus entry ${referenceId}` : `History entry ${id}`;
+    const ready = Boolean(shown && (!comparing || reference));
+    const source = ready ? title : `${title} (loading…)`;
+    if ($('mesh-source').textContent !== source) {
+        // The point shown last belongs to the mesh shown before
+        setText('mesh-point', HOVER_HINT);
+        setText('mesh-source', source);
+    }
+    // The last drawing stays, dimmed and without hover, until the data is there
+    $('mesh-body').classList.toggle('loading', !ready);
+    if (!ready) {
+        meshView = null;
+    }
+
+    for (const radio of document.getElementsByName('mesh-show')) {
+        radio.checked = Number(radio.value) === id;
+        radio.closest('tr').classList.toggle('active', radio.checked);
+    }
+    const compare = $('mesh-compare');
+    compare.disabled = id === 0;
+    compare.value = String(referenceId || 0);
+    for (const option of compare.options) {
+        option.disabled = option.value !== '0' && Number(option.value) === id;
+    }
+    setText('live-state', live ? stateText(live.mesh.state) : '–');
+    $('mesh-raw').href = id > 0 ? `${ENTRY_PATH}${id}` : '/api/v1/mesh';
+
+    shownView = ready ? { id, title, shown, reference, mesh: comparing ? diffMesh(shown, reference) : shown, fetched: live && live.fetched } : null;
+    $('mesh-csv').disabled = !shownView || shown.state === 'none';
+    $('mesh-json').disabled = $('mesh-csv').disabled;
+    $('mesh-json').hidden = comparing;
+    if (!shownView) {
+        return;
+    }
+    drawMesh(shownView.mesh, comparing ? 0 : undefined);
+    setText('mesh-probed-label', comparing ? 'Compared points' : 'Probed points');
+    setText('legend-title', comparing ? 'Difference' : 'Deviation from mean');
+    if (comparing) {
+        setText('mesh-state', probedCount(shownView.mesh) > 0 ? 'Shown minus reference, at points probed in both' : 'These two meshes share no measured point.');
+    }
+}
 
 function renderLive(mesh) {
     if (!isMesh(mesh)) {
         throw new Error('unexpected answer');
     }
-    drawMesh(mesh);
     live = { mesh, fetched: new Date() };
-    const empty = mesh.state === 'none';
-    $('mesh-csv').disabled = empty;
-    $('mesh-json').disabled = empty;
+    updateMesh();
 }
 
 // Tools
@@ -715,17 +982,25 @@ function renderEnclosure(enclosure) {
 
 // Polling
 
+// One entry per request, when the mesh view needs it (see requestEntry). First, so that a picked entry does
+// not wait for the other sources.
+const entrySource = { id: 0, path: '', period: Infinity, due: Infinity, render: storeEntry, failed: entryFailed };
+const historySource = { path: '/api/v1/mesh/history', period: 30000, render: renderHistory };
 const sources = [
+    entrySource,
     { path: '/api/version', period: Infinity, render: renderVersion },
     { path: '/api/v1/status', period: 5000, render: renderStatus },
     { path: '/api/v1/tools', period: 5000, render: renderToolList },
     { path: '/api/v1/bed_tiles', period: 5000, render: renderBedTiles },
     { path: '/api/v1/enclosure', period: 10000, render: renderEnclosure },
     { path: '/api/v1/mesh', period: 30000, render: renderLive },
+    historySource,
     { path: '/api/v1/tool_stats', period: 30000, render: renderToolStats },
 ];
 for (const source of sources) {
-    source.due = 0;
+    if (source.due === undefined) {
+        source.due = 0;
+    }
 }
 
 let busy = false;
@@ -749,9 +1024,12 @@ async function tick() {
         return;
     }
     busy = true;
+    const path = source.path;
     try {
-        source.render(await getJson(source.path));
+        const data = await getJson(path);
+        // Before rendering, so that a render can make its source due again
         source.due = Date.now() + source.period;
+        source.render(data);
         showUpdated();
     } catch (error) {
         source.due = Date.now() + Math.min(source.period, RETRY_MS);
@@ -760,8 +1038,10 @@ async function tick() {
             loginNeeded = true;
             $('login').hidden = false;
             setText('updated', 'Login needed');
+        } else if (source.failed) {
+            source.failed(path);
         } else {
-            showError(source.path, error);
+            showError(path, error);
         }
     } finally {
         busy = false;
@@ -780,15 +1060,35 @@ $('retry').addEventListener('click', () => {
 
 $('mesh-refresh').addEventListener('click', () => {
     sources.find(s => s.path === '/api/v1/mesh').due = 0;
+    historySource.due = 0;
+    schedule(0);
+});
+
+$('mesh-table').addEventListener('change', event => {
+    if (event.target.name === 'mesh-show') {
+        pick = Number(event.target.value);
+        updateMesh();
+        schedule(0);
+    }
+});
+
+$('mesh-compare').addEventListener('change', event => {
+    const id = Number(event.target.value);
+    if (id > 0) {
+        // The shown entry stays while comparing, also one the page chose by itself
+        pick = shownId();
+    }
+    referenceId = id > 0 ? id : null;
+    updateMesh();
     schedule(0);
 });
 
 $('mesh-csv').addEventListener('click', () => {
-    downloadText(`xl-mesh_live_${fileStamp(live.fetched)}.csv`, liveCsv(live.mesh, live.fetched), 'text/csv');
+    downloadText(viewFileName(shownView, 'csv'), viewCsv(shownView), 'text/csv');
 });
 
 $('mesh-json').addEventListener('click', () => {
-    downloadText(`xl-mesh_live_${fileStamp(live.fetched)}.json`, JSON.stringify(live.mesh), 'application/json');
+    downloadText(viewFileName(shownView, 'json'), JSON.stringify(shownView.shown), 'application/json');
 });
 
 document.addEventListener('visibilitychange', () => {
@@ -800,7 +1100,7 @@ document.addEventListener('visibilitychange', () => {
 let resizeTimer = 0;
 window.addEventListener('resize', () => {
     clearTimeout(resizeTimer);
-    resizeTimer = setTimeout(() => meshView && drawMesh(meshView.mesh), 150);
+    resizeTimer = setTimeout(() => meshView && drawMesh(meshView.mesh, meshView.centre), 150);
 });
 
 const meshCanvas = $('mesh-canvas');
@@ -808,7 +1108,7 @@ meshCanvas.addEventListener('pointermove', showMeshPoint);
 meshCanvas.addEventListener('pointerdown', showMeshPoint);
 meshCanvas.addEventListener('pointerleave', event => {
     if (event.pointerType === 'mouse') {
-        setText('mesh-point', 'Hover or tap a point');
+        setText('mesh-point', HOVER_HINT);
     }
 });
 
