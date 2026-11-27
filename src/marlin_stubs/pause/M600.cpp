@@ -125,7 +125,7 @@ static void M600_manual(const GCodeParser2 &);
  *  Temperature that is currently set will be used for both unloading and loading.
  *
  *  On the XL, when `T` is not the picked tool and picking it fails, the filament change stops and the tool crash recovery takes over.
- *  The picked tool is retracted by `E` before it is parked. After it is picked again and back at temperature, it is purged behind the bed and its retraction and E position are restored.
+ *  The picked tool is retracted by `E` before it is parked. After it is picked again, back at temperature and back at the print, its retraction and E position are restored.
  */
 
 void GcodeSuite::M600() {
@@ -389,15 +389,6 @@ void M600_execute(mapi::ParkingPosition park_position, VirtualToolIndex target_t
     #endif
         Temperature::wait_for_hotend(original_tool->to_physical(), { .fan_cooling = true });
     }
-
-    #if PRINTER_IS_PRUSA_XL()
-    // Push out what the tool oozed in the dock behind the bed, as a spool join does
-    if (printing_tool_state.has_value() && !prusa_toolchanger.purge_tool(printing_tool_state->tool)) {
-        // Leave the head where the failed purge left it, the recovery deals with it from there.
-        log_error(PRUSA_GCODE, "M600 failed to purge the original tool");
-        return;
-    }
-    #endif
 
     auto return_position = resume_position();
     apply_motion_limits(return_position);
