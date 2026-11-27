@@ -22,6 +22,9 @@
  * Allows changing filament parameters and force-setting the currently loaded filament.
  * Also print selected filament parameters to the serial.
  *
+ * Of a preset filament type, only the chamber temperatures `C`, `D` and `E` can be set (XL with enclosure),
+ * and `R` resets them to the built-in values. All its other parameters stay as built in.
+ *
  *#### Parameters (Common)
  * - `S"<short_name>"` - Select filament with the specified name
  * - `I<ix>` - Select filament currently loaded to the specified tool (indexed from 0)
@@ -205,6 +208,11 @@ void PrusaGcodeSuite::M865() {
 
     if (filament_type.is_customizable()) {
         filament_type.set_parameters(params);
+
+    } else if (filament_type.is_chamber_adjustable_preset()) {
+        filament_type.set_parameters(params);
+        // Report the parameters the preset has now, not the ones it ignored
+        params = filament_type.parameters();
     }
 
     /// MUST be after set_parameters. In case of pendingadhoc -> adhoc loading, the data is copied
