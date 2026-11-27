@@ -11,6 +11,7 @@
 #include <option/has_chamber_vents.h>
 #include <option/has_expansion_joints_gen_2.h>
 #include <option/has_nozzle_cleaner_lite.h>
+#include <option/has_custom_nozzle_wiper.h>
 #include <option/has_15gt_belts.h>
 #include <option/has_switchable_homing_calibration.h>
 #include <common/extended_printer_type.hpp>
@@ -163,6 +164,20 @@ protected:
     virtual void OnChange(size_t) override;
 
     /// Keep in sync when an edition selection changes the flag.
+    void Loop() override;
+};
+#endif
+
+#if HAS_CUSTOM_NOZZLE_WIPER()
+/// Which wiper the nozzle wiper is: Prusa's or the user's taught one
+class MI_NOZZLE_WIPER_TYPE : public MenuItemSwitch {
+    static constexpr const char *const label = N_("Wiper Type");
+
+public:
+    MI_NOZZLE_WIPER_TYPE();
+
+protected:
+    bool on_item_selected(const OnItemSelectedArgs &args) override;
     void Loop() override;
 };
 #endif

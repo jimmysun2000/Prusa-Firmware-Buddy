@@ -265,11 +265,24 @@ void MI_EXPANSION_JOINTS_GEN_2::Loop() {
 }
 #endif
 
+#if HAS_CUSTOM_NOZZLE_WIPER()
+/// Prusa's wiper is probed for at the left edge of the bed, which this printer may not have
+static bool confirm_prusa_wiper() {
+    return MsgBoxWarning(_("With Wiper Type Prusa, nozzle cleaning probes for Prusa's Nozzle Wiper at the left edge of the bed. Is that wiper fitted?"), Responses_YesNo, 1) == Response::Yes;
+}
+#endif
+
 #if HAS_NOZZLE_CLEANER_LITE()
 MI_NOZZLE_CLEANER_LITE::MI_NOZZLE_CLEANER_LITE()
     : WI_ICON_SWITCH_OFF_ON_t(false, _(label), nullptr, is_enabled_t::yes, is_hidden_t::no) {};
 
 void MI_NOZZLE_CLEANER_LITE::OnChange([[maybe_unused]] size_t old_index) {
+    #if HAS_CUSTOM_NOZZLE_WIPER()
+    if (value() && !config_store().nozzle_wiper_custom.get() && !confirm_prusa_wiper()) {
+        set_value(false);
+        return;
+    }
+    #endif
     config_store().nozzle_cleaner_lite_installed.set(value());
 }
 
@@ -277,6 +290,31 @@ void MI_NOZZLE_CLEANER_LITE::Loop() {
     if (const bool present = config_store().nozzle_cleaner_lite_installed.get(); value() != present) {
         set_value(present);
     }
+}
+#endif
+
+#if HAS_CUSTOM_NOZZLE_WIPER()
+static constexpr const char *nozzle_wiper_type_items[] = {
+    N_("Prusa"),
+    N_("Custom"),
+};
+
+MI_NOZZLE_WIPER_TYPE::MI_NOZZLE_WIPER_TYPE()
+    : MenuItemSwitch(_(label), nozzle_wiper_type_items, config_store().nozzle_wiper_custom.get()) {
+    set_behavior(Behavior::quick_cycle);
+}
+
+bool MI_NOZZLE_WIPER_TYPE::on_item_selected(const OnItemSelectedArgs &args) {
+    const bool custom = (args.new_index == 1);
+    if (!custom && config_store().nozzle_cleaner_lite_installed.get() && !confirm_prusa_wiper()) {
+        return false;
+    }
+    config_store().nozzle_wiper_custom.set(custom);
+    return true;
+}
+
+void MI_NOZZLE_WIPER_TYPE::Loop() {
+    set_current_item(config_store().nozzle_wiper_custom.get());
 }
 #endif
 

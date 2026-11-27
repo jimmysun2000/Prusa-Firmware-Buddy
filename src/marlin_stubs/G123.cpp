@@ -28,6 +28,7 @@
  *  - `Y` - Target Y position
  *  - `Z` - Target Z position
  *  - `E` - Target E position
+ *  - `F` - Feedrate cap of each axis [mm/min]; MANUAL_FEEDRATE still caps it too
  */
 
 void PrusaGcodeSuite::G123() {
@@ -42,8 +43,13 @@ void PrusaGcodeSuite::G123() {
     p.store_option_if_present('Z', target_pos.z);
     p.store_option_if_present('E', target_pos.e);
 
-    static const xyze_float_t feedrate = xyze_float_t { { MANUAL_FEEDRATE } } / 60;
-    static const xyze_float_t feedrate_inv = xyze_float_t { { { 1, 1, 1, 1 } } } / feedrate;
+    xyze_float_t feedrate = xyze_float_t { { MANUAL_FEEDRATE } } / 60;
+    if (const auto max_feedrate = p.option<float>('F', 1.0f)) {
+        for (uint8_t i = 0; i < 4; i++) {
+            feedrate[i] = std::min(feedrate[i], *max_feedrate / 60);
+        }
+    }
+    const xyze_float_t feedrate_inv = xyze_float_t { { { 1, 1, 1, 1 } } } / feedrate;
 
     // The segments should be bit enough so that the planner does not have to emergency break,
     // but also short enough so that we have snappy reaction time

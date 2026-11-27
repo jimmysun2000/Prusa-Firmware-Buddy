@@ -123,6 +123,10 @@ if(HAS_TOOLCHANGER AND NOT HAS_INDX)
     )
 endif()
 
+if(HAS_CUSTOM_NOZZLE_WIPER)
+  target_sources(firmware PRIVATE screen_menu_nozzle_wiper.cpp)
+endif()
+
 if(HAS_MODULAR_BED)
   target_sources(firmware PRIVATE screen_menu_modular_bed.cpp)
 endif()

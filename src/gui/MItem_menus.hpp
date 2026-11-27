@@ -17,6 +17,7 @@
 #include <option/has_wastebin_fill_tracking.h>
 #include <option/has_lights_menu.h>
 #include <option/has_modular_bed.h>
+#include <option/has_custom_nozzle_wiper.h>
 #include <img_resources.hpp>
 #include <ScreenFactory.hpp>
 
@@ -141,6 +142,11 @@ using MI_BED_TILES
 #if HAS_WASTEBIN_FILL_TRACKING()
 using MI_WASTEBIN
     = MI_SCREEN<N_("Nozzle Cleaner"), class ScreenMenuWastebin>;
+#endif
+
+#if HAS_CUSTOM_NOZZLE_WIPER()
+using MI_NOZZLE_WIPER_SETUP
+    = MI_SCREEN<N_("Nozzle Wiper Setup"), class ScreenMenuNozzleWiper>;
 #endif
 
 using MI_SYSTEM

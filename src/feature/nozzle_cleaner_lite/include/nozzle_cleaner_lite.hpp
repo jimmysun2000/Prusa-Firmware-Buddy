@@ -12,6 +12,10 @@
 #include <mapi/parking.hpp>
 #include <utils/badge.hpp>
 
+#if HAS_CUSTOM_NOZZLE_WIPER()
+    #include <feature/nozzle_cleaner_lite/custom_wiper_geometry.hpp>
+#endif
+
 class unified_bed_leveling;
 
 namespace nozzle_cleaner_lite {
@@ -26,8 +30,16 @@ bool is_available();
 /// the nozzle target and print fan.
 bool uses_custom_geometry();
 
+/// Checks \p geometry against the current tool offsets and travel limits.
+custom_wiper::Fault validate_custom_geometry(const custom_wiper::Geometry &geometry, float width);
+
 /// True when the taught custom wiper geometry fits the current tool offsets and travel limits.
 bool custom_geometry_valid();
+
+/// Machine position where the custom wipe waits for temperature with the
+/// current tool: the staging point at the approach height. nullopt while the
+/// geometry is not valid.
+std::optional<xyz_pos_t> custom_waiting_point();
 
 /// Wipes on the custom wiper before the bed-tap nozzle check, if that is
 /// switched on and the geometry is valid, then waits for the restored nozzle

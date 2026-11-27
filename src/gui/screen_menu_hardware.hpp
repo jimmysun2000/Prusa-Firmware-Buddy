@@ -105,6 +105,9 @@ using ScreenMenuHardwareBase = BasicScreenMenu<
 #if HAS_NOZZLE_CLEANER_LITE()
     MI_NOZZLE_CLEANER_LITE,
 #endif
+#if HAS_CUSTOM_NOZZLE_WIPER()
+    MI_NOZZLE_WIPER_SETUP,
+#endif
     MI_ALWAYS_HIDDEN>;
 
 class ScreenMenuHardware final : public ScreenMenuHardwareBase {

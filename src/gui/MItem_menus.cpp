@@ -26,6 +26,9 @@
 #if HAS_WASTEBIN_FILL_TRACKING()
     #include "screen_menu_wastebin.hpp"
 #endif
+#if HAS_CUSTOM_NOZZLE_WIPER()
+    #include "screen_menu_nozzle_wiper.hpp"
+#endif
 #include "screen_menu_system.hpp"
 #if HAS_INTERNAL_STORAGE_FLASH()
     #include "screen/screen_menu_internal_storage.hpp"
@@ -160,6 +163,9 @@ template struct MI_SCREEN_CTOR<ScreenMenuHardwareTune>;
 template struct MI_SCREEN_CTOR<ScreenHelpFWUpdate>;
 #if HAS_WASTEBIN_FILL_TRACKING()
 template struct MI_SCREEN_CTOR<ScreenMenuWastebin>;
+#endif
+#if HAS_CUSTOM_NOZZLE_WIPER()
+template struct MI_SCREEN_CTOR<ScreenMenuNozzleWiper>;
 #endif
 template struct MI_SCREEN_CTOR<ScreenMenuSystem>;
 #if HAS_INTERNAL_STORAGE_FLASH()

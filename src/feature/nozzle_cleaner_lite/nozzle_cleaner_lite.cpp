@@ -198,24 +198,30 @@ namespace {
         return { offset.x, offset.y, offset.z };
     }
 
-    cw::Fault validate_current(const cw::Geometry &geometry, float width) {
-        // The applied offset is what this wipe moves with; the stored ones are what any later wipe will
-        std::array<cw::Offset, PhysicalToolIndex::count + 1> offsets;
-        size_t offset_count = 0;
-        offsets[offset_count++] = to_offset(hotend_currently_applied_offset);
-        for (auto tool : PhysicalToolIndex::all().skip_all_disabled()) {
-            offsets[offset_count++] = to_offset(hotend_offset[tool]);
+    /// The taught geometry in the machine frame of the tool picked now
+    struct MachineGeometry {
+        cw::Frame frame;
+        cw::Point staging;
+        float wipe_z;
+        float approach_z;
+    };
+
+    std::optional<MachineGeometry> to_machine(const cw::Geometry &geometry) {
+        const cw::Offset offset = to_offset(hotend_currently_applied_offset);
+        const auto frame = cw::make_frame(
+            cw::tip_to_machine({ geometry.start_x, geometry.start_y }, offset),
+            cw::tip_to_machine({ geometry.end_x, geometry.end_y }, offset));
+        if (!frame.has_value()) {
+            return std::nullopt;
         }
 
-        static constexpr cw::TravelLimits limits {
-            .x_min = X_MIN_POS + travel_limit_margin,
-            .x_max = X_MAX_POS - travel_limit_margin,
-            .y_min = Y_MIN_POS + travel_limit_margin,
-            // Stays out of the tool dock area behind the bed
-            .y_max = Y_BED_SIZE,
-            .z_min = Z_MIN_POS,
+        const float wipe_z = cw::tip_to_machine_z(geometry.wipe_z, offset);
+        return MachineGeometry {
+            .frame = *frame,
+            .staging = cw::staging_point(*frame),
+            .wipe_z = wipe_z,
+            .approach_z = wipe_z + cw::approach_clearance,
         };
-        return cw::validate(geometry, width, std::span(offsets.data(), offset_count), limits);
     }
 
     float tallest_tool_offset_z() {
@@ -318,7 +324,7 @@ namespace {
         auto &store = config_store();
         const cw::Geometry geometry = store.nozzle_wiper_geometry.get();
         const float width = store.nozzle_wiper_width.get();
-        if (const cw::Fault fault = validate_current(geometry, width); fault != cw::Fault::none) {
+        if (const cw::Fault fault = validate_custom_geometry(geometry, width); fault != cw::Fault::none) {
             log_error(NozzleCleanerLite, "custom wiper unusable: %s", cw::to_string(fault));
             return false;
         }
@@ -345,17 +351,15 @@ namespace {
         crash_s.set_gcode_replay_flags(Crash_s::RECOVER_AXIS_STATE);
     #endif
 
-        const cw::Offset offset = to_offset(hotend_currently_applied_offset);
-        const auto frame = cw::make_frame(
-            cw::tip_to_machine({ geometry.start_x, geometry.start_y }, offset),
-            cw::tip_to_machine({ geometry.end_x, geometry.end_y }, offset));
-        if (!frame.has_value()) {
+        const std::optional<MachineGeometry> machine = to_machine(geometry);
+        if (!machine.has_value()) {
             return false;
         }
-        const Pad pad = cw::make_pad(*frame, width);
-        const cw::Point staging = cw::staging_point(*frame);
-        const float wipe_z = cw::tip_to_machine_z(geometry.wipe_z, offset);
-        const float approach_z = wipe_z + cw::approach_clearance;
+        const cw::Frame &frame = machine->frame;
+        const cw::Point &staging = machine->staging;
+        const float wipe_z = machine->wipe_z;
+        const float approach_z = machine->approach_z;
+        const Pad pad = cw::make_pad(frame, width);
         const float entry_z = current_machine_position().z;
 
         Hotend &hotend = Hotend::for_tool(*tool);
@@ -417,7 +421,7 @@ namespace {
         // Start the zigzag somewhere new each run so consecutive cleans do not retrace the same track.
         ZigZag zigzag { pad, crossings_per_stroke, static_cast<float>(ticks_ms() % 1000) / 2000.0f };
         const auto zigzag_start = zigzag.start();
-        line_to_frame(*frame, zigzag_start.along, zigzag_start.across, approach_feedrate);
+        line_to_frame(frame, zigzag_start.along, zigzag_start.across, approach_feedrate);
         planner.synchronize();
 
         if (store.nozzle_wiper_guarded_descent.get()) {
@@ -444,13 +448,13 @@ namespace {
         const feedRate_t fast_feedrate = std::clamp(store.nozzle_wiper_speed.get(), cw::speed_min, cw::speed_max);
         if (!args.dry_run) {
             for (uint8_t i = 0; i < cw::fast_cycles; ++i) {
-                rub_stroke(zigzag, *frame, pad.along_far, fast_feedrate);
-                rub_stroke(zigzag, *frame, pad.along_near, fast_feedrate);
+                rub_stroke(zigzag, frame, pad.along_far, fast_feedrate);
+                rub_stroke(zigzag, frame, pad.along_near, fast_feedrate);
             }
         }
         for (uint8_t i = 0; i < cw::slow_cycles; ++i) {
-            rub_stroke(zigzag, *frame, pad.along_far, cw::slow_speed);
-            rub_stroke(zigzag, *frame, pad.along_near, cw::slow_speed);
+            rub_stroke(zigzag, frame, pad.along_far, cw::slow_speed);
+            rub_stroke(zigzag, frame, pad.along_near, cw::slow_speed);
         }
 
         {
@@ -468,9 +472,40 @@ bool uses_custom_geometry() {
     return config_store().nozzle_wiper_custom.get();
 }
 
+cw::Fault validate_custom_geometry(const cw::Geometry &geometry, float width) {
+    // The applied offset is what a wipe now moves with; the stored ones are what any later wipe will
+    std::array<cw::Offset, PhysicalToolIndex::count + 1> offsets;
+    size_t offset_count = 0;
+    offsets[offset_count++] = to_offset(hotend_currently_applied_offset);
+    for (auto tool : PhysicalToolIndex::all().skip_all_disabled()) {
+        offsets[offset_count++] = to_offset(hotend_offset[tool]);
+    }
+
+    static constexpr cw::TravelLimits limits {
+        .x_min = X_MIN_POS + travel_limit_margin,
+        .x_max = X_MAX_POS - travel_limit_margin,
+        .y_min = Y_MIN_POS + travel_limit_margin,
+        // Stays out of the tool dock area behind the bed
+        .y_max = Y_BED_SIZE,
+        .z_min = Z_MIN_POS,
+    };
+    return cw::validate(geometry, width, std::span(offsets.data(), offset_count), limits);
+}
+
 bool custom_geometry_valid() {
     auto &store = config_store();
-    return validate_current(store.nozzle_wiper_geometry.get(), store.nozzle_wiper_width.get()) == cw::Fault::none;
+    return validate_custom_geometry(store.nozzle_wiper_geometry.get(), store.nozzle_wiper_width.get()) == cw::Fault::none;
+}
+
+std::optional<xyz_pos_t> custom_waiting_point() {
+    if (!custom_geometry_valid()) {
+        return std::nullopt;
+    }
+    const auto machine = to_machine(config_store().nozzle_wiper_geometry.get());
+    if (!machine.has_value()) {
+        return std::nullopt;
+    }
+    return xyz_pos_t { { { machine->staging.x, machine->staging.y, machine->approach_z } } };
 }
 
 bool wipe_before_probing() {
