@@ -14,6 +14,7 @@
     #include "../nhttp/tools_renderer.h"
     #include "../nhttp/bed_tiles_renderer.h"
     #include "../nhttp/tool_stats_renderer.h"
+    #include "../nhttp/enclosure_renderer.h"
 #endif
 #include "prusa_api_helpers.hpp"
 
@@ -140,6 +141,9 @@ Selector::Accepted PrusaLinkApiV1::accept(const RequestParser &parser, handler::
         return Accepted::Accepted;
     } else if (suffix == "tool_stats") {
         get_only(SendJson(ToolStatsRenderer(), parser.can_keep_alive()), parser, out);
+        return Accepted::Accepted;
+    } else if (suffix == "enclosure") {
+        get_only(SendJson(EmptyRenderer(render_enclosure), parser.can_keep_alive()), parser, out);
         return Accepted::Accepted;
 #endif
     } else if (auto job_suffix_opt = remove_prefix(suffix, "job/"); job_suffix_opt.has_value()) {

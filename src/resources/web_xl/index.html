@@ -150,6 +150,15 @@ tr.active td:first-child { color: var(--accent); font-weight: 600; }
 <dt>Tool recoveries</dt><dd id="tool-recoveries">–</dd>
 </dl>
 </section>
+
+<section>
+<h2>Enclosure</h2>
+<dl>
+<dt>Enabled</dt><dd id="enclosure-enabled">–</dd>
+<dt>Temperature</dt><dd id="enclosure-temp">–</dd>
+<dt>Fan</dt><dd id="enclosure-fan">–</dd>
+</dl>
+</section>
 </main>
 
 <script>
@@ -567,6 +576,15 @@ function renderToolStats(stats) {
     setText('tool-recoveries', fixed(stats.tool_recoveries, 0));
 }
 
+// Enclosure
+
+function renderEnclosure(enclosure) {
+    setText('enclosure-enabled', enclosure.enabled === true ? 'Yes' : enclosure.enabled === false ? 'No' : '–');
+    // The printer estimates it only after some minutes of printing
+    setText('enclosure-temp', isNumber(enclosure.temp) ? fixed(enclosure.temp, 0, ' °C (estimate)') : 'No estimate yet');
+    setText('enclosure-fan', fixed(enclosure.fan_rpm, 0, ' RPM'));
+}
+
 // Polling
 
 const sources = [
@@ -574,6 +592,7 @@ const sources = [
     { path: '/api/v1/status', period: 5000, render: renderStatus },
     { path: '/api/v1/tools', period: 5000, render: renderToolList },
     { path: '/api/v1/bed_tiles', period: 5000, render: renderBedTiles },
+    { path: '/api/v1/enclosure', period: 10000, render: renderEnclosure },
     { path: '/api/v1/mesh', period: 30000, render: drawMesh },
     { path: '/api/v1/tool_stats', period: 30000, render: renderToolStats },
 ];
